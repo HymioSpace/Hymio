@@ -294,7 +294,7 @@ export default function App() {
                 </div>
               )}
               {model.messages.map((m) => (
-                <MessageView key={m.id} message={m} />
+                <MessageView key={m.id} message={m} tools={model.tools} />
               ))}
               {model.tools.length > 0 && (
                 <div className="work-summary">

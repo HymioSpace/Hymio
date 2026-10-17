@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "pnpm -w check && vite build",
+    "build": "pnpm check && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "desktop": "node scripts/desktop.mjs",
-    "desktop:build": "tauri build --bundles app"
+    "desktop:build": "tauri build --bundles app",
+    "check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "@hymio/client": "workspace:*",
@@ -25,6 +28,11 @@
     "@tauri-apps/cli": "2.12.3",
     "@vitejs/plugin-react": "6.1.2",
     "vite": "8.3.4",
-    "smol-toml": "^1.4.0"
+    "smol-toml": "^1.4.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
   }
 }

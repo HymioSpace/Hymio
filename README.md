@@ -44,7 +44,7 @@ Requires Node.js 22.12+ and pnpm 11. Start [Oath](https://github.com/HymioSpace/
 
 ```bash
 git clone https://github.com/HymioSpace/Hymio.git
-cd Hymio
+cd Hymio/apps/client
 pnpm install
 pnpm dev       # Web: http://127.0.0.1:1420
 # Or, with Rust and Tauri platform prerequisites:

@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { Check, Copy, Terminal } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Message } from '@hymio/client';
+import type { Message, ToolActivity } from '@hymio/client';
+import { obj, str } from '@hymio/protocol';
+import { JsonView } from './JsonView';
 import { Companion } from '@hymio/ui';
 
-export function MessageView({ message }: { message: Message }) {
+export function MessageView({ message, tools }: { message: Message; tools: ToolActivity[] }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -43,12 +45,47 @@ export function MessageView({ message }: { message: Message }) {
           )}
           {!!message.calls?.length && (
             <div className="tool-pills">
-              {message.calls.map((call, i) => (
-                <span key={i}>
-                  <Terminal size={12} />
-                  {String(call.name)}
-                </span>
-              ))}
+              {message.calls.map((call, i) => {
+                const args = obj(call.arguments);
+                const result = tools.find((t) => t.id === `${message.stepId}-${i}`);
+                const title =
+                  call.name === 'skill'
+                    ? args.action === 'search'
+                      ? '查找技能'
+                      : args.action === 'read'
+                        ? '读取技能'
+                        : '技能工具'
+                    : call.name === 'bash'
+                      ? '执行命令'
+                      : String(call.name);
+                const hint = call.name === 'skill' ? str(args.query) || str(args.name) : '';
+                return (
+                  <details key={i} className="tool-call-detail">
+                    <summary>
+                      <Terminal size={14} />
+                      <strong>{title}</strong>
+                      {hint && <span className="tool-call-hint">{hint}</span>}
+                      <span>
+                        {result?.outcome === 'succeeded'
+                          ? '已完成'
+                          : result?.outcome === 'running'
+                            ? '处理中'
+                            : result?.outcome || '已请求'}
+                      </span>
+                    </summary>
+                    <div className="tool-call-content">
+                      <p>工具：{String(call.name)}</p>
+                      <JsonView value={args} />
+                      {result?.result && (
+                        <>
+                          <p>返回结果</p>
+                          <pre>{result.result}</pre>
+                        </>
+                      )}
+                    </div>
+                  </details>
+                );
+              })}
             </div>
           )}
         </div>

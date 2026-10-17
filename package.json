@@ -6,21 +6,9 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "pnpm --filter @hymio/app dev",
-    "build": "pnpm --filter @hymio/app build",
-    "preview": "pnpm --filter @hymio/app preview",
-    "desktop": "pnpm --filter @hymio/app desktop",
-    "desktop:build": "pnpm --filter @hymio/app desktop:build",
-    "check": "tsc --noEmit",
-    "format": "prettier --write \"apps/client/src/**/*.{ts,tsx,css}\" \"packages/*/src/**/*.{ts,tsx}\"",
-    "format:check": "prettier --check \"apps/client/src/**/*.{ts,tsx,css}\" \"packages/*/src/**/*.{ts,tsx}\"",
-    "test": "node --experimental-strip-types --test packages/client/src/conversation.test.ts"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
-    "prettier": "3.6.2",
-    "typescript": "5.9.3"
+    "check": "pnpm -r --if-present check",
+    "format": "pnpm -r --if-present format",
+    "format:check": "pnpm -r --if-present format:check",
+    "test": "pnpm -r --if-present test"
   }
 }

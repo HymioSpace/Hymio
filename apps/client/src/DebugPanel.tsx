@@ -20,11 +20,9 @@ import {
   type Span,
 } from '@hymio/protocol';
 import { bizGet } from './platform';
+import { JsonView as Json } from './JsonView';
 const ms = (value: number | null | undefined) =>
   value == null ? '—' : value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
-function Json({ value }: { value: unknown }) {
-  return <pre className="json-view">{JSON.stringify(value, null, 2)}</pre>;
-}
 function SpanView({ span, total }: { span: Span; total: number }) {
   const [open, setOpen] = useState(false);
   return (

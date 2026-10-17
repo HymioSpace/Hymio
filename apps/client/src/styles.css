@@ -5,9 +5,9 @@
   background: #fafbfe;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: auto;
   --ink: #222939;
-  --muted: #8b93a4;
+  --muted: #69758a;
   --blue: #4b70ff;
   --line: #eceef4;
   --pale: #f2f5ff;
@@ -633,9 +633,9 @@ a {
   gap: 8px;
   height: 24px;
   margin-top: 6px;
-  color: #b2b9c7;
-  font-size: 9px;
-  letter-spacing: 0.1px;
+  color: #707c90;
+  font-size: 11px;
+  letter-spacing: 0;
 }
 .message-user .message-meta {
   justify-content: flex-end;
@@ -654,19 +654,6 @@ a {
   gap: 6px;
   flex-wrap: wrap;
   margin-top: 10px;
-}
-.tool-pills span {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-  background: #f5f7fc;
-  border: 1px solid #e9edf5;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font:
-    10px/1.6 ui-monospace,
-    monospace;
-  color: #7f8da5;
 }
 .working-indicator {
   display: flex;
@@ -1675,7 +1662,8 @@ a {
   font-size: 11px;
 }
 .message-bubble {
-  font-size: 15px;
+  font-size: 16px;
+  color: #253149;
 }
 .send-button {
   width: 38px;
@@ -1688,5 +1676,132 @@ a {
   font-size: 11px;
 }
 .connection-pill {
+  font-size: 12px;
+}
+
+.companion svg {
+  shape-rendering: geometricPrecision;
+}
+.companion.compact {
+  width: 40px;
+  height: 40px;
+}
+.companion.compact .companion-body,
+.companion.compact .companion-face,
+.companion.compact .companion-shadow {
+  animation: none;
+}
+.companion.compact .companion-body {
+  stroke-width: 6;
+}
+.companion.compact svg {
+  overflow: visible;
+}
+.tool-pills {
+  display: block;
+}
+.tool-call-detail {
+  margin: 8px 0;
+  border: 1px solid #e3e8f1;
+  border-radius: 10px;
+  background: #f8faff;
+}
+.tool-call-detail > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: #52627c;
+}
+.tool-call-detail strong {
+  color: #354159;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.tool-call-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.tool-call-detail > summary > span:last-child {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.tool-call-content {
+  padding: 0 12px 12px;
+  font-size: 12px;
+}
+.tool-call-content p {
+  margin: 8px 0;
+}
+.json-inspector {
+  margin: 8px 0;
+  border: 1px solid #e3e8f1;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+.json-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  background: #f6f8fc;
+  color: #607089;
+  font-size: 11px;
+  border-bottom: 1px solid #e9edf4;
+}
+.json-toolbar button {
+  cursor: pointer;
+  color: #365dcc;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.json-tree {
+  overflow: auto;
+  max-height: 600px;
+  padding: 10px;
+  font:
+    12px/1.8 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  color: #354159;
+}
+.json-node > summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.json-children {
+  margin-left: 9px;
+  padding-left: 13px;
+  border-left: 1px solid #e5eaf2;
+}
+.json-leaf {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 2px 0;
+}
+.json-tree b {
+  font-weight: 500;
+  color: #344563;
+}
+.json-type {
+  color: #778297;
+  font-size: 11px;
+}
+.json-string {
+  color: #385a72;
+}
+.json-literal {
+  color: #6950a1;
+}
+.json-inspector .json-view {
+  margin: 0;
+  border: 0;
+  color: #354159;
   font-size: 12px;
 }

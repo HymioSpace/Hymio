@@ -6,9 +6,10 @@ One ongoing conversation, shared by Web and the Tauri macOS app. The MVP connect
 
 Requires Node.js 22.12+, pnpm 11 and a running Oath deployment. Desktop development also needs Rust and the platform dependencies listed in [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-From the repository root:
+Run from `apps/client` (pnpm discovers the workspace automatically):
 
 ```bash
+cd apps/client
 pnpm install
 pnpm dev              # Web: http://127.0.0.1:1420
 pnpm desktop          # Tauri; reuses a running Hymio dev server
@@ -32,9 +33,12 @@ For another deployment, enter its WS URL, Biz HTTP URL and Oath user credential 
 ## Build
 
 ```bash
-pnpm build            # apps/client/dist
+pnpm build            # dist/
 pnpm desktop:build    # macOS .app under src-tauri/target/release/bundle/macos
 pnpm check
+
+# Shared checks, from the repository root:
+cd ../..
 pnpm format:check
 pnpm test             # stream/approval projection regressions
 ```

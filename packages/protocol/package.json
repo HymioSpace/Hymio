@@ -1,1 +1,16 @@
-{"name":"@hymio/protocol","version":"0.1.0","private":true,"type":"module","exports":"./src/index.ts"}
+{
+  "name": "@hymio/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "devDependencies": {
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  },
+  "scripts": {
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
+    "check": "tsc --noEmit"
+  }
+}
