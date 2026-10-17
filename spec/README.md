@@ -1,0 +1,34 @@
+# Hymio 设计
+
+[整体架构](overview.md) 是入口，每个 feature 使用递增的 `featureNN-short-name.md`。
+
+| 编号 | 方案 | 状态 |
+| --- | --- | --- |
+| 01 | [导入与同步](feature01-context-ingress.md) | Draft |
+| 02 | [身份、Agent 与渠道](feature02-agent-channels.md) | Draft |
+| 03 | [Kit 注册、调用与跨端使用](feature03-kits.md) | Draft |
+| 04 | [授权与自带 Context 存储](feature04-identity-storage.md) | Draft |
+| 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
+| 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：仅目录与文档 |
+
+## 设计与实现
+
+先写方案，再实现。文档从总览展开机制、边界和失败恢复；不把开发流水、命令输出或测试数量写成设计。状态使用 Draft → Accepted → Implementing → Implemented，只对实际交付的范围标记完成。
+
+修改已有功能更新原 feature，跨模块调整同步 overview。共享规则在本目录维护；本地 `AGENTS.md` 被忽略，不 force-add。
+
+## 模块约束
+
+- 应用代码留在 monorepo，Web/Tauri 共用前端；平台能力经 adapter，iOS 不强制复用 Web 视图。
+- 共享包不依赖 app；UI 不直接访问数据库或持有服务级凭据。
+- 一个产品用户对应 Oath `user_id` 与一段持续对话；设备有各自稳定 client ID，不创建 session。
+- Hymio 管产品业务、采集与连接器；Oath 管执行，Nostalgia 管 Context 实体和检索。
+- 产品后端先模块化，按实际需要拆部署；Oath CLI handler 与 Hymio backend 不混为同一个服务。
+- API 与业务约束独立于 UI，Kit 和 Agent 调用共享同一业务操作。
+- 用户断线不取消已接纳任务。事件成功处理后确认，允许重放和去重。
+- 未选定的框架、存储、认证提供商和 license 不宣称已有决定；不生成无可运行内容的工程。
+- Secret、私人 Context、生产 trace 和私有扩展不能进入提交；公开默认构建不依赖私有凭据。
+
+## 下一步
+
+先完成产品身份接入 Oath 与共享 Web/Tauri 对话闭环，再逐步加入 Context、连接器和 Kit。技术栈与可执行 workspace 在对应实现 feature 中确定。
