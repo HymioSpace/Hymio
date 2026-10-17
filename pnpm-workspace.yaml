@@ -1,0 +1,7 @@
+packages:
+  - apps/client
+  - packages/*
+minimumReleaseAgeExclude:
+  - lucide-react@1.59.0
+onlyBuiltDependencies:
+  - esbuild

@@ -9,7 +9,8 @@
 | 03 | [Kit 注册、调用与跨端使用](feature03-kits.md) | Draft |
 | 04 | [授权与自带 Context 存储](feature04-identity-storage.md) | Draft |
 | 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
-| 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：仅目录与文档 |
+| 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：目录与边界 |
+| 07 | [Web / Desktop Client MVP](feature07-client-mvp.md) | Implemented |
 
 ## 设计与实现
 
@@ -31,4 +32,4 @@
 
 ## 下一步
 
-先完成产品身份接入 Oath 与共享 Web/Tauri 对话闭环，再逐步加入 Context、连接器和 Kit。技术栈与可执行 workspace 在对应实现 feature 中确定。
+当前先完成 Web/Tauri Client MVP；产品身份体系、Context、连接器和 Kit 后续逐步接入。客户端技术栈与工作区见 feature07，产品后端与认证方案仍未选定。
