@@ -6,7 +6,9 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 [Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, Kits, clients and deployment.
 
-**Status:** repository scaffolding and design. There is no runnable Hymio application or combined deployment yet. Oath can be deployed separately; Nostalgia integration is planned.
+**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The product backend, Nostalgia integration and combined deployment are not implemented yet.
+
+<p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
 ## One product, several clients
 
@@ -38,11 +40,21 @@ Hymio's deployment layer will compose the backend, Oath and Nostalgia. Clients c
 
 ## Start here
 
+Requires Node.js 22.12+ and pnpm 11. Start [Oath](https://github.com/HymioSpace/Oath) separately, then:
+
 ```bash
 git clone https://github.com/HymioSpace/Hymio.git
-cd Hymio
+cd Hymio/apps/client
+pnpm install
+pnpm dev       # Web: http://127.0.0.1:1420
+# Or, with Rust and Tauri platform prerequisites:
+pnpm desktop
 ```
 
-Read the [overview](spec/overview.md), [repository design](spec/feature06-application-monorepo.md) and the relevant [feature plan](spec/README.md). There is no dependency installation or application start command yet. Frontend build tooling, backend framework and authentication provider will be selected with the first implementations.
+Open **连接设置 → 使用本机 Oath 配置 → 连接 Hymio**. You can also enter another Oath endpoint and its user credential. Oath keeps executing accepted work when the client leaves.
+
+Read the [client guide](apps/client/README.md) for builds, debug controls and production Web routing. React/TypeScript/Vite and Tauri 2 share the frontend. Backend and authentication-provider choices remain future work.
+
+See the [overview](spec/overview.md), [client design](spec/feature07-client-mvp.md) and the [feature plans](spec/README.md) for module boundaries.
 
 Shared development conventions live in `spec/README.md`. Local `AGENTS.md`, credentials, private extensions and runtime data are ignored by Git.

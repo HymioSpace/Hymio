@@ -9,4 +9,4 @@
 
 Dependencies flow from apps into these packages. `ui` must not import an app or product service; `a2ui` may depend on `ui` and `protocol`; `client` may depend on `protocol`. Platform APIs are supplied through adapters. Backend contracts define business behavior.
 
-These are directory boundaries, not published npm packages yet. Add package manifests and workspace tooling with the first executable frontend; do not create empty exports or placeholder start commands.
+`ui`, `protocol` and `client` are private pnpm workspace packages consumed by `apps/client`. They are not published. `a2ui` remains a design boundary until a real renderer is implemented.

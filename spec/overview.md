@@ -2,7 +2,7 @@
 
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
-当前只有目录、设计与开发约定；没有可运行的 Hymio 客户端、后端或组合部署。
+当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端、Nostalgia 集成与组合部署尚未实现。详见 [feature07](feature07-client-mvp.md)。
 
 ## 产品边界
 
@@ -57,4 +57,4 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 
 应用模块先留在同仓库，按需独立构建和发布。Oath/Nostalgia 通过公开协议和固定版本产物接入，不复制源码，不默认增加 submodule。后端先按模块划分，不预设每个模块都是微服务。
 
-下一步：选定首个客户端与后端技术栈 → 确定产品身份和 Oath 用户凭据接入 → 完成对话/重连闭环 → 引入 Context 导入与第一个 Kit。Nostalgia 的实现和协议仍是后续依赖。
+下一步：完善产品身份和 Oath 用户凭据接入 → 实现产品后端 → 引入 Context 导入与第一个 Kit。Nostalgia 的实现和协议仍是后续依赖。

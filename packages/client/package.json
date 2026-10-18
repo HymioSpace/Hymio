@@ -1,0 +1,21 @@
+{
+  "name": "@hymio/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@hymio/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "@types/node": "^22.0.0"
+  },
+  "scripts": {
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/conversation.test.ts"
+  }
+}

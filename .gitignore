@@ -78,3 +78,6 @@ xcuserdata/
 *.db-shm
 
 # Keep dependency lockfiles, migrations, fixtures and spec/ tracked.
+
+# Generated Tauri schemas
+**/src-tauri/gen/

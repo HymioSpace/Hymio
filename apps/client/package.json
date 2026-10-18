@@ -1,0 +1,38 @@
+{
+  "name": "@hymio/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "pnpm check && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "desktop": "node scripts/desktop.mjs",
+    "desktop:build": "tauri build --bundles app",
+    "check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
+  },
+  "dependencies": {
+    "@hymio/client": "workspace:*",
+    "@hymio/protocol": "workspace:*",
+    "@hymio/ui": "workspace:*",
+    "@tauri-apps/api": "^2.10.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "lucide-react": "1.59.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3",
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.4",
+    "smol-toml": "^1.4.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}
