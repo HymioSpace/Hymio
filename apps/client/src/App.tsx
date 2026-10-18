@@ -42,6 +42,9 @@ export default function App() {
     [debug, setDebug] = useState(false),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
     [notice, setNotice] = useState(''),
+    [dismissedFailure, setDismissedFailure] = useState(
+      () => localStorage.getItem('hymio.dismissedFailure') || '',
+    ),
     [toolsOpen, setToolsOpen] = useState(false),
     [nearBottom, setNearBottom] = useState(true),
     [sending, setSending] = useState(false),
@@ -56,6 +59,17 @@ export default function App() {
   const busy = toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || '');
   const streaming = model.messages.some((m) => m.streaming);
   const connected = state.phase === 'connected';
+  const latestFailure =
+    model.latestStep?.status === 'failed' || model.latestStep?.status === 'paused'
+      ? model.latestStep
+      : undefined;
+  const failureKey = latestFailure
+    ? `${state.userId}:${latestFailure.id}:${latestFailure.eventSeq}`
+    : '';
+  function dismissFailure(key: string) {
+    localStorage.setItem('hymio.dismissedFailure', key);
+    setDismissedFailure(key);
+  }
   const mood: Mood =
     state.phase === 'disconnected' || state.phase === 'error' || state.phase === 'reconnecting'
       ? 'offline'
@@ -383,15 +397,29 @@ export default function App() {
                   </span>
                 </div>
               )}
-              {model.latestStep?.error && (
+              {latestFailure?.error && failureKey !== dismissedFailure && (
                 <div className="task-error">
-                  <p>{model.latestStep.error}</p>
-                  <button
-                    className="text-button"
-                    onClick={() => void act(() => client.command('step.retry', {}))}
-                  >
-                    重试这一步
-                  </button>
+                  <p>{latestFailure.error}</p>
+                  <div className="task-error-actions">
+                    <button
+                      className="text-button"
+                      disabled={!connected}
+                      onClick={() => {
+                        void client.command('step.retry', {}).then(
+                          () => {
+                            dismissFailure(failureKey);
+                            setNotice('已请求重试；如果服务端再次失败，会显示新的错误。');
+                          },
+                          (error: unknown) => setNotice(String(error)),
+                        );
+                      }}
+                    >
+                      重试这一步
+                    </button>
+                    <button className="text-button" onClick={() => dismissFailure(failureKey)}>
+                      收起
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
