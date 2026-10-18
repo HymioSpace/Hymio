@@ -71,13 +71,14 @@ export function DebugPanel({
     setError('');
     onStatus();
     try {
-      await bizGet(connection.bizUrl, '/heartbeat', connection.credential);
+      await bizGet(connection.bizUrl, '/heartbeat', connection.credential, connection.userId);
       setBiz('alive');
       if (tab === 'traces') {
         const data = await bizGet<{ trace_ids: TraceSummary[] }>(
           connection.bizUrl,
           '/list_traces?limit=30',
           connection.credential,
+          connection.userId,
         );
         if (!Array.isArray(data.trace_ids)) throw new Error('Biz Trace 列表格式不兼容');
         setTraces(data.trace_ids);
@@ -102,6 +103,7 @@ export function DebugPanel({
         connection.bizUrl,
         `/query_trace?trace_id=${encodeURIComponent(id)}`,
         connection.credential,
+        connection.userId,
       );
       if (!Array.isArray(data.spans)) throw new Error('Biz Trace 详情格式不兼容');
       setTrace(data);

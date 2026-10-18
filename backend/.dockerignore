@@ -1,0 +1,7 @@
+.venv
+private
+hymio.toml
+data
+**/__pycache__
+*.sqlite*
+tests

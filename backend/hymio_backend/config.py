@@ -1,0 +1,53 @@
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+@dataclass(frozen=True)
+class Settings:
+    database: Path
+    issuer: str
+    client_id: str
+    client_secret_file: Path
+    public_url: str
+    callback_url: str
+    service_token_file: Path
+    origins: tuple[str, ...]
+    oath_ws: str
+    oath_biz: str
+    access_seconds: int = 900
+    refresh_seconds: int = 2592000
+    login_method: str = "account"
+    host: str = "127.0.0.1"
+    port: int = 8080
+
+    @classmethod
+    def load(cls, path):
+        path = Path(path).expanduser().resolve()
+        data = tomllib.loads(path.read_text())
+        for key in ("database", "client_secret_file", "service_token_file"):
+            file = Path(data[key]).expanduser()
+            data[key] = file if file.is_absolute() else path.parent / file
+        data["origins"] = tuple(data["origins"])
+        result = cls(**data)
+        if result.login_method not in ("account", "google"):
+            raise ValueError("login_method must be account or google")
+        if result.access_seconds < 1 or result.refresh_seconds < result.access_seconds:
+            raise ValueError("Invalid token lifetimes")
+        for url in (result.issuer, result.public_url, result.callback_url, result.oath_biz):
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("Invalid service URL")
+        if result.callback_url != result.public_url.rstrip("/") + "/auth/callback":
+            raise ValueError("callback_url must be public_url + /auth/callback")
+        if not result.client_secret_file.read_text().strip():
+            raise ValueError("Missing OIDC client secret")
+        if len(result.service_token_file.read_text().strip()) < 32:
+            raise ValueError("Service credential must be at least 32 characters")
+        return result

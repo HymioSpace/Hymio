@@ -22,9 +22,11 @@ import { OathClient, conversation } from '@hymio/client';
 import { Companion, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
+import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
 import { DebugPanel } from './DebugPanel';
-import { readConnection, saveConnection, desktop } from './platform';
+import { desktop } from './platform';
+import { LoginScreen } from './LoginScreen';
 const client = new OathClient();
 function Brand() {
   return (
@@ -37,7 +39,11 @@ function Brand() {
 export default function App() {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const model = useMemo(() => conversation(state.events), [state.events]);
-  const [connection, setConnection] = useState<Connection>(readConnection);
+  const [connection, setConnection] = useState<Connection>({
+    wsUrl: '',
+    bizUrl: '',
+    credential: '',
+  });
   const [settings, setSettings] = useState(false),
     [debug, setDebug] = useState(false),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
@@ -49,6 +55,20 @@ export default function App() {
     [nearBottom, setNearBottom] = useState(true),
     [sending, setSending] = useState(false),
     [clock, setClock] = useState(Date.now());
+  const login = useLogin(
+    (value, signedIn) => {
+      client.connect(value);
+      setConnection(value);
+      if (signedIn) setSettings(false);
+    },
+    () => {
+      client.signOut();
+      sessionStorage.removeItem('hymio.credential');
+      localStorage.removeItem('hymio.endpoints');
+      setDraft('');
+      setConnection((value) => ({ ...value, credential: '', userId: undefined }));
+    },
+  );
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
@@ -94,16 +114,7 @@ export default function App() {
               : busy || streaming
                 ? '正在处理'
                 : '随时在这里';
-  useEffect(() => {
-    if (connection.credential) {
-      try {
-        client.connect(connection);
-      } catch (e) {
-        setNotice(String(e));
-      }
-    }
-    return () => client.disconnect();
-  }, []);
+  useEffect(() => () => client.disconnect(), []);
   useEffect(() => {
     if (!state.userId) return;
     const owner = JSON.stringify([connection.wsUrl, state.userId]);
@@ -141,14 +152,6 @@ export default function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, []);
-  function connect(c: Connection) {
-    client.connect(c);
-    saveConnection(c);
-    setConnection(c);
-    setSettings(false);
-    setNotice('');
-    input.current?.focus();
-  }
   async function act(fn: () => Promise<unknown>) {
     try {
       await fn();
@@ -176,6 +179,7 @@ export default function App() {
     }
   }
   const welcome = model.messages.length === 0;
+  if (!login.session) return <LoginScreen login={login} />;
   return (
     <div className={`app ${debug ? 'debug-open' : ''} ${desktop ? 'desktop' : ''}`}>
       <nav className="rail" aria-label="主导航">
@@ -206,8 +210,8 @@ export default function App() {
           </button>
           <button
             className="rail-button"
-            title="连接设置"
-            aria-label="连接设置"
+            title="账号设置"
+            aria-label="账号设置"
             onClick={() => setSettings(true)}
           >
             <Settings2 size={21} />
@@ -215,8 +219,8 @@ export default function App() {
           <span className="rail-divider" />
           <button
             className="profile-button"
-            title="我的连接"
-            aria-label="我的连接"
+            title="我的账号"
+            aria-label="我的账号"
             onClick={() => setSettings(true)}
           >
             我
@@ -441,9 +445,9 @@ export default function App() {
               最新消息
             </button>
           )}
-          {(notice || state.error) && (
+          {(notice || state.error || login.error) && (
             <div role="alert" className="notice-bar">
-              <span>{notice || state.error}</span>
+              <span>{notice || state.error || login.error}</span>
               <button
                 className="icon-button"
                 aria-label="收起提示"
@@ -469,7 +473,7 @@ export default function App() {
             <div className="offline-banner">
               <WifiOff size={14} />
               <span>连接暂时离开，Oath 上的工作仍会继续。</span>
-              <button onClick={() => setSettings(true)}>连接设置</button>
+              <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
           )}
           <div className="composer" onClick={() => input.current?.focus()}>
@@ -557,20 +561,7 @@ export default function App() {
           onRetry={() => void act(() => client.command('step.retry', {}))}
         />
       )}
-      {settings && (
-        <Settings
-          connection={connection}
-          onConnect={connect}
-          connected={connected}
-          onClose={() => setSettings(false)}
-          onDisconnect={() => {
-            client.disconnect();
-            sessionStorage.removeItem('hymio.credential');
-            setConnection({ ...connection, credential: '' });
-            setSettings(false);
-          }}
-        />
-      )}
+      {settings && <Settings login={login} onClose={() => setSettings(false)} />}
     </div>
   );
 }

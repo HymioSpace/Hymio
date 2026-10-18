@@ -68,7 +68,7 @@ export class OathClient {
       !['ws:', 'wss:'].includes(url.protocol) ||
       url.username ||
       url.password ||
-      !config.credential.trim()
+      (!config.credential.trim() && !config.userId?.trim())
     )
       throw new Error('请输入有效的 WS 地址和用户凭据');
     this.disconnect();
@@ -89,6 +89,13 @@ export class OathClient {
     this.socket = undefined;
     this.config = undefined;
     this.update({ phase: 'disconnected', runtime: undefined });
+  }
+  signOut() {
+    this.disconnect();
+    this.account = '';
+    this.seen.clear();
+    this.sent.clear();
+    this.update({ events: [], pending: [], userId: '', error: '', replay: undefined });
   }
   private open() {
     if (!this.config) return;
@@ -113,7 +120,7 @@ export class OathClient {
         v: 2,
         type: 'agent.attach',
         id: attachId,
-        payload: { credential: config.credential, client_id: clientId! },
+        payload: { credential: config.credential, user_id: config.userId, client_id: clientId! },
       });
     socket.onmessage = (event) => {
       chain = chain

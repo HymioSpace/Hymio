@@ -1,0 +1,2 @@
+# Public deployment settings, bundled with the client. Never put credentials here.
+backend_url = "http://localhost:8080"

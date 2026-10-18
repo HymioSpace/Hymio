@@ -11,6 +11,8 @@
 | 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
 | 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：目录与边界 |
 | 07 | [Web / Desktop Client MVP](feature07-client-mvp.md) | Implemented |
+| 09 | [本机统一启动](feature09-local-start.md) | Implemented |
+| 08 | [登录与 Oath 身份接入](feature08-login-auth.md) | Implemented |
 
 ## 设计与实现
 
@@ -32,4 +34,4 @@
 
 ## 下一步
 
-当前先完成 Web/Tauri Client MVP；产品身份体系、Context、连接器和 Kit 后续逐步接入。客户端技术栈与工作区见 feature07，产品后端与认证方案仍未选定。
+当前先完成 Web/Tauri Client MVP；产品身份体系、Context、连接器和 Kit 后续逐步接入。客户端技术栈与工作区见 feature07，产品后端采用 Python/Starlette/SQLite，通过 OIDC 接入 Casdoor，见 feature08。

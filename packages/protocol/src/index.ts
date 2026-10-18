@@ -29,6 +29,7 @@ export interface Connection {
   wsUrl: string;
   bizUrl: string;
   credential: string;
+  userId?: string;
 }
 export interface TraceSummary {
   trace_id: string;
