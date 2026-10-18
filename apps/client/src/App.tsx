@@ -51,11 +51,11 @@ export default function App() {
     [sending, setSending] = useState(false),
     [clock, setClock] = useState(Date.now());
   const login = useLogin(
-    (value) => {
+    (value, signedIn) => {
       client.connect(value);
       saveConnection(value);
       setConnection(value);
-      setSettings(false);
+      if (signedIn) setSettings(false);
     },
     () => {
       client.signOut();

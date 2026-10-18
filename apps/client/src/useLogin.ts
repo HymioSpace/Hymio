@@ -21,7 +21,10 @@ function saved(): Session | undefined {
     return undefined;
   }
 }
-export function useLogin(onConnection: (value: Connection) => void, onLogout: () => void) {
+export function useLogin(
+  onConnection: (value: Connection, signedIn: boolean) => void,
+  onLogout: () => void,
+) {
   const [session, setSession] = useState<Session | undefined>(saved);
   const [backend, setBackendState] = useState(
     () => localStorage.getItem('hymio.backend') || 'http://localhost:8080',
@@ -55,7 +58,7 @@ export function useLogin(onConnection: (value: Connection) => void, onLogout: ()
       );
     return response.json();
   }
-  function apply(value: Session) {
+  function apply(value: Session, signedIn = false) {
     if (
       !value.access_token ||
       !value.refresh_token ||
@@ -65,12 +68,15 @@ export function useLogin(onConnection: (value: Connection) => void, onLogout: ()
       throw new Error('登录响应格式无效');
     sessionStorage.setItem(key, JSON.stringify(value));
     setSession(value);
-    callbacks.current.onConnection({
-      wsUrl: value.oath_ws,
-      bizUrl: value.oath_biz,
-      credential: value.access_token,
-      userId: value.user_id,
-    });
+    callbacks.current.onConnection(
+      {
+        wsUrl: value.oath_ws,
+        bizUrl: value.oath_biz,
+        credential: value.access_token,
+        userId: value.user_id,
+      },
+      signedIn,
+    );
   }
   async function login() {
     const popup = desktop ? null : window.open('about:blank', '_blank');
@@ -84,7 +90,7 @@ export function useLogin(onConnection: (value: Connection) => void, onLogout: ()
         throw new Error('请输入有效的 Hymio 服务地址');
       if (desktop) {
         const result = await invoke<Session>('login_with_browser', { backend });
-        if (current === generation.current) apply({ ...result, backend });
+        if (current === generation.current) apply({ ...result, backend }, true);
         else await request(backend, '/auth/logout', {}, result.access_token);
         return;
       }
@@ -124,7 +130,7 @@ export function useLogin(onConnection: (value: Connection) => void, onLogout: ()
         flow_id: flow.flow_id,
         login_code: code,
       });
-      if (current === generation.current) apply({ ...result, backend });
+      if (current === generation.current) apply({ ...result, backend }, true);
       else await request(backend, '/auth/logout', {}, result.access_token);
     } catch (e) {
       if (current === generation.current) setError(e instanceof Error ? e.message : String(e));
