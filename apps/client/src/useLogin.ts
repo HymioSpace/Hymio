@@ -16,7 +16,8 @@ interface Session {
 const key = 'hymio.login';
 function saved(): Session | undefined {
   try {
-    return JSON.parse(sessionStorage.getItem(key) || 'null') || undefined;
+    const value = JSON.parse(sessionStorage.getItem(key) || 'null');
+    return value?.backend === __HYMIO_BACKEND__ ? value : undefined;
   } catch {
     return undefined;
   }
@@ -26,9 +27,7 @@ export function useLogin(
   onLogout: () => void,
 ) {
   const [session, setSession] = useState<Session | undefined>(saved);
-  const [backend, setBackendState] = useState(
-    () => localStorage.getItem('hymio.backend') || 'http://localhost:8080',
-  );
+  const backend = __HYMIO_BACKEND__;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const generation = useRef(0);
@@ -36,10 +35,6 @@ export function useLogin(
   const callbacks = useRef({ onConnection, onLogout });
   callbacks.current = { onConnection, onLogout };
   const refreshing = useRef<Promise<void> | null>(null);
-  function setBackend(value: string) {
-    setBackendState(value);
-    localStorage.setItem('hymio.backend', value);
-  }
   async function request(base: string, path: string, body?: object, access?: string) {
     const response = await fetch(`${base.replace(/\/$/, '')}${path}`, {
       method: body ? 'POST' : 'GET',
@@ -87,7 +82,7 @@ export function useLogin(
     try {
       const url = new URL(backend);
       if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
-        throw new Error('请输入有效的 Hymio 服务地址');
+        throw new Error('登录服务配置无效，请联系部署者。');
       if (desktop) {
         const result = await invoke<Session>('login_with_browser', { backend });
         if (current === generation.current) apply({ ...result, backend }, true);
@@ -102,6 +97,9 @@ export function useLogin(
       }
       const grant = new Promise<string>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('登录等待已过期，请重试。')), 300000);
+        const closed = setInterval(() => {
+          if (popup.closed) reject(new Error('登录窗口已关闭，请重试。'));
+        }, 500);
         const listener = (event: MessageEvent) => {
           if (
             event.origin !== url.origin ||
@@ -115,6 +113,7 @@ export function useLogin(
         window.addEventListener('message', listener);
         cleanup = () => {
           clearTimeout(timer);
+          clearInterval(closed);
           window.removeEventListener('message', listener);
         };
         cancelFlow.current = () => {
@@ -133,7 +132,14 @@ export function useLogin(
       if (current === generation.current) apply({ ...result, backend }, true);
       else await request(backend, '/auth/logout', {}, result.access_token);
     } catch (e) {
-      if (current === generation.current) setError(e instanceof Error ? e.message : String(e));
+      if (current === generation.current)
+        setError(
+          e instanceof TypeError
+            ? '暂时无法连接登录服务，请稍后重试。'
+            : e instanceof Error
+              ? e.message
+              : String(e),
+        );
     } finally {
       cleanup();
       popup?.close();
@@ -179,6 +185,19 @@ export function useLogin(
     return refreshing.current;
   }
   useEffect(() => {
+    localStorage.removeItem('hymio.endpoints');
+    localStorage.removeItem('hymio.backend');
+    sessionStorage.removeItem('hymio.credential');
+    const value = saved();
+    if (!value) return;
+    if (value.backend !== backend) {
+      sessionStorage.removeItem(key);
+      setSession(undefined);
+      return;
+    }
+    if (value.expires_at * 1000 > Date.now()) apply(value);
+  }, []);
+  useEffect(() => {
     if (!session) return;
     const remaining = session.expires_at * 1000 - Date.now();
     if (remaining <= 0) {
@@ -209,7 +228,6 @@ export function useLogin(
   return {
     session,
     backend,
-    setBackend,
     busy,
     error,
     login,

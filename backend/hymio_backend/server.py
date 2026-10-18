@@ -61,6 +61,8 @@ def build_app(settings, *, provider=None):
             path = request.url.path
             if path == "/health":
                 return JSONResponse({"alive": True})
+            if path == "/auth/options":
+                return JSONResponse({"login_method": settings.login_method})
             if path == "/auth/start":
                 data = await body(request)
                 return_uri = text(data, "return_uri")
@@ -145,6 +147,7 @@ def build_app(settings, *, provider=None):
 
     routes = [
         Route("/health", endpoint),
+        Route("/auth/options", endpoint),
         Route("/auth/callback", endpoint),
         Route("/auth/me", endpoint),
         Route("/agent/traces", endpoint),

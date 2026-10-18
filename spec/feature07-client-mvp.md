@@ -6,7 +6,7 @@
 
 React + TypeScript + Vite 实现共享 Web 前端，Tauri 2 提供桌面壳。客户端直连已部署 Oath 的用户 WS，Biz HTTP 用于 trace 和健康检查。只保留单一持续对话，不创建会话；backend、Nostalgia、Kit 业务和连接器不在本次实现。
 
-核心闭环：配置用户端点与凭据 → attach → 重放事件 → 多轮输入/输出 → 断线重连 → 按需查看 debug。客户端关闭不取消服务端工作。
+核心闭环：Hymio 登录 → 获取身份和端点 → attach → 重放事件 → 多轮输入/输出 → 断线重连 → 按需查看 debug。客户端关闭不取消服务端工作。
 
 ## 产品与视觉
 
@@ -14,7 +14,7 @@ React + TypeScript + Vite 实现共享 Web 前端，Tauri 2 提供桌面壳。�
 
 一条持续时间线，以可读消息、工具摘要、审批卡和离线补发标记承载内容。输入区支持多行、中文 IME、Enter 发送 / Shift+Enter 换行；Agent 工作时仍允许追加输入。暂不展示不可用的附件、语音、Kit 或连接器按钮。
 
-主界面只有对话、连接设置与按需打开的工作观察侧栏。侧栏提供实际事件、运行状态、trace span/原始内容与 WS/Biz 健康；不假装能直接观测全部内部服务。
+主界面只有对话、账号设置与按需打开的工作观察侧栏。侧栏提供实际事件、运行状态、trace span/原始内容与 WS/Biz 健康；不假装能直接观测全部内部服务。
 
 ## 模块
 
@@ -39,9 +39,9 @@ Web tab 有稳定 tab client ID，Desktop 使用自己的 device ID，避免多�
 
 ## HTTP 与凭据
 
-当前 Oath Biz 没有浏览器 CORS 配置。开发 Web 使用 Vite 同源代理；生产 Web 需要同源反向代理或服务端显式 CORS。Desktop 用受限 Tauri HTTP command 调用健康与 trace 路径。
+HTTP 查询走 Hymio Backend 的已认证 Biz 代理，Web 使用 Backend 的 CORS allowlist；Desktop 用受限 Tauri HTTP command 调用健康与 trace 路径。
 
-用户 token 仅在当前会话保存，不进入日志、事件导出或构建产物。本地接入可显式读取 `~/.oath/oath.toml` 的用户级配置：桌面通过原生命令，开发 Web 通过仅 loopback 可用且校验 Origin 的本地开发辅助接口。它不返回模型或内部服务密钥，生产构建不包含此接口。
+用户 token 仅在当前窗口 sessionStorage 保存，不进入日志、事件导出或构建产物。客户端不读取 Oath 本机配置、不接受手工凭据；账号登录与服务部署配置见 feature08。
 
 ## 失败与恢复
 
@@ -65,4 +65,4 @@ Web tab 有稳定 tab client ID，Desktop 使用自己的 device ID，避免多�
 
 主界面的失败卡片只对应当前未恢复的步骤。重试提交后收起旧卡片；服务端若产生新的失败事件，再显示新卡片。用户可主动收起，收起记录按用户和事件标识保存，刷新不会恢复同一条提示。后续新消息不携带上一轮的错误。Dock 图标在透明画布内留边距，视觉尺寸与常见 macOS 应用接近。
 
-产品登录和远程 Oath 鉴权已由 [feature08](feature08-login-auth.md) 实现；本 feature 的直连配置仍用于本机受信或手工认证接入。
+产品登录和远程 Oath 鉴权已由 [feature08](feature08-login-auth.md) 实现；原直连配置与本机凭据读取已移除，只保留产品登录入口。

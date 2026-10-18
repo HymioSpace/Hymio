@@ -32,7 +32,7 @@ Web 新窗口、Desktop 系统浏览器打开授权 URL。发起客户端持有�
 
 应用 access token 15 分钟、refresh token 30 天，均为随机不透明串，数据库只存哈希。刷新原子轮换 refresh token，并撤销旧 access；同一刷新链复用旧 refresh 会撤销该登录。客户端刷新串行化，成功后重连 WS。退出撤销该登录全部凭证并断开本机 WS，不影响已接纳任务。Casdoor SSO 与 Hymio 登录独立：本次实现退出 Hymio，不做跨应用 SSO logout。
 
-客户端凭证保存在当前窗口 sessionStorage；关闭窗口后重新登录。暂不承诺桌面长期登录。登录服务不可用时不自动退回无鉴权。直接连接本机 Oath 保留在连接设置中，明确提供 user_id。
+客户端凭证保存在当前窗口 sessionStorage；关闭窗口后重新登录。暂不承诺桌面长期登录。登录服务不可用时不自动退回无鉴权。客户端只接受 Hymio 登录凭证，不提供直连 Oath 或本机凭据读取。旧版存储的端点/凭据在升级时清理，只有当前部署的 Hymio session 可恢复。
 
 ## 服务边界
 
@@ -45,3 +45,11 @@ Backend 配置集中在私有 TOML，secret 仅引用文件。公开示例不包
 提供可运行 Backend、OIDC 登录、刷新、退出、远程验证、Web/Desktop 登录入口与部署说明。连接器授权、用户资料编辑、跨设备退出、Casdoor SSO logout 后续实现。
 
 参考：[Casdoor 标准 OIDC](https://casdoor.org/docs/category/how-to-connect-to-casdoor/)、[Docker 部署](https://casdoor.ai/docs/deployment/docker/)。
+
+## 登录界面与 Google
+
+未登录先展示独立账号入口，登录成功才进入对话；退出回到入口。服务地址由 apps/client/client.toml 的公开 backend_url 构建配置确定，不允许用户编辑。此文件只含公开服务地址；更换部署需要重新构建客户端。客户端没有 Vite 本机配置读取接口、原生 local_oath_profile 或无鉴权回退。Biz 查询通过已登录 Backend 的代理，WS 地址由登录响应提供。
+
+GET /auth/options 仅公开 login_method（account / google）。默认账号入口进入 Casdoor 的登录/注册页面；google 表示部署者已配置 Google-only 应用（关闭表单登录、绑定 Google Provider、允许注册），Casdoor 自动转到 Google。两种模式共用原 OIDC code + PKCE 流程，不另外实现 Google token 处理，不按 email 合并用户。Google 首次登录由 Casdoor 注册，Hymio 仍按 issuer + sub 映射。该配置不是 Google 开关，不能代替 Provider 凭据与应用权限。
+
+Google Web OAuth 凭据只进入 Casdoor；Google callback 为 Casdoor /callback，不是 Hymio /auth/callback。登录仅需身份资料，不申请 Gmail 邮件访问权限。没有配置 Google 前保持 account，不展示无法工作的 Google 按钮。

@@ -11,6 +11,7 @@
 | 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
 | 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：目录与边界 |
 | 07 | [Web / Desktop Client MVP](feature07-client-mvp.md) | Implemented |
+| 09 | [本机统一启动](feature09-local-start.md) | Implemented |
 | 08 | [登录与 Oath 身份接入](feature08-login-auth.md) | Implemented |
 
 ## 设计与实现

@@ -2,7 +2,7 @@
 
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
-当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 集成与组合部署尚未实现。详见 [feature07](feature07-client-mvp.md)。
+当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 集成尚未实现，本机组合启动见 [feature09](feature09-local-start.md)。详见 [feature07](feature07-client-mvp.md)。
 
 ## 产品边界
 
@@ -53,7 +53,7 @@ Web 与 Desktop 共用前端，Tauri 原生能力放平台适配层。Chrome 选
 
 ## 部署与演进
 
-Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务。Oath 的多个用户共用运行服务，不按用户创建整套部署。当前可独立使用 `oath start`；Hymio 统一部署入口尚未实现。
+Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务。Oath 的多个用户共用运行服务，不按用户创建整套部署。当前可独立使用 `oath start`；Hymio 的 `deploy/start.py` 提供本机开发组合入口，生产统一部署尚未实现。
 
 应用模块先留在同仓库，按需独立构建和发布。Oath/Nostalgia 通过公开协议和固定版本产物接入，不复制源码，不默认增加 submodule。后端先按模块划分，不预设每个模块都是微服务。
 

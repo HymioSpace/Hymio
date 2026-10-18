@@ -18,6 +18,7 @@ class Settings:
     oath_biz: str
     access_seconds: int = 900
     refresh_seconds: int = 2592000
+    login_method: str = "account"
     host: str = "127.0.0.1"
     port: int = 8080
 
@@ -30,6 +31,8 @@ class Settings:
             data[key] = file if file.is_absolute() else path.parent / file
         data["origins"] = tuple(data["origins"])
         result = cls(**data)
+        if result.login_method not in ("account", "google"):
+            raise ValueError("login_method must be account or google")
         if result.access_seconds < 1 or result.refresh_seconds < result.access_seconds:
             raise ValueError("Invalid token lifetimes")
         for url in (result.issuer, result.public_url, result.callback_url, result.oath_biz):

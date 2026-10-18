@@ -12,3 +12,6 @@ access_seconds = 900
 refresh_seconds = 2592000
 host = "127.0.0.1"
 port = 8080
+
+# Set google only after configuring a Google-only Casdoor application with signup.
+login_method = "account"
