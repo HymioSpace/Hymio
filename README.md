@@ -6,7 +6,7 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 [Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, Kits, clients and deployment.
 
-**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The product backend, Nostalgia integration and combined deployment are not implemented yet.
+**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; Nostalgia integration and combined deployment remain future work.
 
 <p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
@@ -51,9 +51,9 @@ pnpm dev       # Web: http://127.0.0.1:1420
 pnpm desktop
 ```
 
-Open **连接设置 → 使用本机 Oath 配置 → 连接 Hymio**. You can also enter another Oath endpoint and its user credential. Oath keeps executing accepted work when the client leaves.
+For account login, follow the [backend guide](backend/README.md), then use **连接设置 → 登录 Hymio**. For local trusted Oath, use **连接设置 → 直接连接 Oath → 使用本机 Oath 配置 → 连接 Hymio**. You can also enter another Oath endpoint and its user credential. Oath keeps executing accepted work when the client leaves.
 
-Read the [client guide](apps/client/README.md) for builds, debug controls and production Web routing. React/TypeScript/Vite and Tauri 2 share the frontend. Backend and authentication-provider choices remain future work.
+Read the [client guide](apps/client/README.md) for builds, debug controls and production Web routing. React/TypeScript/Vite and Tauri 2 share the frontend. The Python backend integrates Casdoor through standard OIDC.
 
 See the [overview](spec/overview.md), [client design](spec/feature07-client-mvp.md) and the [feature plans](spec/README.md) for module boundaries.
 

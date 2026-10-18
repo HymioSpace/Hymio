@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { X, Plug, ArrowRight, Eye, EyeOff, Laptop, LoaderCircle } from 'lucide-react';
 import type { Connection } from '@hymio/protocol';
 import { localProfile, desktop } from './platform';
+import type { LoginState } from './useLogin';
 export function Settings({
   connection,
+  login,
   onConnect,
   onClose,
   connected,
   onDisconnect,
 }: {
   connection: Connection;
+  login: LoginState;
   onConnect: (c: Connection) => void;
   onClose: () => void;
   connected: boolean;
@@ -66,69 +69,114 @@ export function Settings({
       </div>
       <h2 id="settings-title">让 Hymio 连上线</h2>
       <p className="dialog-intro">连接你的 Oath，接着同一段对话。</p>
-      {(desktop || import.meta.env.DEV) && (
-        <button className="local-button" onClick={local} disabled={loading}>
-          {loading ? <LoaderCircle className="spin" size={17} /> : <Laptop size={17} />}使用本机
-          Oath 配置<span>~/.oath/oath.toml</span>
-        </button>
-      )}
-      <form onSubmit={submit}>
-        <label>
-          对话服务<span>WebSocket</span>
-          <input
-            value={form.wsUrl}
-            onChange={(e) => setForm({ ...form, wsUrl: e.target.value })}
-            required
-            spellCheck={false}
-            placeholder="ws://127.0.0.1:8765"
-          />
-        </label>
-        <label>
-          观察服务<span>Biz HTTP</span>
-          <input
-            value={form.bizUrl}
-            onChange={(e) => setForm({ ...form, bizUrl: e.target.value })}
-            required
-            spellCheck={false}
-            placeholder="http://127.0.0.1:8766"
-          />
-        </label>
-        <label>
-          用户凭据<span>当前窗口内保存</span>
-          <div className="password-field">
+      <section className="login-card">
+        <h3>{login.session ? `你好，${login.session.name}` : '登录 Hymio'}</h3>
+        <p>登录后，连接同一个账号的持续对话。</p>
+        {!login.session && (
+          <label>
+            Hymio 服务
             <input
-              aria-label="用户凭据"
-              value={form.credential}
-              type={reveal ? 'text' : 'password'}
-              autoComplete="off"
-              onChange={(e) => setForm({ ...form, credential: e.target.value })}
-              required
-              placeholder="Oath services.users 中的用户 token"
+              aria-label="Hymio 服务地址"
+              value={login.backend}
+              onChange={(e) => login.setBackend(e.target.value)}
+              placeholder="https://hymio.example.com"
             />
-            <button
-              type="button"
-              className="icon-button"
-              onClick={() => setReveal(!reveal)}
-              aria-label={reveal ? '隐藏凭据' : '显示凭据'}
-            >
-              {reveal ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
-          </div>
-        </label>
-        {error && (
+          </label>
+        )}
+        {login.error && (
           <p role="alert" className="form-error">
-            {error}
+            {login.error}
           </p>
         )}
-        <button className="primary-button connect-button" type="submit">
-          连接 Hymio
-          <ArrowRight size={17} />
+        <button
+          className="primary-button"
+          disabled={login.busy}
+          onClick={() => void (login.session ? login.logout() : login.login())}
+        >
+          {login.busy ? '等待登录服务…' : login.session ? '退出登录' : '在浏览器中登录'}
         </button>
-      </form>
-      {connected && (
-        <button className="text-button disconnect" onClick={onDisconnect}>
-          断开客户端连接
-        </button>
+        {login.busy && !login.session && (
+          <button className="text-button" onClick={login.cancel}>
+            取消等待
+          </button>
+        )}
+      </section>
+      {!login.session && (
+        <details className="direct-connection">
+          <summary>直接连接 Oath</summary>
+          {(desktop || import.meta.env.DEV) && (
+            <button className="local-button" onClick={local} disabled={loading}>
+              {loading ? <LoaderCircle className="spin" size={17} /> : <Laptop size={17} />}使用本机
+              Oath 配置<span>~/.oath/oath.toml</span>
+            </button>
+          )}
+          <form onSubmit={submit}>
+            <label>
+              用户 ID<span>受信模式下必填</span>
+              <input
+                aria-label="用户 ID"
+                value={form.userId || ''}
+                onChange={(e) => setForm({ ...form, userId: e.target.value })}
+                placeholder="local"
+              />
+            </label>
+            <label>
+              对话服务<span>WebSocket</span>
+              <input
+                value={form.wsUrl}
+                onChange={(e) => setForm({ ...form, wsUrl: e.target.value })}
+                required
+                spellCheck={false}
+                placeholder="ws://127.0.0.1:8765"
+              />
+            </label>
+            <label>
+              观察服务<span>Biz HTTP</span>
+              <input
+                value={form.bizUrl}
+                onChange={(e) => setForm({ ...form, bizUrl: e.target.value })}
+                required
+                spellCheck={false}
+                placeholder="http://127.0.0.1:8766"
+              />
+            </label>
+            <label>
+              用户凭据<span>当前窗口内保存</span>
+              <div className="password-field">
+                <input
+                  aria-label="用户凭据"
+                  value={form.credential}
+                  type={reveal ? 'text' : 'password'}
+                  autoComplete="off"
+                  onChange={(e) => setForm({ ...form, credential: e.target.value })}
+                  placeholder="无鉴权模式可留空；否则填写 access token"
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setReveal(!reveal)}
+                  aria-label={reveal ? '隐藏凭据' : '显示凭据'}
+                >
+                  {reveal ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </label>
+            {error && (
+              <p role="alert" className="form-error">
+                {error}
+              </p>
+            )}
+            <button className="primary-button connect-button" type="submit">
+              连接 Hymio
+              <ArrowRight size={17} />
+            </button>
+          </form>
+          {connected && (
+            <button className="text-button disconnect" onClick={onDisconnect}>
+              断开客户端连接
+            </button>
+          )}
+        </details>
       )}
       <p className="dialog-note">客户端离开后，已接纳的任务仍由 Oath 继续执行。</p>
     </dialog>

@@ -41,6 +41,7 @@ function localOath(): Plugin {
               wsUrl: `ws://127.0.0.1:${services.gateway_port ?? 8765}`,
               bizUrl: `http://127.0.0.1:${services.biz_port ?? 8766}`,
               credential: entry[0],
+              userId: entry[1],
             }),
           );
         } catch {

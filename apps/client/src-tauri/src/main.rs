@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod browser_login;
+
 use serde::Serialize;
 use std::{fs, time::Duration};
 
@@ -9,6 +11,7 @@ struct LocalProfile {
     ws_url: String,
     biz_url: String,
     credential: String,
+    user_id: String,
 }
 
 #[tauri::command]
@@ -24,11 +27,11 @@ fn local_oath_profile() -> Result<LocalProfile, String> {
         .get("users")
         .and_then(|v| v.as_table())
         .ok_or("缺少用户凭据")?;
-    let credential = users
+    let (credential, user_id) = users
         .iter()
         .find(|(_, v)| v.as_str() == Some("local"))
         .or_else(|| users.iter().next())
-        .map(|(key, _)| key.clone())
+        .map(|(key, value)| (key.clone(), value.as_str().unwrap_or("local").to_string()))
         .ok_or("没有可用的用户凭据")?;
     let port = |key: &str, default: i64| {
         services
@@ -40,6 +43,7 @@ fn local_oath_profile() -> Result<LocalProfile, String> {
         ws_url: format!("ws://127.0.0.1:{}", port("gateway_port", 8765)),
         biz_url: format!("http://127.0.0.1:{}", port("biz_port", 8766)),
         credential,
+        user_id,
     })
 }
 
@@ -48,13 +52,17 @@ async fn biz_get(
     base: String,
     path: String,
     credential: String,
+    user_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let url = reqwest::Url::parse(&format!("{}{}", base.trim_end_matches('/'), path))
         .map_err(|_| "无效的 Biz 地址")?;
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()
-        || !matches!(url.path(), "/heartbeat" | "/list_traces" | "/query_trace")
+        || !matches!(
+            url.path().strip_prefix("/oath-biz").unwrap_or(url.path()),
+            "/heartbeat" | "/list_traces" | "/query_trace"
+        )
     {
         return Err("仅允许 Biz 健康与 Trace 查询".into());
     }
@@ -66,6 +74,7 @@ async fn biz_get(
     let response = client
         .get(url)
         .bearer_auth(credential)
+        .header("X-Oath-User-Id", user_id.unwrap_or_default())
         .send()
         .await
         .map_err(|_| "Biz 服务不可达")?;
@@ -81,7 +90,12 @@ async fn biz_get(
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![local_oath_profile, biz_get])
+        .invoke_handler(tauri::generate_handler![
+            local_oath_profile,
+            biz_get,
+            browser_login::login_with_browser,
+            browser_login::cancel_login
+        ])
         .run(tauri::generate_context!())
         .expect("Hymio could not start");
 }
@@ -99,6 +113,7 @@ mod tests {
                 profile.biz_url.clone(),
                 "/heartbeat".into(),
                 profile.credential.clone(),
+                Some(profile.user_id.clone()),
             )
             .await
             .expect("native HTTP health");
@@ -107,6 +122,7 @@ mod tests {
                 profile.biz_url.clone(),
                 "/list_traces?limit=1".into(),
                 profile.credential.clone(),
+                Some(profile.user_id.clone()),
             )
             .await
             .expect("authenticated native Trace query");
@@ -116,6 +132,7 @@ mod tests {
                     profile.biz_url,
                     format!("/query_trace?trace_id={id}"),
                     profile.credential,
+                    Some(profile.user_id),
                 )
                 .await
                 .expect("native Trace detail");

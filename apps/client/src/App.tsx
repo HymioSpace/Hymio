@@ -22,6 +22,7 @@ import { OathClient, conversation } from '@hymio/client';
 import { Companion, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
+import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
 import { DebugPanel } from './DebugPanel';
 import { readConnection, saveConnection, desktop } from './platform';
@@ -49,6 +50,21 @@ export default function App() {
     [nearBottom, setNearBottom] = useState(true),
     [sending, setSending] = useState(false),
     [clock, setClock] = useState(Date.now());
+  const login = useLogin(
+    (value) => {
+      client.connect(value);
+      saveConnection(value);
+      setConnection(value);
+      setSettings(false);
+    },
+    () => {
+      client.signOut();
+      sessionStorage.removeItem('hymio.credential');
+      localStorage.removeItem('hymio.endpoints');
+      setDraft('');
+      setConnection((value) => ({ ...value, credential: '', userId: undefined }));
+    },
+  );
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
@@ -95,7 +111,7 @@ export default function App() {
                 ? '正在处理'
                 : '随时在这里';
   useEffect(() => {
-    if (connection.credential) {
+    if (connection.credential || connection.userId) {
       try {
         client.connect(connection);
       } catch (e) {
@@ -441,9 +457,9 @@ export default function App() {
               最新消息
             </button>
           )}
-          {(notice || state.error) && (
+          {(notice || state.error || login.error) && (
             <div role="alert" className="notice-bar">
-              <span>{notice || state.error}</span>
+              <span>{notice || state.error || login.error}</span>
               <button
                 className="icon-button"
                 aria-label="收起提示"
@@ -559,6 +575,7 @@ export default function App() {
       )}
       {settings && (
         <Settings
+          login={login}
           connection={connection}
           onConnect={connect}
           connected={connected}

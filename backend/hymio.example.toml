@@ -1,0 +1,14 @@
+database = "./data/hymio.sqlite"
+issuer = "http://localhost:8000"
+client_id = "REPLACE_WITH_CASDOOR_CLIENT_ID"
+client_secret_file = "./private/casdoor-client-secret"
+public_url = "http://localhost:8080"
+callback_url = "http://localhost:8080/auth/callback"
+service_token_file = "./private/oath-auth-token"
+origins = ["http://127.0.0.1:1420", "http://localhost:1420", "http://tauri.localhost", "tauri://localhost"]
+oath_ws = "ws://127.0.0.1:8765"
+oath_biz = "http://127.0.0.1:8766"
+access_seconds = 900
+refresh_seconds = 2592000
+host = "127.0.0.1"
+port = 8080

@@ -1,0 +1,197 @@
+import hashlib
+import secrets
+import sqlite3
+import time
+import uuid
+from contextlib import contextmanager
+
+
+def digest(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def token():
+    return secrets.token_urlsafe(32)
+
+
+class Unauthorized(Exception):
+    pass
+
+
+class SessionStore:
+    def __init__(self, settings):
+        self.settings = settings
+        settings.database.parent.mkdir(parents=True, exist_ok=True)
+        with self.transaction() as db:
+            db.executescript("""
+                PRAGMA journal_mode=WAL;
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id TEXT PRIMARY KEY, issuer TEXT NOT NULL, subject TEXT NOT NULL,
+                    name TEXT NOT NULL, UNIQUE(issuer, subject));
+                CREATE TABLE IF NOT EXISTS logins (
+                    flow_hash TEXT PRIMARY KEY, state_hash TEXT UNIQUE NOT NULL,
+                    verifier TEXT NOT NULL, nonce TEXT NOT NULL, expires REAL NOT NULL,
+                    status TEXT NOT NULL, user_id TEXT, return_uri TEXT NOT NULL, grant_hash TEXT);
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL,
+                    revoked INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS credentials (
+                    hash TEXT PRIMARY KEY, session_id TEXT NOT NULL,
+                    kind TEXT NOT NULL, expires REAL NOT NULL, used INTEGER NOT NULL DEFAULT 0);
+                CREATE INDEX IF NOT EXISTS credentials_session ON credentials(session_id);
+                CREATE INDEX IF NOT EXISTS credentials_expiry ON credentials(kind, expires);
+                CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires);
+            """)
+        settings.database.chmod(0o600)
+
+    @contextmanager
+    def transaction(self):
+        db = sqlite3.connect(self.settings.database, timeout=5)
+        db.row_factory = sqlite3.Row
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def start(self, return_uri):
+        handle, state, verifier, nonce = (token() for _ in range(4))
+        with self.transaction() as db:
+            db.execute("DELETE FROM logins WHERE expires < ?", (time.time(),))
+            if db.execute("SELECT COUNT(*) FROM logins").fetchone()[0] >= 5000:
+                raise RuntimeError("Login capacity reached")
+            db.execute(
+                "INSERT INTO logins VALUES(?,?,?,?,?,'pending',NULL,?,NULL)",
+                (digest(handle), digest(state), verifier, nonce, time.time() + 300, return_uri),
+            )
+        return handle, state, verifier, nonce
+
+    def claim_callback(self, state):
+        with self.transaction() as db:
+            flow = db.execute(
+                "SELECT * FROM logins WHERE state_hash=? AND status='pending' AND expires>?",
+                (digest(state), time.time()),
+            ).fetchone()
+            if not flow:
+                raise Unauthorized()
+            db.execute("UPDATE logins SET status='processing' WHERE state_hash=?", (digest(state),))
+            return dict(flow)
+
+    def finish(self, state, claims=None):
+        grant = token()
+        with self.transaction() as db:
+            user_id = None
+            if claims:
+                issuer, subject = claims["iss"], claims["sub"]
+                if not isinstance(subject, str) or not subject:
+                    raise Unauthorized()
+                user_id = uuid.uuid4().hex
+                db.execute(
+                    "INSERT INTO users VALUES(?,?,?,?) ON CONFLICT(issuer,subject) "
+                    "DO UPDATE SET name=excluded.name",
+                    (user_id, issuer, subject, str(claims.get("name") or subject)),
+                )
+                user_id = db.execute(
+                    "SELECT user_id FROM users WHERE issuer=? AND subject=?", (issuer, subject)
+                ).fetchone()[0]
+            db.execute(
+                "UPDATE logins SET status=?,user_id=?,verifier='',nonce='',grant_hash=? "
+                "WHERE state_hash=?",
+                ("done" if claims else "failed", user_id, digest(grant), digest(state)),
+            )
+            row = db.execute(
+                "SELECT return_uri FROM logins WHERE state_hash=?", (digest(state),)
+            ).fetchone()
+            return grant, row[0]
+
+    def _issue(self, db, session_id, user_id, session_expiry):
+        now = time.time()
+        db.execute("DELETE FROM credentials WHERE kind='access' AND (expires<=? OR used=1)", (now,))
+        db.execute(
+            "DELETE FROM credentials WHERE session_id IN "
+            "(SELECT id FROM sessions WHERE expires<=? OR revoked=1)",
+            (now,),
+        )
+        db.execute("DELETE FROM sessions WHERE expires<=? OR revoked=1", (now,))
+        access, refresh = token(), token()
+        expiry = min(time.time() + self.settings.access_seconds, session_expiry)
+        db.executemany(
+            "INSERT INTO credentials VALUES(?,?,?,?,0)",
+            [
+                (digest(access), session_id, "access", expiry),
+                (digest(refresh), session_id, "refresh", session_expiry),
+            ],
+        )
+        name = db.execute("SELECT name FROM users WHERE user_id=?", (user_id,)).fetchone()[0]
+        return {
+            "access_token": access,
+            "refresh_token": refresh,
+            "expires_at": expiry,
+            "user_id": user_id,
+            "name": name,
+            "oath_ws": self.settings.oath_ws,
+            "oath_biz": self.settings.public_url.rstrip("/") + "/oath-biz",
+        }
+
+    def exchange(self, handle, grant):
+        with self.transaction() as db:
+            flow = db.execute(
+                "SELECT * FROM logins WHERE flow_hash=? AND expires>?",
+                (digest(handle), time.time()),
+            ).fetchone()
+            if not flow or flow["status"] != "done" or flow["grant_hash"] != digest(grant):
+                raise Unauthorized()
+            db.execute("DELETE FROM logins WHERE flow_hash=?", (digest(handle),))
+            session_id, expiry = uuid.uuid4().hex, time.time() + self.settings.refresh_seconds
+            db.execute(
+                "INSERT INTO sessions VALUES(?,?,?,0)", (session_id, flow["user_id"], expiry)
+            )
+            return self._issue(db, session_id, flow["user_id"], expiry)
+
+    def _find(self, db, credential, kind):
+        row = db.execute(
+            """SELECT c.*, s.user_id, s.revoked, s.expires AS session_expiry
+            FROM credentials c JOIN sessions s ON s.id=c.session_id WHERE c.hash=? AND c.kind=?""",
+            (digest(credential), kind),
+        ).fetchone()
+        if (
+            not row
+            or row["revoked"]
+            or row["expires"] <= time.time()
+            or row["session_expiry"] <= time.time()
+        ):
+            raise Unauthorized()
+        return row
+
+    def verify(self, credential):
+        with self.transaction() as db:
+            row = self._find(db, credential, "access")
+            if row["used"]:
+                raise Unauthorized()
+            return {"user_id": row["user_id"], "expires_at": row["expires"]}
+
+    def refresh(self, credential):
+        reused = False
+        with self.transaction() as db:
+            row = self._find(db, credential, "refresh")
+            if row["used"]:
+                db.execute("UPDATE sessions SET revoked=1 WHERE id=?", (row["session_id"],))
+                reused = True
+            else:
+                db.execute("UPDATE credentials SET used=1 WHERE session_id=?", (row["session_id"],))
+                result = self._issue(db, row["session_id"], row["user_id"], row["session_expiry"])
+        if reused:
+            raise Unauthorized()
+        return result
+
+    def logout(self, credential):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT session_id FROM credentials WHERE hash=?", (digest(credential),)
+            ).fetchone()
+            if row:
+                db.execute("UPDATE sessions SET revoked=1 WHERE id=?", (row[0],))
