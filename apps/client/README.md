@@ -19,7 +19,7 @@ Use the [stack launcher](../../deploy/README.md) to start Backend, Casdoor and O
 
 Set the public Backend URL in `client.toml` before starting or building. It defaults to `http://localhost:8080` for local development; end users do not configure addresses. Credentials never belong in this file. Closing the client window clears its application session; events remain isolated by endpoint and authenticated user.
 
-The initial screen offers account login/registration. A configured Google-only Casdoor application can enable **使用 Google 继续**, with first sign-in creating an account. See the [backend guide](../../backend/README.md). The frontend does not implement Google OAuth itself.
+The initial screen offers Hymio-native login/registration with only username and password. Backend delegates account management to Casdoor; no Casdoor page is shown in account mode. A configured Google-only Casdoor application can enable **使用 Google 继续**, with first sign-in creating an account. See the [backend guide](../../backend/README.md). The frontend does not implement Google OAuth itself.
 
 ## Use
 

@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import json
+import re
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
@@ -13,6 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from .browser_callback import browser_callback
+from .casdoor_accounts import AccountRejected, CasdoorAccounts
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
 
@@ -44,6 +46,7 @@ def text(data, key):
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
     oidc = provider or Oidc(settings)
+    accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
 
     @asynccontextmanager
@@ -63,6 +66,20 @@ def build_app(settings, *, provider=None):
                 return JSONResponse({"alive": True})
             if path == "/auth/options":
                 return JSONResponse({"login_method": settings.login_method})
+            if path == "/auth/account":
+                if settings.login_method != "account":
+                    return JSONResponse({"error": "account_login_disabled"}, 403)
+                data = await body(request)
+                action = text(data, "action")
+                username, password = text(data, "username"), text(data, "password")
+                if action not in ("login", "signup") or not re.fullmatch(
+                    r"[A-Za-z0-9_-]{3,32}", username
+                ):
+                    raise ValueError("Invalid account")
+                if not (8 if action == "signup" else 1) <= len(password) <= 128:
+                    raise ValueError("Invalid password length")
+                claims = await asyncio.to_thread(accounts.authenticate, action, username, password)
+                return JSONResponse(await asyncio.to_thread(store.create_session, claims))
             if path == "/auth/start":
                 data = await body(request)
                 return_uri = text(data, "return_uri")
@@ -138,6 +155,8 @@ def build_app(settings, *, provider=None):
                 headers={"Authorization": "Bearer " + bearer(request)},
             )
             return JSONResponse(response.json(), response.status_code)
+        except AccountRejected:
+            return JSONResponse({"error": "account_rejected"}, 401)
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except (ValueError, KeyError):
@@ -161,6 +180,7 @@ def build_app(settings, *, provider=None):
         Route(path, endpoint, methods=["POST"])
         for path in (
             "/auth/start",
+            "/auth/account",
             "/auth/exchange",
             "/auth/refresh",
             "/auth/logout",

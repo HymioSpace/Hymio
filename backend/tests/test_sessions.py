@@ -60,6 +60,18 @@ class SessionTests(unittest.TestCase):
             self.store.verify(new["access_token"])
         self.store.verify(other["access_token"])
 
+    def test_account_and_browser_login_share_identity_but_isolate_sessions(self):
+        account = self.store.create_session({"iss": self.settings.issuer, "sub": "person-a"})
+        browser = self.login("person-a")
+        other = self.store.create_session({"iss": self.settings.issuer, "sub": "person-b"})
+        self.assertEqual(account["user_id"], browser["user_id"])
+        self.assertNotEqual(account["user_id"], other["user_id"])
+        self.store.logout(account["access_token"])
+        with self.assertRaises(Unauthorized):
+            self.store.verify(account["access_token"])
+        self.assertEqual(self.store.verify(browser["access_token"])["user_id"], browser["user_id"])
+        self.assertEqual(self.store.verify(other["access_token"])["user_id"], other["user_id"])
+
     def test_logout_and_expiry_deny_access(self):
         first = self.login()
         self.store.logout(first["access_token"])

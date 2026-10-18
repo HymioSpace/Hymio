@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, LoaderCircle } from 'lucide-react';
+import { ArrowRight, LoaderCircle, Eye, EyeOff } from 'lucide-react';
 import { Companion } from '@hymio/ui';
 import type { LoginState } from './useLogin';
 
 export function LoginScreen({ login }: { login: LoginState }) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [reveal, setReveal] = useState(false);
   const [method, setMethod] = useState<'account' | 'google'>('account');
   useEffect(() => {
     const controller = new AbortController();
@@ -32,29 +36,92 @@ export function LoginScreen({ login }: { login: LoginState }) {
           <br />
           你的日常，在这里接着聊。
         </p>
-        <button className="login-continue" disabled={login.busy} onClick={() => void login.login()}>
-          {login.busy ? (
-            <LoaderCircle size={18} className="spin" />
-          ) : method === 'google' ? (
-            <GoogleMark />
-          ) : null}
-          {login.busy
-            ? '等待浏览器确认…'
-            : method === 'google'
-              ? '使用 Google 继续'
-              : '登录或创建账号'}
-          {!login.busy && method !== 'google' && <ArrowRight size={17} />}
-        </button>
-        {login.busy ? (
-          <div className="login-help">
-            在打开的浏览器中完成登录。<button onClick={login.cancel}>取消</button>
-          </div>
+        {method === 'account' ? (
+          <form
+            className="account-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void login.account(mode, username.trim(), password).finally(() => setPassword(''));
+            }}
+          >
+            <label htmlFor="account-username">用户名</label>
+            <input
+              id="account-username"
+              name="username"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="你的用户名"
+              required
+              pattern={'[A-Za-z0-9_\\-]{3,32}'}
+              title="3–32 位字母、数字、下划线或连字符"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              disabled={login.busy}
+            />
+            <label htmlFor="account-password">密码</label>
+            <div className="account-password">
+              <input
+                id="account-password"
+                name="password"
+                type={reveal ? 'text' : 'password'}
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                placeholder={mode === 'signup' ? '至少 8 个字符' : '输入密码'}
+                required
+                minLength={mode === 'signup' ? 8 : 1}
+                maxLength={128}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                disabled={login.busy}
+              />
+              <button
+                type="button"
+                aria-label={reveal ? '隐藏密码' : '显示密码'}
+                onClick={() => setReveal(!reveal)}
+              >
+                {reveal ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+            {mode === 'signup' && (
+              <p className="account-hint">用户名为 3–32 位字母、数字、下划线或连字符。</p>
+            )}
+            <button className="login-continue" type="submit" disabled={login.busy}>
+              {login.busy ? <LoaderCircle className="spin" size={18} /> : null}
+              {login.busy ? '正在处理…' : mode === 'signup' ? '创建账号' : '登录'}
+              {!login.busy && <ArrowRight size={17} />}
+            </button>
+            <p className="login-help">
+              {mode === 'signup' ? '已有账号？' : '第一次来？'}
+              <button
+                type="button"
+                disabled={login.busy}
+                onClick={() => {
+                  setMode(mode === 'signup' ? 'login' : 'signup');
+                  setPassword('');
+                }}
+              >
+                {mode === 'signup' ? '登录' : '创建账号'}
+              </button>
+            </p>
+          </form>
         ) : (
-          <p className="login-help">
-            {method === 'google'
-              ? '首次登录会自动创建 Hymio 账号。'
-              : '在安全登录页完成登录或注册。'}
-          </p>
+          <>
+            <button
+              className="login-continue"
+              disabled={login.busy}
+              onClick={() => void login.login()}
+            >
+              {login.busy ? <LoaderCircle size={18} className="spin" /> : <GoogleMark />}
+              {login.busy ? '等待浏览器确认…' : '使用 Google 继续'}
+            </button>
+            {login.busy ? (
+              <div className="login-help">
+                在浏览器中完成登录。<button onClick={login.cancel}>取消</button>
+              </div>
+            ) : (
+              <p className="login-help">首次登录会自动创建 Hymio 账号。</p>
+            )}
+          </>
         )}
         {login.error && (
           <p className="login-error" role="alert">

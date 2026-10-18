@@ -86,18 +86,7 @@ class SessionStore:
         with self.transaction() as db:
             user_id = None
             if claims:
-                issuer, subject = claims["iss"], claims["sub"]
-                if not isinstance(subject, str) or not subject:
-                    raise Unauthorized()
-                user_id = uuid.uuid4().hex
-                db.execute(
-                    "INSERT INTO users VALUES(?,?,?,?) ON CONFLICT(issuer,subject) "
-                    "DO UPDATE SET name=excluded.name",
-                    (user_id, issuer, subject, str(claims.get("name") or subject)),
-                )
-                user_id = db.execute(
-                    "SELECT user_id FROM users WHERE issuer=? AND subject=?", (issuer, subject)
-                ).fetchone()[0]
+                user_id = self._map_user(db, claims)
             db.execute(
                 "UPDATE logins SET status=?,user_id=?,verifier='',nonce='',grant_hash=? "
                 "WHERE state_hash=?",
@@ -107,6 +96,26 @@ class SessionStore:
                 "SELECT return_uri FROM logins WHERE state_hash=?", (digest(state),)
             ).fetchone()
             return grant, row[0]
+
+    def _map_user(self, db, claims):
+        issuer, subject = claims["iss"], claims["sub"]
+        if not isinstance(subject, str) or not subject:
+            raise Unauthorized()
+        db.execute(
+            "INSERT INTO users VALUES(?,?,?,?) ON CONFLICT(issuer,subject) "
+            "DO UPDATE SET name=excluded.name",
+            (uuid.uuid4().hex, issuer, subject, str(claims.get("name") or subject)),
+        )
+        return db.execute(
+            "SELECT user_id FROM users WHERE issuer=? AND subject=?", (issuer, subject)
+        ).fetchone()[0]
+
+    def create_session(self, claims):
+        with self.transaction() as db:
+            user_id = self._map_user(db, claims)
+            session_id, expiry = uuid.uuid4().hex, time.time() + self.settings.refresh_seconds
+            db.execute("INSERT INTO sessions VALUES(?,?,?,0)", (session_id, user_id, expiry))
+            return self._issue(db, session_id, user_id, expiry)
 
     def _issue(self, db, session_id, user_id, session_expiry):
         now = time.time()

@@ -47,9 +47,13 @@ export function useLogin(
     });
     if (!response.ok)
       throw new Error(
-        response.status === 401
-          ? '登录已失效，请重新登录。'
-          : `登录服务暂不可用（${response.status}）`,
+        path === '/auth/account' && response.status === 401
+          ? '未能完成登录或注册，请检查账号、密码，或更换用户名。'
+          : response.status === 400
+            ? '请检查用户名和密码格式。'
+            : response.status === 401
+              ? '登录已失效，请重新登录。'
+              : `登录服务暂不可用（${response.status}）`,
       );
     return response.json();
   }
@@ -146,6 +150,27 @@ export function useLogin(
       if (current === generation.current) setBusy(false);
     }
   }
+  async function account(action: 'login' | 'signup', username: string, password: string) {
+    const current = ++generation.current;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await request(backend, '/auth/account', { action, username, password });
+      if (current === generation.current) apply({ ...result, backend }, true);
+      else await request(backend, '/auth/logout', {}, result.access_token);
+    } catch (e) {
+      if (current === generation.current)
+        setError(
+          e instanceof TypeError
+            ? '暂时无法连接登录服务，请稍后重试。'
+            : e instanceof Error
+              ? e.message
+              : String(e),
+        );
+    } finally {
+      if (current === generation.current) setBusy(false);
+    }
+  }
   async function logout() {
     if (!session) return;
     setBusy(true);
@@ -231,6 +256,7 @@ export function useLogin(
     busy,
     error,
     login,
+    account,
     logout,
     cancel: () => {
       generation.current++;

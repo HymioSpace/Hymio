@@ -24,7 +24,7 @@ cd ../Hymio
 docker compose -f deploy/auth/compose.yaml up -d
 ```
 
-Visit http://localhost:8000, change the initial administrator password and create a Hymio OIDC application. Enable authorization code with PKCE S256 and standard JWT claims (RS256/ES256). Set redirect URI to `http://localhost:8080/auth/callback`; copy its client ID and secret. Enable signup to allow new accounts; for Google sign-in follow the [provider setup](../backend/README.md#registration-and-google-sign-in).
+Visit http://localhost:8000, change the initial administrator password, create a dedicated `hymio` organization (not `built-in`), and create a Hymio OIDC application bound to it. Enable authorization code with PKCE S256 and standard JWT claims (RS256/ES256). Set redirect URI to `http://localhost:8080/auth/callback`; copy its client ID and secret. Enable signup and configure the minimal local signup fields described in the [Backend guide](../backend/README.md#registration-and-google-sign-in); for Google sign-in follow the [provider setup](../backend/README.md#registration-and-google-sign-in).
 
 ```bash
 cd backend

@@ -1870,3 +1870,63 @@ a {
     font-size: 27px;
   }
 }
+
+.account-form {
+  text-align: left;
+}
+.account-form label {
+  display: block;
+  margin: 16px 0 8px;
+  font-size: 12px;
+  color: #626d7f;
+}
+.account-form input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #e1e5ec;
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 14px;
+  color: #202b40;
+  background: #fff;
+}
+.account-form input::placeholder {
+  color: #a1a7b1;
+}
+.account-form input:focus {
+  outline: 2px solid #c5d1ff;
+  outline-offset: 1px;
+}
+.account-password {
+  position: relative;
+}
+.account-password input {
+  padding-right: 42px;
+}
+.account-password button {
+  position: absolute;
+  right: 10px;
+  top: 13px;
+  border: 0;
+  background: none;
+  color: #8791a2;
+  cursor: pointer;
+}
+.account-form .login-continue {
+  margin-top: 24px;
+  background: #18243a;
+  color: white;
+  border-color: #18243a;
+}
+.account-form .login-continue:hover {
+  background: #283752;
+}
+.account-form .login-help {
+  text-align: center;
+}
+.account-hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #8a93a1;
+  margin: 10px 0 0;
+}

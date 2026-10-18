@@ -10,7 +10,7 @@ Requires Python 3.11+ and uv. Start Casdoor using the pinned deployment:
 docker compose -f deploy/auth/compose.yaml up -d
 ```
 
-Open `http://localhost:8000`, finish Casdoor administration and create an OIDC application for Hymio. Configure authorization code flow, PKCE S256, standard JWT claims with RS256 or ES256, and redirect URI `http://localhost:8080/auth/callback`. Obtain its client ID and client secret. Change the initial Casdoor administrator password before exposing the service.
+Open `http://localhost:8000`, finish Casdoor administration, create a dedicated `hymio` organization, then create an OIDC application bound to that organization. The reserved `built-in` organization cannot self-register. Configure authorization code flow, PKCE S256, standard JWT claims with RS256 or ES256, and redirect URI `http://localhost:8080/auth/callback`. Obtain its client ID and client secret. Change the initial Casdoor administrator password before exposing the service.
 
 ```bash
 cd backend
@@ -33,13 +33,14 @@ oath start --auth-mode remote \
 
 The Backend must be reachable from Oath containers. On Linux, set Backend `host = "0.0.0.0"` and restrict ingress to intended clients/services; Oath adds the Docker host-gateway mapping. In a shared Docker network use Backend's service DNS instead. The credential file is mounted only into Oath Gateway and Biz. Restart retains the auth arguments.
 
-Set the public Backend URL in `apps/client/client.toml` before building or running the client. Users choose **登录或创建账号** on its initial screen; they never enter endpoints or credentials. Web returns through its original popup; Desktop returns through a temporary loopback listener. Only the initiating client can exchange the callback confirmation code. Refresh reconnects WS; logout clears the local view and revokes server credentials. Credentials stay in the window session; persistent desktop login is not implemented.
+Set the public Backend URL in `apps/client/client.toml` before building or running the client. Users sign in or create an account on Hymio's own initial screen; they never enter service endpoints or tokens. Web returns through its original popup; Desktop returns through a temporary loopback listener. Only the initiating client can exchange the callback confirmation code. Refresh reconnects WS; logout clears the local view and revokes server credentials. Credentials stay in the window session; persistent desktop login is not implemented.
 
 ## APIs
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /auth/options` | Public login presentation (`account` or configured `google`) |
+| `POST /auth/account` | `{action: "login" or "signup", username, password}` → application session |
 | `POST /auth/start` | `{return_uri}` → provider authorization URL + private exchange handle |
 | `GET /auth/callback` | Provider redirect; delivers a one-time confirmation code |
 | `POST /auth/exchange` | `{flow_id, login_code}` → application tokens, user ID and endpoints |
@@ -56,7 +57,11 @@ The Dockerfile builds the same backend. Mount private configuration and credenti
 
 ## Registration and Google sign-in
 
-Enable **Enable signup** on the Hymio Casdoor application, and leave **Disable self signup** off. Configure signup fields to match services you provide (for example, do not require a phone when no SMS provider exists). Registration stays in Casdoor so passwords never pass through Hymio.
+Use a dedicated Hymio organization, not `built-in`. Enable **Enable signup** on the Hymio application and leave **Disable self signup** off. Keep password sign-in enabled in account mode.
+
+The Hymio form collects only username and password; Backend supplies the display name and password confirmation. In Casdoor's Signup items, keep Username, Display name, Password and Confirm password visible. For local development, hide Email and Phone, make both optional, and set their rule to **No verification**. Otherwise the default email verification blocks registration without a configured mail provider. For this local setup, hide the Agreement item and make it optional too. The form does not fabricate acceptance of terms. Enable only signup policies this two-field form can fulfill; add an explicit consent UI before requiring terms.
+
+Passwords pass transiently through Backend to Casdoor and are never saved or logged by Hymio. Casdoor owns password storage and validation; Backend exchanges its authorization code through the same PKCE/OIDC verification as browser login. Use HTTPS on both links in production. Additional CAPTCHA/MFA/consent policies are not bypassed; this minimal account form does not yet render those challenges. Google uses the existing browser authorization flow.
 
 For Google:
 
