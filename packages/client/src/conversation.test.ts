@@ -60,3 +60,26 @@ test('approval resolution and tool terminal update their original identities', (
   assert.equal(result.tools[0].outcome, 'succeeded');
   assert.equal(result.tools[0].result, '/workspace');
 });
+
+test('retry clears the failed step and a later message does not retain its error', () => {
+  const failed = event(1, 'step.status', {
+    step_id: 'first',
+    status: 'failed',
+    error: 'Server disconnected',
+  });
+  assert.equal(conversation([failed]).latestStep?.error, 'Server disconnected');
+  const retried = event(2, 'step.status', {
+    step_id: 'first',
+    status: 'prepared',
+    error: null,
+  });
+  assert.equal(conversation([failed, retried]).latestStep?.error, '');
+  const later = event(3, 'user.message', { content: 'next task' });
+  assert.equal(conversation([failed, later]).latestStep, undefined);
+  const newFailure = event(4, 'step.status', {
+    step_id: 'second',
+    status: 'failed',
+    error: 'Still disconnected',
+  });
+  assert.equal(conversation([failed, retried, later, newFailure]).latestStep?.eventSeq, 4);
+});

@@ -28,17 +28,22 @@ export function conversation(events: OathEvent[]) {
   const assistants = new Map<string, Message>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolActivity>();
-  const steps = new Map<string, { status: string; traceId: string; error: string }>();
+  const steps = new Map<
+    string,
+    { id: string; status: string; traceId: string; error: string; eventSeq: number }
+  >();
   for (const event of events) {
     const p = event.payload,
       step = str(p.step_id);
-    if (event.event_type === 'user.message')
+    if (event.event_type === 'user.message') {
+      steps.clear();
       messages.push({
         id: `user:${event.event_seq}`,
         role: 'user',
         content: str(p.content),
         time: event.occur_dt,
       });
+    }
     if (event.event_type === 'assistant.delta' && p.channel === 'content' && step) {
       let message = assistants.get(step);
       const attempt = Number(p.attempt ?? 0);
@@ -116,7 +121,13 @@ export function conversation(events: OathEvent[]) {
       });
     }
     if (event.event_type === 'step.status') {
-      steps.set(step, { status: str(p.status), traceId: str(p.trace_id), error: str(p.error) });
+      steps.set(step, {
+        id: step,
+        status: str(p.status),
+        traceId: str(p.trace_id),
+        error: str(p.error),
+        eventSeq: event.event_seq,
+      });
       if (['failed', 'paused', 'cancelled'].includes(str(p.status))) {
         const m = assistants.get(step);
         if (m) m.streaming = false;
