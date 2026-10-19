@@ -93,13 +93,19 @@ export function MessageView({
         </div>
       )}
       <div className="message-body">
+        {message.reasoning && (
+          <details className="reasoning-panel">
+            <summary>{message.thinking ? '正在思考…' : '思考过程'}</summary>
+            <div>{message.reasoning}</div>
+          </details>
+        )}
         <div className={`message-bubble ${message.streaming ? 'streaming' : ''}`}>
           {message.role === 'user' ? (
             <p>{message.content}</p>
           ) : (
             <ImageLogin.Provider value={login}>
               <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {message.content || (message.streaming ? '…' : '')}
+                {message.content || (message.streaming && !message.reasoning ? '…' : '')}
               </Markdown>
             </ImageLogin.Provider>
           )}

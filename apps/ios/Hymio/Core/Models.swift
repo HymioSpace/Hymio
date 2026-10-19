@@ -90,9 +90,11 @@ public struct Command: Codable, Identifiable, Sendable {
   public var id = UUID().uuidString
   public var type: String
   public var payload: JSON
+  public var createdAt: String?
   public init(type: String, payload: JSON) {
     self.type = type
     self.payload = payload
+    self.createdAt = Date().ISO8601Format()
   }
 }
 public struct ConversationState: Codable, Sendable {
@@ -101,6 +103,8 @@ public struct ConversationState: Codable, Sendable {
   public var before: Int?
   public var hasMore = false
   public var pending: [Command] = []
+  public var accepted: Set<String>?
+  public var rejected: Set<String>?
   public var clientID = "hymio-ios-" + UUID().uuidString
   public init() {}
   public mutating func snapshot(
@@ -109,7 +113,8 @@ public struct ConversationState: Codable, Sendable {
     guard checkpoint >= 0,
       events.allSatisfy({ $0.user_id == user && $0.event_seq > 0 && $0.event_seq <= checkpoint })
     else { throw ProtocolFailure.invalidSnapshot }
-    self.events = events.sorted { $0.id < $1.id }
+    self.events = events.filter(Self.isDisplayEvent).sorted { $0.id < $1.id }
+    reconcile()
     cursor = checkpoint
     self.before = before
     self.hasMore = hasMore
@@ -118,8 +123,46 @@ public struct ConversationState: Codable, Sendable {
     guard event.user_id == user, event.event_seq > 0 else { throw ProtocolFailure.identity }
     if event.event_seq <= cursor { return }
     guard event.event_seq == cursor + 1 else { throw ProtocolFailure.gap }
-    events.append(event)
+    if Self.isDisplayEvent(event) {
+      let step = event.payload["step_id"].text
+      if event.event_type == "assistant.message" {
+        events.removeAll {
+          $0.event_type == "assistant.delta" && $0.payload["step_id"].text == step
+        }
+      }
+      if event.event_type == "assistant.delta",
+        let i = events.lastIndex(where: {
+          $0.event_type == "assistant.delta" && $0.payload["step_id"].text == step
+            && $0.payload["channel"] == event.payload["channel"]
+            && $0.payload["attempt"] == event.payload["attempt"]
+        }), case .object(var payload) = event.payload
+      {
+        payload["text"] = .string(events[i].payload["text"].text + event.payload["text"].text)
+        events.remove(at: i)
+        var combined = event
+        combined.payload = .object(payload)
+        events.append(combined)
+      } else {
+        events.append(event)
+      }
+      if event.event_type == "user.message" { reconcile() }
+    }
     cursor = event.event_seq
+  }
+  public static func isDisplayEvent(_ event: Event) -> Bool {
+    [
+      "user.message", "assistant.delta", "assistant.message", "tool.terminal",
+      "permission.requested", "permission.resolved", "step.status",
+    ].contains(event.event_type)
+  }
+  public mutating func reconcile() {
+    let ids = Set(
+      events.filter { $0.event_type == "user.message" }.map {
+        $0.payload["user_context"]["hymio_message_id"].text
+      }.filter { !$0.isEmpty })
+    pending.removeAll { ids.contains($0.id) }
+    accepted = accepted?.subtracting(ids)
+    rejected = rejected?.subtracting(ids)
   }
 }
 public enum ProtocolFailure: Error { case invalidSnapshot, identity, gap }

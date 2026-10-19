@@ -9,6 +9,8 @@ export interface Message {
   attempt?: number;
   stepId?: string;
   calls?: Data[];
+  reasoning?: string;
+  thinking?: boolean;
   delivery?: 'queued' | 'accepted' | 'failed';
 }
 export interface Approval {
@@ -46,7 +48,11 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
         time: event.occur_dt,
       });
     }
-    if (event.event_type === 'assistant.delta' && p.channel === 'content' && step) {
+    if (
+      event.event_type === 'assistant.delta' &&
+      ['content', 'reasoning'].includes(str(p.channel)) &&
+      step
+    ) {
       let message = assistants.get(step);
       const attempt = Number(p.attempt ?? 0);
       if (message && !message.streaming) continue;
@@ -65,9 +71,18 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       }
       if (attempt > (message.attempt ?? 0)) {
         message.content = '';
+        message.reasoning = '';
         message.attempt = attempt;
       }
-      if (attempt === message.attempt) message.content += str(p.text);
+      if (attempt === message.attempt) {
+        if (p.channel === 'reasoning') {
+          message.reasoning = (message.reasoning || '') + str(p.text);
+          message.thinking = true;
+        } else {
+          message.content += str(p.text);
+          message.thinking = false;
+        }
+      }
     }
     if (event.event_type === 'assistant.message') {
       let message = assistants.get(step);
@@ -84,6 +99,8 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       }
       message.content = str(p.content);
       message.streaming = false;
+      message.thinking = false;
+      if (typeof p.reasoning === 'string') message.reasoning = p.reasoning;
       message.calls = list(p.tool_calls).map(obj);
       for (const [i, call] of (message.calls ?? []).entries()) {
         const id = `${step}-${i}`;
@@ -132,7 +149,10 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       });
       if (['completed', 'failed', 'paused', 'cancelled'].includes(str(p.status))) {
         const m = assistants.get(step);
-        if (m) m.streaming = false;
+        if (m) {
+          m.streaming = false;
+          m.thinking = false;
+        }
       }
     }
   }
@@ -158,7 +178,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
   }
   const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {
-    messages: messages.filter((m) => m.content || m.calls?.length || m.streaming),
+    messages: messages.filter((m) => m.content || m.reasoning || m.calls?.length || m.streaming),
     approvals: [...approvals.values()],
     tools: [...tools.values()],
     latestStep,

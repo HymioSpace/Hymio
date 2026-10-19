@@ -2345,3 +2345,29 @@ a {
     left: 50%;
   }
 }
+
+.reasoning-panel {
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.reasoning-panel summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.reasoning-panel > div {
+  white-space: pre-wrap;
+  padding: 10px 14px;
+  border-left: 2px solid var(--line);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.profile-button {
+  display: grid;
+  place-items: center;
+}
+.profile-button .companion.compact {
+  width: 28px;
+  height: 28px;
+}

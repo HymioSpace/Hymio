@@ -339,7 +339,7 @@ export default function App() {
             aria-label="我的账号"
             onClick={() => setSettings(true)}
           >
-            我
+            <Companion compact />
           </button>
         </div>
       </nav>

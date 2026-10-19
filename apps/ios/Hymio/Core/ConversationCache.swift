@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-public struct ConversationCache {
+public struct ConversationCache: Sendable {
   private let url: URL
   public init(backend: String, user: String, root: URL? = nil) throws {
     let base =
@@ -20,7 +20,10 @@ public struct ConversationCache {
   }
   public func load() throws -> ConversationState {
     guard FileManager.default.fileExists(atPath: url.path) else { return ConversationState() }
-    return try JSONDecoder().decode(ConversationState.self, from: Data(contentsOf: url))
+    var state = try JSONDecoder().decode(ConversationState.self, from: Data(contentsOf: url))
+    state.events = state.events.filter(ConversationState.isDisplayEvent)
+    state.reconcile()
+    return state
   }
   public func save(_ state: ConversationState) throws {
     #if os(iOS)

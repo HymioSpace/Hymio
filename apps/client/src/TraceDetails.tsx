@@ -54,7 +54,9 @@ function TraceSpan({ span, total, depth }: { span: Span; total: number | null; d
       </div>
       {model && (
         <div className="model-metrics">
-          <span>首字 {duration(number(span.attributes['oath.llm.ttft_ms']))}</span>
+          <span>首包 {duration(number(span.attributes['oath.llm.ttft_ms']))}</span>
+          <span>正文 {duration(number(span.attributes['oath.llm.first_content_ms']))}</span>
+          <span>缓存 token {number(span.attributes['gen_ai.usage.cache_read.input_tokens']) ?? '未上报'}</span>
           <span>每 token {duration(number(span.attributes['oath.llm.tpot_ms']))}</span>
         </div>
       )}

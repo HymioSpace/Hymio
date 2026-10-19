@@ -1,7 +1,8 @@
 import SwiftUI
 
 enum CompanionMood: Int {
-  case idle = 0, working, replying, waiting, offline, greeting
+  case idle = 0
+  case working, replying, waiting, offline, greeting
 }
 
 struct Companion: View {
@@ -21,15 +22,18 @@ struct Companion: View {
       Image("CompanionAtlas")
         .resizable().interpolation(.high)
         .frame(width: cell * 3, height: cell * 2)
-        .offset(x: -CGFloat(pose % 3) * cell,
-                y: -CGFloat(pose / 3) * cell)
+        .offset(
+          x: -CGFloat(pose % 3) * cell,
+          y: -CGFloat(pose / 3) * cell
+        )
         .frame(width: size, height: size, alignment: .topLeading).clipped()
         .offset(y: moving ? sin(time * 1.3) * 1.5 : 0)
     }.frame(width: size, height: size)
       .onTapGesture { if animated { greeting = true } }
       .task(id: greeting) {
         guard greeting else { return }
-        try? await Task.sleep(for: .milliseconds(1200)); greeting = false
-      }.accessibilityHidden(true)
+        try? await Task.sleep(for: .milliseconds(1200))
+        greeting = false
+      }.allowsHitTesting(animated).accessibilityHidden(true)
   }
 }

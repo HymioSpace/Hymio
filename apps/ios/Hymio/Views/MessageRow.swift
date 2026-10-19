@@ -10,18 +10,43 @@ struct MessageRow: View {
     if message.role == "user" {
       HStack {
         Spacer(minLength: 45)
-        Text(message.content).font(.body).lineSpacing(4).textSelection(.enabled)
-          .padding(.horizontal, 16).padding(.vertical, 12)
-          .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
+        VStack(alignment: .trailing, spacing: 5) {
+          Text(message.content).font(.body).lineSpacing(4).textSelection(.enabled)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
+          if let delivery = message.delivery {
+            Text(["queued": "正在发送…", "accepted": "已送达", "failed": "发送失败，可重试"][delivery] ?? "")
+              .font(.caption).foregroundStyle(.secondary)
+          }
+        }
       }.accessibilityIdentifier("message.user")
     } else {
       HStack(alignment: .top, spacing: 9) {
         Companion(size: 34, mood: message.streaming ? .replying : .idle)
         VStack(alignment: .leading, spacing: 12) {
+          if !message.reasoning.isEmpty {
+            DisclosureGroup {
+              Text(message.reasoning).font(.callout).foregroundStyle(.secondary).textSelection(
+                .enabled)
+            } label: {
+              HStack(spacing: 7) {
+                if message.thinking { ProgressView().controlSize(.mini) }
+                Text(message.thinking ? "正在思考…" : "思考过程")
+              }.font(.caption).foregroundStyle(.secondary)
+            }.tint(.secondary).accessibilityIdentifier("message.reasoning")
+          }
+          if message.streaming && message.content.isEmpty && message.reasoning.isEmpty {
+            HStack(spacing: 8) {
+              ProgressView().controlSize(.small)
+              Text("正在准备回复…").font(.caption).foregroundStyle(.secondary)
+            }
+          }
           if !message.content.isEmpty {
             MessageContent(content: message.content, account: account)
               .contextMenu {
-                Button("复制回复", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
+                Button("复制回复", systemImage: "doc.on.doc") {
+                  UIPasteboard.general.string = message.content
+                }
               }
           }
           if !message.calls.isEmpty {
@@ -44,7 +69,10 @@ struct MessageRow: View {
               }
             } label: {
               HStack {
-                Label(message.calls.count == 1 ? toolName(message.calls[0]["name"].text) : "\(message.calls.count) 项工具操作", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label(
+                  message.calls.count == 1
+                    ? toolName(message.calls[0]["name"].text) : "\(message.calls.count) 项工具操作",
+                  systemImage: "chevron.left.forwardslash.chevron.right")
                 Spacer(minLength: 4)
                 ToolOutcomeLabel(outcome: summaryOutcome)
               }.font(.caption).foregroundStyle(.secondary)
@@ -62,7 +90,9 @@ struct MessageRow: View {
   }
   private func toolOutcome(index: Int) -> String {
     let id = String(message.id.dropFirst("assistant:".count)) + "-\(index)"
-    if let result = tools[id]?["outcome"].text, !result.isEmpty, result != "running" { return result }
+    if let result = tools[id]?["outcome"].text, !result.isEmpty, result != "running" {
+      return result
+    }
     if let approval = approvals.first(where: { $0.id == id }) {
       if approval.status == "pending" {
         return approval.expires <= Date().timeIntervalSince1970 ? "expired" : "awaiting_approval"
