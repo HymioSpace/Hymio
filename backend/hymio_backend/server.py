@@ -15,6 +15,7 @@ from starlette.routing import Route
 
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .devices.routes import device_routes
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
 
@@ -164,7 +165,7 @@ def build_app(settings, *, provider=None):
         except Exception:
             return JSONResponse({"error": "service_unavailable"}, 503)
 
-    routes = [
+    routes = device_routes(settings, store, bearer, body) + [
         Route("/health", endpoint),
         Route("/auth/options", endpoint),
         Route("/auth/callback", endpoint),

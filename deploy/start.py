@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """Start the local Hymio development stack."""
+
 import argparse
+import json
 import os
-from pathlib import Path
+import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
+from pathlib import Path
+
 try:
     import tomllib
 except ModuleNotFoundError:
-    raise SystemExit("Use: uv run --python 3.12 --no-project python deploy/start.py")
+    raise SystemExit(
+        "Use: uv run --python 3.12 --no-project python deploy/start.py"
+    ) from None
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,71 +49,205 @@ def free_port(port):
         try:
             sock.bind(("127.0.0.1", port))
         except OSError as error:
-            raise RuntimeError(f"Port {port} is occupied; stop its service first") from error
+            raise RuntimeError(
+                f"Port {port} is occupied; stop its service first"
+            ) from error
+
+
+def prepare_devices(config, config_path, oath_config):
+    """Mount product tools without exposing the Oath host shell."""
+    service_key = (
+        config_path.parent / Path(config["service_token_file"]).expanduser()
+    ).resolve()
+    target = ROOT / "extensions/tools/_connection.local"
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as file:
+        json.dump(
+            {
+                "url": "http://host.docker.internal:8080",
+                "token": service_key.read_text().strip(),
+            },
+            file,
+        )
+    source = oath_config.read_text()
+    if not re.search(r"^\[agent\]\s*$", source, re.MULTILINE):
+        raise RuntimeError("Oath config must contain [agent]")
+    if re.search(r"^builtin_bash\s*=", source, re.MULTILINE):
+        source = re.sub(
+            r"^builtin_bash\s*=.*$", "builtin_bash = false", source, flags=re.MULTILINE
+        )
+    else:
+        source = re.sub(
+            r"^\[agent\]\s*$",
+            "[agent]\nbuiltin_bash = false",
+            source,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    generated = oath_config.with_name("hymio-runtime.local.toml")
+    fd = os.open(generated, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as file:
+        file.write(source)
+    return generated
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", choices=("web", "desk", "none"), default="web")
-    parser.add_argument("--backend-config", type=Path, default=ROOT / "backend/hymio.toml")
-    parser.add_argument("--oath-config", type=Path, default=Path.home() / ".oath/oath.toml")
+    parser.add_argument(
+        "--backend-config", type=Path, default=ROOT / "backend/hymio.toml"
+    )
+    parser.add_argument(
+        "--oath-config", type=Path, default=Path.home() / ".oath/oath.toml"
+    )
     parser.add_argument("--auth-project", default="hymio-auth")
     args = parser.parse_args()
     children = []
     try:
-        for command in ("docker", "uv", "oath", *(("pnpm",) if args.client != "none" else ())):
+        for command in (
+            "docker",
+            "uv",
+            "oath",
+            *(("pnpm",) if args.client != "none" else ()),
+        ):
             if not shutil.which(command):
-                raise RuntimeError(f"Missing {command}; see deploy/README.md prerequisites")
+                raise RuntimeError(
+                    f"Missing {command}; see deploy/README.md prerequisites"
+                )
         if os.name != "posix":
             raise RuntimeError("This launcher currently supports macOS and Linux")
         config_path = args.backend_config.expanduser().resolve()
         if not config_path.is_file():
-            raise RuntimeError("Configure Casdoor and run backend/scripts/setup.py first; see deploy/README.md")
+            raise RuntimeError(
+                "Configure Casdoor and run backend/scripts/setup.py first; see deploy/README.md"
+            )
         config = tomllib.loads(config_path.read_text())
+        if config.get("computer_provider", "e2b") != "e2b":
+            raise RuntimeError(
+                "Only E2B cloud computers are supported; update hymio.toml"
+            )
+        key_file = config.get("e2b_key_file")
+        if not key_file:
+            raise RuntimeError("Set e2b_key_file in hymio.toml before starting")
+        key_path = (config_path.parent / Path(key_file).expanduser()).resolve()
+        if not key_path.is_file() or not key_path.read_text().strip():
+            raise RuntimeError("E2B key file is missing or empty")
         if config.get("host") != "0.0.0.0" or config.get("port", 8080) != 8080:
-            raise RuntimeError('Set Backend host = "0.0.0.0" and port = 8080 for Docker access')
+            raise RuntimeError(
+                'Set Backend host = "0.0.0.0" and port = 8080 for Docker access'
+            )
         if config.get("issuer") != "http://localhost:8000":
-            raise RuntimeError("This launcher requires local Casdoor at http://localhost:8000")
+            raise RuntimeError(
+                "This launcher requires local Casdoor at http://localhost:8000"
+            )
         for field in ("service_token_file", "client_secret_file"):
             path = (config_path.parent / Path(config[field]).expanduser()).resolve()
             if not path.is_file():
                 raise RuntimeError(f"Missing credential file referenced by {field}")
         oath_config = args.oath_config.expanduser().resolve()
         if not oath_config.is_file():
-            raise RuntimeError("Configure ~/.oath/oath.toml and its model credential first")
+            raise RuntimeError(
+                "Configure ~/.oath/oath.toml and its model credential first"
+            )
         runtime = tomllib.loads(oath_config.read_text()).get("services", {})
         ws = f"ws://127.0.0.1:{runtime.get('gateway_port', 8765)}"
         biz = f"http://127.0.0.1:{runtime.get('biz_port', 8766)}"
         if config.get("oath_ws") != ws or config.get("oath_biz") != biz:
-            raise RuntimeError("Backend oath_ws/oath_biz must match the local Oath configured ports")
+            raise RuntimeError(
+                "Backend oath_ws/oath_biz must match the local Oath configured ports"
+            )
         client_settings = tomllib.loads((ROOT / "apps/client/client.toml").read_text())
-        if args.client != "none" and client_settings.get("backend_url", "").rstrip("/") != config["public_url"].rstrip("/"):
-            raise RuntimeError("Client client.toml backend_url must match Backend public_url")
+        if args.client != "none" and client_settings.get("backend_url", "").rstrip(
+            "/"
+        ) != config["public_url"].rstrip("/"):
+            raise RuntimeError(
+                "Client client.toml backend_url must match Backend public_url"
+            )
         free_port(8080)
         if args.client != "none":
             free_port(1420)
         run(["docker", "info"], cwd=ROOT)
-        run(["uv", "sync", "--frozen"], cwd=ROOT / "backend")
+        run(
+            [
+                "uv",
+                "sync",
+                "--frozen",
+                "--extra",
+                "e2b",
+            ],
+            cwd=ROOT / "backend",
+        )
+        oath_config = prepare_devices(config, config_path, oath_config)
         if args.client != "none":
             run(["pnpm", "install", "--frozen-lockfile"], cwd=ROOT / "apps/client")
-        run(["docker", "compose", "-f", ROOT / "deploy/auth/compose.yaml", "-p", args.auth_project, "up", "-d"])
+        run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                ROOT / "deploy/auth/compose.yaml",
+                "-p",
+                args.auth_project,
+                "up",
+                "-d",
+            ]
+        )
         wait_http("http://localhost:8000/.well-known/openid-configuration")
         backend = subprocess.Popen(
-            ["uv", "run", "--frozen", "python", "-m", "hymio_backend", "--config", str(config_path)],
-            cwd=ROOT / "backend", start_new_session=True,
+            [
+                "uv",
+                "run",
+                "--frozen",
+                "--extra",
+                "e2b",
+                "python",
+                "-m",
+                "hymio_backend",
+                "--config",
+                str(config_path),
+            ],
+            cwd=ROOT / "backend",
+            start_new_session=True,
         )
         children.append(backend)
         wait_http("http://127.0.0.1:8080/health", backend)
-        run(["oath", "start", "--config", oath_config, "--auth-mode", "remote",
-             "--auth-url", "http://host.docker.internal:8080/internal/auth/verify",
-             "--auth-token-file", (config_path.parent / Path(config["service_token_file"]).expanduser()).resolve()])
+        run(
+            [
+                "oath",
+                "start",
+                "--config",
+                oath_config,
+                "--auth-mode",
+                "remote",
+                "--auth-url",
+                "http://host.docker.internal:8080/internal/auth/verify",
+                "--auth-token-file",
+                (
+                    config_path.parent / Path(config["service_token_file"]).expanduser()
+                ).resolve(),
+                "--tool",
+                ROOT / "extensions/tools",
+                "--skill",
+                ROOT / "extensions/skills",
+            ]
+        )
         if args.client != "none":
-            children.append(subprocess.Popen(
-                ["pnpm", "dev" if args.client == "web" else "desktop"],
-                cwd=ROOT / "apps/client", start_new_session=True,
-            ))
-        print("Hymio running. Backend: http://localhost:8080 | Web: http://127.0.0.1:1420" if args.client != "none" else "Hymio Backend running: http://localhost:8080", flush=True)
-        print("Ctrl+C stops Backend/client. Docker services remain running.", flush=True)
+            children.append(
+                subprocess.Popen(
+                    ["pnpm", "dev" if args.client == "web" else "desktop"],
+                    cwd=ROOT / "apps/client",
+                    start_new_session=True,
+                )
+            )
+        print(
+            "Hymio running. Backend: http://localhost:8080 | Web: http://127.0.0.1:1420"
+            if args.client != "none"
+            else "Hymio Backend running: http://localhost:8080",
+            flush=True,
+        )
+        print(
+            "Ctrl+C stops Backend/client. Docker services remain running.", flush=True
+        )
         while all(child.poll() is None for child in children):
             time.sleep(0.5)
         if any(child.returncode not in (None, 0) for child in children):
@@ -131,6 +271,13 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         pass
-    except (RuntimeError, OSError, ValueError, KeyError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+    except (
+        RuntimeError,
+        OSError,
+        ValueError,
+        KeyError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as error:
         print(f"Startup failed: {error}", file=sys.stderr)
         sys.exit(1)

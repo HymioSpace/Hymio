@@ -6,7 +6,7 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 [Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, Kits, clients and deployment.
 
-**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; A local stack launcher is available; Nostalgia integration and production deployment remain future work.
+**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; A local stack launcher is available; Nostalgia integration remains future work. A single-host cloud deployment entry is available; production rollout still requires domain, identity and network setup.
 
 <p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
@@ -15,6 +15,13 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 Web and the Tauri desktop app share one frontend. Chrome can reuse shared web components and protocol packages while keeping its own background tasks and permissions. iOS has a separate platform implementation within the same repository.
 
 A user has one ongoing agent conversation across clients. Closing a client does not end work accepted by Oath; reconnecting clients receive persisted progress. Context and Kit data are shared through their service APIs.
+
+Account settings now manage devices and a cloud desktop. Bash, browser DOM automation and desktop
+controls share one E2B cloud environment, with an explicit execution device and independent message
+delivery cursors per client window. The execution environment is hosted by E2B.
+See the [computer environment guide](deploy/computer/README.md) for setup and current limits.
+Cloud desktops can be paused and resumed from device settings. Recent operations are queryable
+without replaying commands, and browser tools support explicit tabs and navigation history.
 
 ## Repository
 
@@ -71,3 +78,7 @@ Read the [client guide](apps/client/README.md) for builds, debug controls and pr
 See the [overview](spec/overview.md), [client design](spec/feature07-client-mvp.md) and the [feature plans](spec/README.md) for module boundaries.
 
 Shared development conventions live in `spec/README.md`. Local `AGENTS.md`, credentials, private extensions and runtime data are ignored by Git.
+
+## Cloud hosting
+
+Use the [cloud deployment guide](deploy/cloud/README.md) for static Web, containerized Backend and automatic HTTPS. E2B hosts user computers; Oath and OIDC remain independent services. The first deployment uses one Backend instance with persistent SQLite storage.

@@ -40,3 +40,5 @@ text = (
 config.write_text(text)
 config.chmod(0o600)
 print("Created backend/hymio.toml and private credential files.")
+
+print("Save your E2B API key in backend/private/e2b-api-key (chmod 600) before starting.")

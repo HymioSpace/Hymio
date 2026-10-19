@@ -1,0 +1,14 @@
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/dist
+**/target
+**/private
+**/data
+**/*.sqlite*
+**/*.db*
+**/*.local
+backend/hymio.toml
+.env*
+AGENTS.md

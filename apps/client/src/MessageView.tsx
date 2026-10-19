@@ -1,13 +1,36 @@
-import { useState } from 'react';
-import { Check, Copy, Terminal } from 'lucide-react';
+import { createContext, useContext, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message, ToolActivity } from '@hymio/client';
-import { obj, str } from '@hymio/protocol';
-import { JsonView } from './JsonView';
+import { ToolCalls } from './ToolActivityGroup';
 import { Companion } from '@hymio/ui';
+import { MessageImage } from './MessageImage';
+import type { LoginState } from './useLogin';
 
-export function MessageView({ message, tools }: { message: Message; tools: ToolActivity[] }) {
+const ImageLogin = createContext<LoginState | null>(null);
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const login = useContext(ImageLogin);
+  return login ? <MessageImage src={src} alt={alt} login={login} /> : null;
+}
+const markdownComponents = {
+  img: MarkdownImage,
+  a: ({ children, ...props }: React.ComponentProps<'a'>) => (
+    <a {...props} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  ),
+};
+
+export function MessageView({
+  message,
+  tools,
+  login,
+}: {
+  message: Message;
+  tools: ToolActivity[];
+  login: LoginState;
+}) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {
@@ -30,64 +53,13 @@ export function MessageView({ message, tools }: { message: Message; tools: ToolA
           {message.role === 'user' ? (
             <p>{message.content}</p>
           ) : (
-            <Markdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ children, ...props }) => (
-                  <a {...props} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                ),
-              }}
-            >
-              {message.content || (message.streaming ? '…' : '')}
-            </Markdown>
+            <ImageLogin.Provider value={login}>
+              <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {message.content || (message.streaming ? '…' : '')}
+              </Markdown>
+            </ImageLogin.Provider>
           )}
-          {!!message.calls?.length && (
-            <div className="tool-pills">
-              {message.calls.map((call, i) => {
-                const args = obj(call.arguments);
-                const result = tools.find((t) => t.id === `${message.stepId}-${i}`);
-                const title =
-                  call.name === 'skill'
-                    ? args.action === 'search'
-                      ? '查找技能'
-                      : args.action === 'read'
-                        ? '读取技能'
-                        : '技能工具'
-                    : call.name === 'bash'
-                      ? '执行命令'
-                      : String(call.name);
-                const hint = call.name === 'skill' ? str(args.query) || str(args.name) : '';
-                return (
-                  <details key={i} className="tool-call-detail">
-                    <summary>
-                      <Terminal size={14} />
-                      <strong>{title}</strong>
-                      {hint && <span className="tool-call-hint">{hint}</span>}
-                      <span>
-                        {result?.outcome === 'succeeded'
-                          ? '已完成'
-                          : result?.outcome === 'running'
-                            ? '处理中'
-                            : result?.outcome || '已请求'}
-                      </span>
-                    </summary>
-                    <div className="tool-call-content">
-                      <p>工具：{String(call.name)}</p>
-                      <JsonView value={args} />
-                      {result?.result && (
-                        <>
-                          <p>返回结果</p>
-                          <pre>{result.result}</pre>
-                        </>
-                      )}
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
-          )}
+          {!!message.calls?.length && <ToolCalls message={message} tools={tools} />}
         </div>
         <div className="message-meta">
           <span>

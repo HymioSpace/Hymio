@@ -76,3 +76,16 @@ docker compose -f deploy/auth/compose.yaml down
 Do not add `--volumes` unless you intend to delete login data. The launcher rejects occupied Backend/client ports rather than stopping someone else's processes. Failures show the failing command or service output; Docker resources are left intact for inspection.
 
 Production deployment, Nostalgia and connector services are not included. See [feature09](../spec/feature09-local-start.md) for boundaries and [Backend](../backend/README.md) for the authentication contract.
+
+## Device environments
+
+The launcher mounts Hymio device tools/skills; cloud desktops are provisioned through E2B.
+It writes a private `hymio-runtime.local.toml` beside the Oath config, disabling host Bash;
+your source Oath configuration is unchanged. See [computer environments](computer/README.md)
+for E2B configuration, device management and the end-to-end check.
+
+## Cloud deployment
+
+For Linux servers, use the separate [cloud deployment entry](cloud/README.md): containerized
+Backend, static Web and Caddy HTTPS, with E2B computers and independently managed Oath/OIDC.
+The development launcher above is not the cloud deployment command.

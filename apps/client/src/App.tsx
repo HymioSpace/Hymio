@@ -24,9 +24,11 @@ import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
 import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
+import { groupMessages, ToolActivityGroup } from './ToolActivityGroup';
 import { DebugPanel } from './DebugPanel';
 import { desktop } from './platform';
 import { LoginScreen } from './LoginScreen';
+import { deviceRequest } from './deviceApi';
 const client = new OathClient();
 function Brand() {
   return (
@@ -69,12 +71,44 @@ export default function App() {
       setConnection((value) => ({ ...value, credential: '', userId: undefined }));
     },
   );
+  useEffect(() => {
+    if (!login.session) return;
+    let active = true;
+    let deviceId = '';
+    const key = `hymio.installation:${login.backend}:${login.session.user_id}`;
+    const installation = localStorage.getItem(key) || crypto.randomUUID();
+    localStorage.setItem(key, installation);
+    void deviceRequest(login, '/register', {
+      installation_id: installation,
+      kind: desktop ? 'mac' : 'web',
+    })
+      .then((device) => {
+        if (!active) return;
+        deviceId = device.device_id;
+        client.setSourceDevice(deviceId);
+      })
+      .catch(() => {
+        if (active) setNotice('设备绑定暂不可用，对话仍可继续。');
+      });
+    const timer = setInterval(() => {
+      if (deviceId) void deviceRequest(login, `/${deviceId}/heartbeat`, {}).catch(() => {});
+    }, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      client.setSourceDevice('');
+    };
+  }, [login.session?.access_token]);
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
     (a) => a.status === 'pending' && a.expiresAt * 1000 > clock,
   );
   const approvalIds = new Set(pendingApprovals.map((a) => a.id));
+  const attachedToolIds = new Set(
+    model.messages.flatMap((m) => (m.calls || []).map((_, i) => `${m.stepId}-${i}`)),
+  );
+  const unattachedTools = model.tools.filter((t) => !attachedToolIds.has(t.id));
   const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
   const busy = toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || '');
   const streaming = model.messages.some((m) => m.streaming);
@@ -129,11 +163,25 @@ export default function App() {
       input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px`;
     }
   }, [draft]);
+  const following = useRef(true);
+  const scrollFrame = useRef(0);
   useEffect(() => {
-    if (nearBottom) {
-      viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' });
-    }
-  }, [state.events.length, state.pending.length, debug]);
+    const el = viewport.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(scrollFrame.current);
+      if (!following.current) return;
+      scrollFrame.current = requestAnimationFrame(() => {
+        if (following.current) el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+      });
+    });
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(scrollFrame.current);
+    };
+  }, [model.messages.length === 0]);
   useEffect(() => {
     const timer = setInterval(() => {
       setClock(Date.now());
@@ -255,9 +303,22 @@ export default function App() {
         <div
           className="conversation-scroll"
           ref={viewport}
+          onWheel={(event) => {
+            if (event.deltaY < 0) following.current = false;
+          }}
+          onTouchStart={() => {
+            following.current = false;
+          }}
+          onPointerDown={() => {
+            following.current = false;
+          }}
           onScroll={() => {
             const el = viewport.current;
-            if (el) setNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 100);
+            if (el) {
+              const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+              following.current = atBottom;
+              setNearBottom(atBottom);
+            }
           }}
         >
           {welcome ? (
@@ -311,19 +372,28 @@ export default function App() {
                     : `已同步 ${state.replay.received} 条服务端事件`}
                 </div>
               )}
-              {model.messages.map((m) => (
-                <MessageView key={m.id} message={m} tools={model.tools} />
-              ))}
-              {model.tools.length > 0 && (
+              {groupMessages(model.messages).map((group) => {
+                const first = group[0];
+                return first.role === 'assistant' &&
+                  !first.content.trim() &&
+                  first.calls?.length ? (
+                  <ToolActivityGroup key={first.id} messages={group} tools={model.tools} />
+                ) : (
+                  <MessageView key={first.id} message={first} tools={model.tools} login={login} />
+                );
+              })}
+              {unattachedTools.length > 0 && (
                 <div className="work-summary">
                   <button onClick={() => setToolsOpen(!toolsOpen)}>
                     <span className={`work-dot ${toolsRunning ? 'running' : ''}`} />
-                    {toolsRunning ? '正在处理工具任务' : `已记录 ${model.tools.length} 次工具调用`}
+                    {toolsRunning
+                      ? '正在处理工具任务'
+                      : `其他工具活动 · ${unattachedTools.length} 次调用`}
                     <ChevronDown size={14} className={toolsOpen ? 'rotated' : ''} />
                   </button>
                   {toolsOpen && (
                     <div className="tool-results">
-                      {model.tools.map((t) => (
+                      {unattachedTools.map((t) => (
                         <details key={t.id}>
                           <summary>
                             <Terminal size={14} />
@@ -434,10 +504,11 @@ export default function App() {
             <button
               className="jump-bottom"
               onClick={() => {
+                following.current = true;
                 setNearBottom(true);
                 viewport.current?.scrollTo({
                   top: viewport.current.scrollHeight,
-                  behavior: 'smooth',
+                  behavior: 'instant',
                 });
               }}
             >

@@ -1,0 +1,12 @@
+# Copy to cloud.local.toml. Public hostnames only, no scheme or path.
+web_domain = "app.example.com"
+api_domain = "api.example.com"
+agent_domain = "agent.example.com"
+# Directory contains hymio.toml and private/ secret files; outside the image context.
+backend_config_dir = "/opt/hymio/config"
+# Oath WS port on this host. Keep Oath Biz private.
+oath_ws_port = 8765
+# Docker host bridge address, never a public interface. Verify with ip addr show docker0.
+backend_internal_bind = "172.17.0.1"
+# Port published on that bridge for Oath -> Hymio auth/tool calls.
+backend_internal_port = 8080

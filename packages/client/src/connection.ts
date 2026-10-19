@@ -51,6 +51,12 @@ export class OathClient {
   private sent = new Set<string>();
   private ready = false;
   private pingAt = 0;
+  private clientId = `hymio-${identity()}`;
+  private sourceDeviceId = '';
+  private cursor = 0;
+  setSourceDevice(deviceId: string) {
+    this.sourceDeviceId = deviceId;
+  }
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
     return () => {
@@ -95,6 +101,8 @@ export class OathClient {
     this.account = '';
     this.seen.clear();
     this.sent.clear();
+    this.sourceDeviceId = '';
+    this.cursor = 0;
     this.update({ events: [], pending: [], userId: '', error: '', replay: undefined });
   }
   private open() {
@@ -108,12 +116,8 @@ export class OathClient {
     this.socket = socket;
     let chain = Promise.resolve();
     const attachId = identity();
-    const deviceKey = `hymio.device:${config.wsUrl}`;
-    let clientId = sessionStorage.getItem(deviceKey);
-    if (!clientId) {
-      clientId = `hymio-${identity()}`;
-      sessionStorage.setItem(deviceKey, clientId);
-    }
+    // A window owns its delivery cursor. Duplicating a tab must not fence the original socket.
+    const clientId = this.clientId;
     this.watchdog = setTimeout(() => socket.close(), 12000);
     socket.onopen = () =>
       this.raw({
@@ -134,6 +138,8 @@ export class OathClient {
             const pending = await storage.commands(this.account);
             if (generation !== this.generation) return;
             this.seen = new Set(events.map((e) => e.event_seq));
+            this.cursor = 0;
+            while (this.seen.has(this.cursor + 1)) this.cursor++;
             this.update({ userId: frame.user_id, events, pending, phase: 'syncing' });
           } else if (frame.type === 'event') {
             const e = frame as OathEvent;
@@ -146,15 +152,21 @@ export class OathClient {
                 events: [...this.state.events, e].sort((a, b) => a.event_seq - b.event_seq),
               });
             }
-            this.ephemeral('event.ack', { cursor: e.event_seq });
+            if (e.event_seq > this.cursor + 1) {
+              this.clientId = `hymio-${identity()}`;
+              socket.close();
+              return;
+            }
+            this.cursor = Math.max(this.cursor, e.event_seq);
+            this.ephemeral('event.ack', { cursor: this.cursor });
             if (this.state.replay && this.state.phase === 'syncing')
               this.update({
                 replay: { ...this.state.replay, received: this.state.replay.received + 1 },
               });
           } else if (frame.type === 'offline.start') {
-            if ((frame.after_cursor ?? 0) > (this.state.events.at(-1)?.event_seq ?? 0)) {
+            if ((frame.after_cursor ?? 0) > this.cursor) {
               // Local storage was evicted after an ACK. A fresh device cursor requests full replay.
-              sessionStorage.setItem(deviceKey, `hymio-${identity()}`);
+              this.clientId = `hymio-${identity()}`;
               socket.close();
               return;
             }
@@ -166,6 +178,7 @@ export class OathClient {
                 received: 0,
               },
             });
+            this.cursor = frame.after_cursor ?? 0;
           } else if (frame.type === 'offline.end') {
             this.ready = true;
             this.retries = 0;
@@ -253,6 +266,9 @@ export class OathClient {
       user_context: {
         locale: navigator.language,
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        source_device_id: this.sourceDeviceId || null,
+        client_id: this.clientId,
+        received_event_seq: this.cursor,
       },
     });
   }
