@@ -10,7 +10,7 @@ React + TypeScript + Vite 实现共享 Web 前端，Tauri 2 提供桌面壳。�
 
 ## 产品与视觉
 
-白色主界面、深墨色线条、少量 Hymio 蓝；用带蓝色围带的线条角色表达 idle / working / replying / offline / approval 状态。动态遵循 reduced-motion 设置。
+白色主界面、深墨色线条、少量 Hymio 蓝；用墨蓝小伙伴与蓝围巾表达 idle / working / replying / offline / approval 状态；共享组件与跨端视觉见 feature15。动态遵循 reduced-motion 设置。
 
 一条持续时间线，以可读消息、工具摘要、审批卡和离线补发标记承载内容。输入区支持多行、中文 IME、Enter 发送 / Shift+Enter 换行；Agent 工作时仍允许追加输入。暂不展示不可用的附件、语音、Kit 或连接器按钮。
 

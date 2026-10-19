@@ -1,5 +1,7 @@
 import {
   parseFrame,
+  obj,
+  str,
   type Command,
   type Connection,
   type Data,
@@ -29,6 +31,7 @@ export interface ClientState {
   error: string;
   replay?: { after: number; through: number; received: number };
   runtime?: Data;
+  runtimeThrough?: number;
   latency?: number;
   history?: { before: number | null; hasMore: boolean };
 }
@@ -51,11 +54,13 @@ export class OathClient {
   private account = '';
   private seen = new Set<number>();
   private sent = new Set<string>();
+  private saving = new Set<string>();
   private ready = false;
   private pingAt = 0;
   private clientId = `hymio-${identity()}`;
   private sourceDeviceId = '';
   private cursor = 0;
+  private statusRequest?: { id: string; through: number };
   private ackTimer?: ReturnType<typeof setTimeout>;
   setSourceDevice(deviceId: string) {
     this.sourceDeviceId = deviceId;
@@ -106,7 +111,8 @@ export class OathClient {
     this.socket?.close();
     this.socket = undefined;
     this.config = undefined;
-    this.update({ phase: 'disconnected', runtime: undefined });
+    this.statusRequest = undefined;
+    this.update({ phase: 'disconnected', runtime: undefined, runtimeThrough: undefined });
   }
   signOut() {
     this.disconnect();
@@ -169,6 +175,8 @@ export class OathClient {
             if (generation !== this.generation) return;
             this.seen = new Set(snapshot.events.map((e) => e.event_seq));
             this.cursor = snapshot.checkpoint;
+            await this.confirmMessages(snapshot.events);
+            if (generation !== this.generation) return;
             this.update({
               events: snapshot.events,
               history: { before: snapshot.before_cursor, hasMore: snapshot.has_more },
@@ -181,6 +189,8 @@ export class OathClient {
               await storage.saveEvent(this.account, e);
               if (generation !== this.generation) return;
               this.seen.add(e.event_seq);
+              await this.confirmMessages([e]);
+              if (generation !== this.generation) return;
               this.update({
                 events: [...this.state.events, e].sort((a, b) => a.event_seq - b.event_seq),
               });
@@ -232,18 +242,43 @@ export class OathClient {
               this.watchdog = setTimeout(() => socket.close(), 12000);
             }, 20000);
           } else if (frame.type === 'ack' && frame.id) {
-            await storage.removeCommand(frame.id);
-            if (generation === this.generation)
-              this.update({ pending: this.state.pending.filter((p) => p.id !== frame.id) });
-          } else if (frame.type === 'agent.status') this.update({ runtime: frame.payload });
-          else if (frame.type === 'pong') {
+            const pending = this.state.pending.find((p) => p.id === frame.id);
+            if (
+              pending?.command.type === 'user.message' &&
+              str(obj(pending.command.payload.user_context).hymio_message_id) === pending.id
+            ) {
+              const accepted: Pending = { ...pending, delivery: 'accepted' };
+              await storage.saveCommand(accepted);
+              if (generation === this.generation)
+                this.update({
+                  pending: this.state.pending.map((p) => (p.id === accepted.id ? accepted : p)),
+                });
+            } else {
+              await storage.removeCommand(frame.id);
+              if (generation === this.generation)
+                this.update({ pending: this.state.pending.filter((p) => p.id !== frame.id) });
+            }
+          } else if (
+            frame.type === 'agent.status' &&
+            this.statusRequest &&
+            frame.id === this.statusRequest.id
+          ) {
+            this.update({ runtime: frame.payload, runtimeThrough: this.statusRequest.through });
+          } else if (frame.type === 'pong') {
             clearTimeout(this.watchdog);
             this.update({ latency: Math.round(performance.now() - this.pingAt) });
           } else if (frame.type === 'error') {
             const f = frame as Frame;
             if (f.id && this.state.pending.some((p) => p.id === f.id)) {
               // Keep the original identity for an explicit retry after rejection.
-              this.update({ error: f.message || '命令被拒绝' });
+              const pending = this.state.pending.find((p) => p.id === f.id)!;
+              const failed: Pending = { ...pending, delivery: 'failed' };
+              await storage.saveCommand(failed);
+              if (generation !== this.generation) return;
+              this.update({
+                error: f.message || '命令被拒绝',
+                pending: this.state.pending.map((p) => (p.id === f.id ? failed : p)),
+              });
               this.sent.delete(f.id);
             } else if (f.code === 'connection_closed') {
               // The gateway also uses this for temporary auth-service outages.
@@ -325,7 +360,11 @@ export class OathClient {
   private flush() {
     if (!this.ready) return;
     for (const pending of this.state.pending)
-      if (!this.sent.has(pending.id)) {
+      if (
+        !this.sent.has(pending.id) &&
+        !['accepted', 'failed'].includes(pending.delivery || '') &&
+        !this.saving.has(pending.id)
+      ) {
         this.raw(pending.command);
         this.sent.add(pending.id);
       }
@@ -335,9 +374,24 @@ export class OathClient {
     const generation = this.generation;
     const command: Command = { v: 2, id: identity(), type, payload };
     const pending: Pending = { id: command.id, account: this.account, command, at: Date.now() };
-    await storage.saveCommand(pending);
-    if (generation !== this.generation || pending.account !== this.account) return command.id;
+    if (type === 'user.message') {
+      command.payload = {
+        ...payload,
+        user_context: { ...obj(payload.user_context), hymio_message_id: command.id },
+      };
+    }
+    this.saving.add(command.id);
     this.update({ pending: [...this.state.pending, pending], error: '' });
+    try {
+      await storage.saveCommand(pending);
+    } catch (error) {
+      if (generation === this.generation)
+        this.update({ pending: this.state.pending.filter((p) => p.id !== command.id) });
+      throw error;
+    } finally {
+      this.saving.delete(command.id);
+    }
+    if (generation !== this.generation || pending.account !== this.account) return command.id;
     this.flush();
     return command.id;
   }
@@ -357,11 +411,37 @@ export class OathClient {
     return this.command('permission.decide', { invocation_id: invocationId, status });
   }
   status() {
-    if (this.ready) this.ephemeral('agent.status', {});
+    if (this.ready) {
+      const id = identity();
+      this.statusRequest = { id, through: this.cursor };
+      this.raw({ v: 2, id, type: 'agent.status', payload: {} });
+    }
   }
-  retryPending() {
+  async retryPending() {
+    const generation = this.generation;
+    const pending = this.state.pending.map(
+      (p): Pending => (p.delivery === 'failed' ? { ...p, delivery: 'queued' } : p),
+    );
+    for (const p of pending) await storage.saveCommand(p);
+    if (generation !== this.generation) return;
     this.sent.clear();
+    const retried = new Map(pending.map((p) => [p.id, p]));
+    this.update({ pending: this.state.pending.map((p) => retried.get(p.id) || p), error: '' });
     this.flush();
+  }
+  private async confirmMessages(events: OathEvent[]) {
+    const ids = new Set(
+      events
+        .filter((e) => e.event_type === 'user.message')
+        .map((e) => str(obj(e.payload.user_context).hymio_message_id))
+        .filter(Boolean),
+    );
+    const confirmed = this.state.pending.filter((p) => ids.has(p.id));
+    if (!confirmed.length) return;
+    const generation = this.generation;
+    for (const p of confirmed) await storage.removeCommand(p.id);
+    if (generation === this.generation)
+      this.update({ pending: this.state.pending.filter((p) => !ids.has(p.id)) });
   }
   clearError() {
     this.update({ error: '' });

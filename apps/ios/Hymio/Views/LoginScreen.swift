@@ -50,20 +50,21 @@ struct LoginScreen: View {
           HStack {
             Spacer()
             if account.busy {
-              ProgressView().tint(.white)
+              ProgressView().tint(Brand.onAccent)
             } else {
               Text(signup ? "创建账号" : "登录").fontWeight(.semibold)
               Image(systemName: "arrow.right")
             }
             Spacer()
           }
-          .padding(18).foregroundStyle(Brand.surface).background(Brand.blue, in: Capsule())
+          .padding(.horizontal, 18)
         }
         .disabled(account.busy || username.count < 3 || password.count < (signup ? 8 : 1))
-        .buttonStyle(GentlePress())
+        .buttonStyle(PrimaryAction())
         .accessibilityIdentifier("login.submit")
         Button {
           signup.toggle()
+          password = ""
           account.error = ""
         } label: {
           Text(signup ? "已有账号？登录" : "第一次来？创建账号").font(.subheadline)

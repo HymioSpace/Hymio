@@ -5,7 +5,6 @@ import {
   SlidersHorizontal,
   AudioLines,
   Activity,
-  Settings2,
   Circle,
   CheckCheck,
   ChevronDown,
@@ -18,8 +17,8 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { OathClient, conversation } from '@hymio/client';
-import { Companion, type Mood } from '@hymio/ui';
+import { OathClient, conversation, executionActivity } from '@hymio/client';
+import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
 import { useLogin } from './useLogin';
@@ -30,6 +29,13 @@ import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
+const overlayQuery = '(max-width: 1150px)';
+const watchOverlay = (notify: () => void) => {
+  const query = window.matchMedia(overlayQuery);
+  query.addEventListener('change', notify);
+  return () => query.removeEventListener('change', notify);
+};
+const overlaySnapshot = () => window.matchMedia(overlayQuery).matches;
 function Brand() {
   return (
     <svg viewBox="0 0 34 34" fill="none" aria-label="Hymio">
@@ -39,8 +45,12 @@ function Brand() {
   );
 }
 export default function App() {
+  const narrow = useSyncExternalStore(watchOverlay, overlaySnapshot, () => false);
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
-  const model = useMemo(() => conversation(state.events), [state.events]);
+  const model = useMemo(
+    () => conversation(state.events, state.pending),
+    [state.events, state.pending],
+  );
   const [connection, setConnection] = useState<Connection>({
     wsUrl: '',
     bizUrl: '',
@@ -119,14 +129,25 @@ export default function App() {
   const pendingApprovals = model.approvals.filter(
     (a) => a.status === 'pending' && a.expiresAt * 1000 > clock,
   );
-  const approvalIds = new Set(pendingApprovals.map((a) => a.id));
   const attachedToolIds = new Set(
     model.messages.flatMap((m) => (m.calls || []).map((_, i) => `${m.stepId}-${i}`)),
   );
   const unattachedTools = model.tools.filter((t) => !attachedToolIds.has(t.id));
-  const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
-  const busy = toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || '');
+  const { toolsRunning, busy } = executionActivity(
+    state.events,
+    state.runtime,
+    state.runtimeThrough,
+  );
   const streaming = model.messages.some((m) => m.streaming);
+  const lastMessage = model.messages.at(-1);
+  const awaitingReply =
+    lastMessage?.role === 'user' &&
+    lastMessage.delivery !== 'failed' &&
+    (!!lastMessage.delivery ||
+      !['failed', 'paused', 'cancelled'].includes(model.latestStep?.status || ''));
+  const delayedCommands = state.pending.filter(
+    (p) => p.delivery === 'failed' || (p.delivery !== 'accepted' && clock - p.at > 8000),
+  );
   const connected = state.phase === 'connected';
   const latestFailure =
     model.latestStep?.status === 'failed' || model.latestStep?.status === 'paused'
@@ -146,7 +167,7 @@ export default function App() {
         ? 'waiting'
         : streaming
           ? 'replying'
-          : busy
+          : busy || awaitingReply
             ? 'working'
             : 'idle';
   const status =
@@ -160,7 +181,7 @@ export default function App() {
             ? '未连接'
             : pendingApprovals.length
               ? '等你确认'
-              : busy || streaming
+              : busy || streaming || awaitingReply
                 ? '正在处理'
                 : '随时在这里';
   useEffect(() => () => client.disconnect(), []);
@@ -255,17 +276,25 @@ export default function App() {
   async function send() {
     if (!draft.trim() || sending) return;
     if (!connected) {
-      setSettings(true);
+      login.reconnect();
+      setNotice('正在重新连接，草稿已保留，连接后可发送。');
       return;
     }
     const content = draft.trim();
     setSending(true);
+    setDraft('');
+    following.current = true;
+    setNearBottom(true);
     try {
       await client.message(content);
-      setDraft('');
+      following.current = true;
       setNearBottom(true);
+      requestAnimationFrame(() =>
+        viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' }),
+      );
       input.current?.focus();
     } catch (e) {
+      setDraft((current) => current || content);
       setNotice(e instanceof Error ? e.message : String(e));
     } finally {
       setSending(false);
@@ -275,7 +304,7 @@ export default function App() {
   if (!login.session) return <LoginScreen login={login} />;
   return (
     <div className={`app ${debug ? 'debug-open' : ''} ${desktop ? 'desktop' : ''}`}>
-      <nav className="rail" aria-label="主导航">
+      <nav className="rail" aria-label="主导航" inert={debug && narrow}>
         <a className="brand-mark" href="#" aria-label="Hymio 首页">
           <Brand />
         </a>
@@ -297,17 +326,11 @@ export default function App() {
             className={`rail-button ${debug ? 'active' : ''}`}
             title="工作观察"
             aria-label="工作观察"
+            aria-expanded={debug}
+            aria-controls="work-observer"
             onClick={() => setDebug(!debug)}
           >
             <Activity size={21} />
-          </button>
-          <button
-            className="rail-button"
-            title="账号设置"
-            aria-label="账号设置"
-            onClick={() => setSettings(true)}
-          >
-            <Settings2 size={21} />
           </button>
           <span className="rail-divider" />
           <button
@@ -320,24 +343,25 @@ export default function App() {
           </button>
         </div>
       </nav>
-      <main className="main">
+      <main className="main" inert={debug && narrow}>
         <header className="topbar">
           <div className="topbar-brand" data-tauri-drag-region>
             <span>hymio</span>
-            <small>in tune with you</small>
           </div>
           <div className="topbar-actions">
             <button
               className={`connection-pill ${connected ? 'online' : ''}`}
               onClick={() => setSettings(true)}
+              aria-label="我的账号与连接状态"
             >
-              <i className={busy ? 'pulse' : ''} />
-              {status}
+              <StatusBadge tone={connected ? 'active' : 'neutral'}>{status}</StatusBadge>
               <ChevronDown size={12} />
             </button>
             <button
               className={`icon-button observe-button ${debug ? 'selected' : ''}`}
               aria-label="打开工作观察"
+              aria-expanded={debug}
+              aria-controls="work-observer"
               title="工作观察"
               onClick={() => setDebug(!debug)}
             >
@@ -370,19 +394,9 @@ export default function App() {
             <section className="welcome">
               <div className="welcome-character">
                 <Companion mood={mood} />
-                <span className="character-caption">
-                  <i />
-                  YOUR EVERYDAY COMPANION
-                </span>
               </div>
-              <h1>
-                今天，想从哪儿开始<span>？</span>
-              </h1>
-              <p>
-                一个念头，一件小事。
-                <br className="mobile-break" />
-                我们慢慢把它变成现实。
-              </p>
+              <h1>嗨，我在。</h1>
+              <p>想到什么，就和我说说。</p>
               <div className="starter-prompts">
                 <button
                   onClick={() => {
@@ -416,7 +430,7 @@ export default function App() {
                 </button>
               )}
               <div className="day-divider">
-                <span>同一段对话，随时接着聊</span>
+                <span>我们的对话</span>
               </div>
               {state.replay && state.replay.through > state.replay.after && (
                 <div className="replay-note">
@@ -439,11 +453,21 @@ export default function App() {
                       <Companion compact mood="idle" />
                     </div>
                     <div className="message-body">
-                      <ToolActivityGroup messages={group} tools={model.tools} />
+                      <ToolActivityGroup
+                        messages={group}
+                        tools={model.tools}
+                        approvals={model.approvals}
+                      />
                     </div>
                   </article>
                 ) : (
-                  <MessageView key={first.id} message={first} tools={model.tools} login={login} />
+                  <MessageView
+                    key={first.id}
+                    message={first}
+                    tools={model.tools}
+                    login={login}
+                    approvals={model.approvals}
+                  />
                 );
               })}
               {unattachedTools.length > 0 && (
@@ -524,13 +548,13 @@ export default function App() {
                   )}
                 </section>
               ))}
-              {(busy || streaming) && (
+              {(busy || streaming || awaitingReply) && (
                 <div className="message working-indicator">
                   <div className="message-avatar">
                     <Companion compact mood={mood} />
                   </div>
                   <span>
-                    Hymio {streaming ? '正在回复' : '正在接着做'}
+                    Hymio {streaming ? '正在回复' : awaitingReply ? '正在等候回复' : '正在接着做'}
                     <i />
                     <i />
                     <i />
@@ -598,11 +622,11 @@ export default function App() {
               </button>
             </div>
           )}
-          {state.pending.length > 0 && (
+          {delayedCommands.length > 0 && (
             <div className="pending-note">
               <LoaderCircle size={12} className="spin" />
-              {state.pending.length} 条操作等待服务端确认
-              <button disabled={!connected} onClick={() => client.retryPending()}>
+              {delayedCommands.length} 条操作尚未完成发送
+              <button disabled={!connected} onClick={() => void act(() => client.retryPending())}>
                 重试未确认操作
               </button>
             </div>
@@ -610,7 +634,7 @@ export default function App() {
           {!connected && !welcome && (
             <div className="offline-banner">
               <WifiOff size={14} />
-              <span>连接暂时离开，Oath 上的工作仍会继续。</span>
+              <span>暂时离线，已接纳的工作仍会继续。</span>
               <button onClick={login.reconnect}>重新连接</button>
               <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
@@ -622,7 +646,7 @@ export default function App() {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder={welcome ? '想到什么，就和我说说…' : '接着说，我在听…'}
-              rows={2}
+              rows={1}
               onKeyDown={(e) => {
                 if (
                   e.key === 'Enter' &&
@@ -635,38 +659,32 @@ export default function App() {
                 }
               }}
             />
-            <div className="composer-toolbar">
-              <div className="composer-context">
-                <AudioLines size={16} />
-                <span>{connected ? 'Hymio · 一直在这里' : '与你同频，从一句话开始'}</span>
-              </div>
-              <div className="composer-actions">
-                {busy && (
-                  <button
-                    className="icon-button stop-button"
-                    disabled={!connected}
-                    aria-label="停止当前任务"
-                    title="停止当前任务"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void act(() => client.command('run.cancel', {}));
-                    }}
-                  >
-                    <Square size={13} />
-                  </button>
-                )}
+            <div className="composer-actions">
+              {busy && (
                 <button
-                  className={`send-button ${draft.trim() ? 'has-text' : ''}`}
-                  aria-label={connected ? '发送消息' : '连接 Oath'}
-                  disabled={sending || !draft.trim()}
+                  className="icon-button stop-button"
+                  disabled={!connected}
+                  aria-label="停止当前任务"
+                  title="停止当前任务"
                   onClick={(e) => {
                     e.stopPropagation();
-                    void send();
+                    void act(() => client.command('run.cancel', {}));
                   }}
                 >
-                  {sending ? <LoaderCircle size={18} className="spin" /> : <ArrowUp size={19} />}
+                  <Square size={13} />
                 </button>
-              </div>
+              )}
+              <button
+                className={`send-button ${draft.trim() ? 'has-text' : ''}`}
+                aria-label={connected ? '发送消息' : '重新连接'}
+                disabled={sending || !draft.trim()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void send();
+                }}
+              >
+                {sending ? <LoaderCircle size={18} className="spin" /> : <ArrowUp size={19} />}
+              </button>
             </div>
           </div>
           <div className="composer-footer">
@@ -679,7 +697,7 @@ export default function App() {
               ) : (
                 <button onClick={() => setSettings(true)}>
                   <Plug size={12} />
-                  连接你的 Oath
+                  查看连接状态
                 </button>
               )}
             </span>
@@ -693,6 +711,7 @@ export default function App() {
         <DebugPanel
           key={`${connection.wsUrl}|${state.userId}`}
           state={state}
+          modal={narrow}
           connection={connection}
           onClose={() => setDebug(false)}
           onStatus={() => client.status()}

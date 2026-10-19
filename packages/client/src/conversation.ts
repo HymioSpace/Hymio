@@ -1,3 +1,4 @@
+import type { Pending } from './storage';
 import { obj, str, list, type Data, type OathEvent } from '@hymio/protocol';
 export interface Message {
   id: string;
@@ -8,6 +9,7 @@ export interface Message {
   attempt?: number;
   stepId?: string;
   calls?: Data[];
+  delivery?: 'queued' | 'accepted' | 'failed';
 }
 export interface Approval {
   id: string;
@@ -23,7 +25,7 @@ export interface ToolActivity {
   result: string;
   time: string;
 }
-export function conversation(events: OathEvent[]) {
+export function conversation(events: OathEvent[], pending: Pending[] = []) {
   const messages: Message[] = [];
   const assistants = new Map<string, Message>();
   const approvals = new Map<string, Approval>();
@@ -128,17 +130,60 @@ export function conversation(events: OathEvent[]) {
         error: str(p.error),
         eventSeq: event.event_seq,
       });
-      if (['failed', 'paused', 'cancelled'].includes(str(p.status))) {
+      if (['completed', 'failed', 'paused', 'cancelled'].includes(str(p.status))) {
         const m = assistants.get(step);
         if (m) m.streaming = false;
       }
     }
   }
-  const latestStep = [...steps.values()].at(-1);
+  const echoed = new Set(
+    events
+      .filter((e) => e.event_type === 'user.message')
+      .map((e) => str(obj(e.payload.user_context).hymio_message_id)),
+  );
+  for (const p of [...pending].sort((a, b) => a.at - b.at)) {
+    if (
+      p.command.type !== 'user.message' ||
+      str(obj(p.command.payload.user_context).hymio_message_id) !== p.id ||
+      echoed.has(p.id)
+    )
+      continue;
+    messages.push({
+      id: `local:${p.id}`,
+      role: 'user',
+      content: str(p.command.payload.content),
+      time: new Date(p.at).toISOString(),
+      delivery: p.delivery || 'queued',
+    });
+  }
+  const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {
     messages: messages.filter((m) => m.content || m.calls?.length || m.streaming),
     approvals: [...approvals.values()],
     tools: [...tools.values()],
     latestStep,
+  };
+}
+
+/** A current server snapshot owns liveness; historical tool proposals do not. */
+export function executionActivity(events: OathEvent[], runtime?: Data, runtimeThrough?: number) {
+  const model = conversation(events);
+  const newest = events.reduce((seq, e) => Math.max(seq, e.event_seq), 0);
+  if (runtime && runtimeThrough != null && runtimeThrough >= newest) {
+    const toolsRunning = Object.values(obj(runtime.calls)).some((value) =>
+      ['admitting', 'queued', 'running'].includes(str(obj(value).status)),
+    );
+    const stepRunning = Object.values(obj(runtime.steps)).some((value) =>
+      ['prepared', 'running'].includes(str(obj(value).status)),
+    );
+    return { toolsRunning, busy: toolsRunning || stepRunning };
+  }
+  const approvalIds = new Set(
+    model.approvals.filter((a) => a.status === 'pending').map((a) => a.id),
+  );
+  const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
+  return {
+    toolsRunning,
+    busy: toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || ''),
   };
 }

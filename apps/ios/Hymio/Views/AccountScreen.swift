@@ -43,26 +43,34 @@ struct AccountScreen: View {
               }
             }.padding(.vertical, 5)
           }
-          if client.devices.isEmpty {
-            Text("正在读取设备…").font(.subheadline).foregroundStyle(.secondary)
+          if client.devicesLoading && client.devices.isEmpty {
+            ProgressView("正在读取设备…").font(.subheadline)
+          } else if client.devices.isEmpty && client.devicesError.isEmpty {
+            Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
           }
-          Button {
-            deviceBusy = true
-            deviceError = ""
-            Task {
-              defer { deviceBusy = false }
-              do {
-                _ = try await account.request("devices/ensure", body: .object([:]), timeout: 130)
-                await client.loadDevices()
-              } catch { deviceError = error.localizedDescription }
-            }
-          } label: {
-            HStack {
-              Text("准备可用云电脑")
-              Spacer()
-              if deviceBusy { ProgressView() }
-            }
-          }.disabled(deviceBusy)
+          if !client.devicesError.isEmpty {
+            Text(client.devicesError).font(.footnote).foregroundStyle(Brand.muted)
+            Button("重新读取") { Task { await client.loadDevices() } }
+          }
+          if !client.devices.contains(where: { $0["kind"].text == "cloud_desktop" && $0["online"].flag }) {
+            Button {
+              deviceBusy = true
+              deviceError = ""
+              Task {
+                defer { deviceBusy = false }
+                do {
+                  _ = try await account.request("devices/ensure", body: .object([:]), timeout: 130)
+                  await client.loadDevices()
+                } catch { deviceError = error.localizedDescription }
+              }
+            } label: {
+              HStack {
+                Text("准备可用云电脑")
+                Spacer()
+                if deviceBusy { ProgressView() }
+              }
+            }.disabled(deviceBusy)
+          }
           if !deviceError.isEmpty { Text(deviceError).font(.caption).foregroundStyle(.secondary) }
         } header: {
           Text("我的设备")
@@ -95,27 +103,22 @@ struct AccountScreen: View {
           Task { await account.logout() }
         }.accessibilityIdentifier("account.confirmLogout")
       }
-      .sheet(isPresented: $diagnostics) {
-        NavigationStack {
-          List {
-            LabeledContent("连接", value: client.phase)
-            LabeledContent("已保存事件进度", value: String(client.state.cursor))
-            LabeledContent("待确认命令", value: String(client.state.pending.count))
-            if !client.error.isEmpty { Text(client.error).font(.caption) }
-            Button("重新连接") { client.reconnect() }
-            Section("最近事件") {
-              ForEach(Array(client.state.events.suffix(25).reversed())) { event in
-                DisclosureGroup("\(event.id) · \(event.event_type)") {
-                  Text(event.payload.pretty).font(.system(.caption2, design: .monospaced))
-                    .textSelection(.enabled)
-                }.font(.caption)
-              }
+      .navigationDestination(isPresented: $diagnostics) {
+        List {
+          LabeledContent("连接", value: client.phase)
+          LabeledContent("已保存事件进度", value: String(client.state.cursor))
+          LabeledContent("待确认命令", value: String(client.state.pending.count))
+          if !client.error.isEmpty { Text(client.error).font(.caption) }
+          Button("重新连接") { client.reconnect() }
+          Section("最近事件") {
+            ForEach(Array(client.state.events.suffix(25).reversed())) { event in
+              DisclosureGroup("\(event.id) · \(event.event_type)") {
+                Text(event.payload.pretty).font(.system(.caption2, design: .monospaced))
+                  .textSelection(.enabled)
+              }.font(.caption)
             }
-          }.navigationTitle("连接诊断").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-              ToolbarItem(placement: .confirmationAction) { Button("完成") { diagnostics = false } }
-            }
-        }
+          }
+        }.navigationTitle("连接诊断").navigationBarTitleDisplayMode(.inline)
       }
     }
   }

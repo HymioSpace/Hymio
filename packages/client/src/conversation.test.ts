@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { OathEvent, Data } from '@hymio/protocol';
-import { conversation } from './conversation.ts';
+import { conversation, executionActivity } from './conversation.ts';
 
 const event = (seq: number, type: string, payload: Data): OathEvent => ({
   v: 2,
@@ -82,4 +82,72 @@ test('retry clears the failed step and a later message does not retain its error
     error: 'Still disconnected',
   });
   assert.equal(conversation([failed, retried, later, newFailure]).latestStep?.eventSeq, 4);
+});
+
+test('a completed runtime does not inherit a historical unsubmitted tool proposal', () => {
+  const events = [
+    event(1, 'assistant.message', {
+      step_id: 'old',
+      content: '',
+      tool_calls: [{ name: 'computer', arguments: {} }],
+    }),
+    event(2, 'step.status', { step_id: 'old', status: 'completed' }),
+  ];
+  const runtime = { calls: {}, steps: { old: { status: 'completed' } } };
+  assert.equal(executionActivity(events, runtime, 2).busy, false);
+  assert.equal(executionActivity(events, runtime, 2).toolsRunning, false);
+  assert.equal(executionActivity(events, { calls: { a: { status: 'running' } } }, 2).busy, true);
+  assert.equal(
+    executionActivity(events, { calls: { a: { status: 'waiting_approval' } } }, 2).busy,
+    false,
+  );
+});
+
+test('a stale idle snapshot cannot hide a newer running step', () => {
+  const events = [event(3, 'step.status', { step_id: 'new', status: 'running' })];
+  assert.equal(executionActivity(events, { calls: {}, steps: {} }, 2).busy, true);
+});
+
+test('step completion closes a partial stream and latest status follows event order', () => {
+  const events = [
+    event(1, 'assistant.delta', { step_id: 'a', channel: 'content', text: 'hello' }),
+    event(2, 'step.status', { step_id: 'b', status: 'completed' }),
+    event(3, 'step.status', { step_id: 'a', status: 'completed' }),
+  ];
+  assert.equal(conversation(events).messages[0].streaming, false);
+  assert.equal(conversation(events).latestStep?.id, 'a');
+});
+
+test('local messages render before events and exact echoed IDs replace them', () => {
+  const make = (id: string) => ({
+    id,
+    account: 'test',
+    at: 1,
+    command: {
+      v: 2 as const,
+      id,
+      type: 'user.message',
+      payload: { content: 'same', user_context: { hymio_message_id: id } },
+    },
+  });
+  const pending = [make('one'), make('two')];
+  assert.equal(conversation([], pending).messages.length, 2);
+  assert.equal(conversation([], pending).messages[0].delivery, 'queued');
+  const echo = event(1, 'user.message', {
+    content: 'same',
+    user_context: { hymio_message_id: 'one' },
+  });
+  const messages = conversation([echo], pending).messages;
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].id, 'user:1');
+  assert.equal(messages[1].id, 'local:two');
+  const other = event(2, 'user.message', {
+    content: 'same',
+    user_context: { hymio_message_id: 'other-device' },
+  });
+  assert.equal(conversation([other], pending).messages.length, 3);
+  assert.equal(
+    conversation([], [{ ...make('one'), delivery: 'accepted' as const }]).messages[0].delivery,
+    'accepted',
+  );
 });

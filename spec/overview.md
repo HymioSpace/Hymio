@@ -36,6 +36,8 @@ deploy/            整套产品的依赖版本与部署组合
 spec/              整体与 feature 设计
 ```
 
+跨端视觉与组件边界见 [feature15](feature15-unified-design.md)。
+
 ## 信息流
 
 ```mermaid

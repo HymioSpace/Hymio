@@ -35,7 +35,7 @@ struct ChatScreen: View {
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
             ForEach(client.model.messages) { message in
-              MessageRow(message: message, tools: client.model.terminals, account: account).id(
+              MessageRow(message: message, tools: client.model.terminals, approvals: client.model.approvals, account: account).id(
                 message.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
@@ -43,7 +43,7 @@ struct ChatScreen: View {
             }
             if client.model.working && !client.model.messages.contains(where: \.streaming) {
               HStack(spacing: 10) {
-                Companion(size: 30, animated: true)
+                Companion(size: 30, animated: true, mood: .working)
                 Text("正在继续处理…").font(.caption).foregroundStyle(.secondary)
               }.accessibilityIdentifier("chat.working")
             }
@@ -82,10 +82,7 @@ struct ChatScreen: View {
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
-            HStack(spacing: 4) {
-              Circle().fill(client.connected ? Brand.blue : Color.gray).frame(width: 4, height: 4)
-              Text(client.phase).font(.caption2).foregroundStyle(.secondary)
-            }
+            ConnectionStatus(text: client.phase, connected: client.connected)
           }.accessibilityElement(children: .combine)
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -143,10 +140,10 @@ struct ChatScreen: View {
           send()
         } label: {
           Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(
-            Brand.surface
+            Brand.onAccent
           ).symbolEffect(.bounce, value: reduceMotion ? 0 : sentCount)
             .frame(width: 36, height: 36).background(
-              canSend ? Brand.ink : Color.secondary.opacity(0.18), in: Circle()
+              canSend ? Brand.blue : Color.secondary.opacity(0.18), in: Circle()
             )
             .frame(width: 44, height: 44)
         }.buttonStyle(GentlePress()).disabled(!canSend).accessibilityLabel("发送消息")

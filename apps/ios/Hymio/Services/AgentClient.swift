@@ -7,6 +7,9 @@ import UIKit
   @Published private(set) var phase = "未连接"
   @Published var error = ""
   @Published var devices: [JSON] = []
+  @Published private(set) var devicesLoading = false
+  @Published private(set) var devicesError = ""
+  private var devicesRequest = UUID()
   @Published var loadingHistory = false
   @Published private(set) var model = Conversation(events: [])
   private var cache: ConversationCache?
@@ -51,6 +54,9 @@ import UIKit
     state = ConversationState()
     model = Conversation(events: [])
     devices = []
+    devicesRequest = UUID()
+    devicesLoading = false
+    devicesError = ""
     sourceDevice = ""
     error = ""
   }
@@ -306,8 +312,20 @@ import UIKit
     } catch { /* Device preparation does not block conversation. */  }
   }
   func loadDevices() async {
-    do { devices = try await account.request("devices")["devices"].items } catch {
-      self.error = error.localizedDescription
+    let requestedUser = user
+    guard !requestedUser.isEmpty else { return }
+    let request = UUID()
+    devicesRequest = request
+    devicesLoading = true
+    devicesError = ""
+    defer { if request == devicesRequest { devicesLoading = false } }
+    do {
+      let result = try await account.request("devices")["devices"].items
+      guard request == devicesRequest, requestedUser == user else { return }
+      devices = result
+    } catch {
+      guard request == devicesRequest, requestedUser == user, !Task.isCancelled else { return }
+      devicesError = "设备暂时无法读取，对话仍可继续。"
     }
   }
 }
