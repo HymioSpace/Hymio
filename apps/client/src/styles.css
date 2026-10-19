@@ -2277,3 +2277,18 @@ a {
     line-height: 1.7;
   }
 }
+.message-bubble .message-image {
+  max-height: 320px;
+  width: auto;
+  max-width: 100%;
+}
+.message-bubble a {
+  color: #536bb8;
+  text-decoration-color: #c8d1ed;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.message-bubble a:hover {
+  color: #344d9d;
+  text-decoration-color: currentColor;
+}
