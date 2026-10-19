@@ -1,29 +1,15 @@
-import { useEffect, useRef } from 'react';
-import { X, UserRound, LoaderCircle } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import { DeviceManager } from './DeviceManager';
+import { Button, Companion, IconButton, Sheet } from '@hymio/ui';
 export function Settings({ login, onClose }: { login: LoginState; onClose: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
   return (
-    <dialog
-      className="settings-dialog"
-      ref={dialog}
-      onCancel={onClose}
-      onClick={(e) => {
-        if (e.target === dialog.current) onClose();
-      }}
-      aria-labelledby="settings-title"
-    >
+    <Sheet className="settings-dialog" labelledBy="settings-title" onClose={onClose}>
       <div className="dialog-head">
-        <span className="dialog-symbol">
-          <UserRound size={22} />
-        </span>
-        <button className="icon-button" aria-label="关闭账号设置" onClick={onClose}>
+        <Companion compact />
+        <IconButton label="关闭账号设置" onClick={onClose}>
           <X size={19} />
-        </button>
+        </IconButton>
       </div>
       <h2 id="settings-title">我的账号</h2>
       <p className="dialog-intro">{login.session?.name}</p>
@@ -34,9 +20,9 @@ export function Settings({ login, onClose }: { login: LoginState; onClose: () =>
           {login.error}
         </p>
       )}
-      <button className="primary-button" disabled={login.busy} onClick={() => void login.logout()}>
-        {login.busy && <LoaderCircle className="spin" size={17} />}退出登录
-      </button>
-    </dialog>
+      <Button variant="quiet" busy={login.busy} onClick={() => void login.logout()}>
+        退出登录
+      </Button>
+    </Sheet>
   );
 }

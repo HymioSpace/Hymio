@@ -75,6 +75,10 @@ final class HymioUITests: XCTestCase {
     account.lifetime = .keepAlways
     add(account)
     XCTAssertTrue(app.buttons["account.logout"].waitForExistence(timeout: 10))
+    app.buttons["连接诊断"].tap()
+    XCTAssertTrue(app.navigationBars["连接诊断"].waitForExistence(timeout: 5))
+    app.navigationBars["连接诊断"].buttons.element(boundBy: 0).tap()
+    XCTAssertTrue(app.buttons["account.logout"].waitForExistence(timeout: 5))
     app.buttons["account.logout"].tap()
     XCTAssertTrue(
       app.buttons.matching(identifier: "account.confirmLogout").firstMatch.waitForExistence(

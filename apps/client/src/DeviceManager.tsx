@@ -9,6 +9,8 @@ export function DeviceManager({ login }: { login: LoginState }) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [screen, setScreen] = useState('');
   const [expanded, setExpanded] = useState('');
   const [zoomed, setZoomed] = useState(false);
@@ -23,16 +25,26 @@ export function DeviceManager({ login }: { login: LoginState }) {
     setScreen('');
     setZoomed(false);
   }, [cloudId]);
-  const load = () => deviceRequest(login).then((result) => setDevices(result.devices));
+  const load = () =>
+    deviceRequest(login).then((result) => {
+      setDevices(result.devices);
+      setLoadError('');
+    });
   useEffect(() => {
     let active = true;
     const refresh = () =>
       deviceRequest(login)
         .then((result) => {
-          if (active) setDevices(result.devices);
+          if (active) {
+            setDevices(result.devices);
+            setLoadError('');
+          }
         })
         .catch(() => {
-          if (active) setError('暂时无法读取设备');
+          if (active) setLoadError('暂时无法读取设备，稍后将自动重试。');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
         });
     void refresh();
     const timer = setInterval(() => void refresh(), 15000);
@@ -109,6 +121,17 @@ export function DeviceManager({ login }: { login: LoginState }) {
         <h3>我的设备</h3>
         <span>一个 Hymio，随处继续</span>
       </div>
+      {loading && (
+        <div className="device-loading" role="status">
+          <LoaderCircle size={18} className="spin" />
+          正在读取设备…
+        </div>
+      )}
+      {loadError && (
+        <p className="form-error" role="status">
+          {loadError}
+        </p>
+      )}
       {devices.map((device) => (
         <div className="device-row" key={device.device_id}>
           <span className="device-symbol">
@@ -136,7 +159,6 @@ export function DeviceManager({ login }: { login: LoginState }) {
               )[device.state] || device.state}{' '}
               · {device.capabilities.length ? '终端 · 浏览器 · 桌面' : '对话与消息同步'}
             </small>
-            <code title={device.device_id}>{device.device_id.slice(0, 10)}</code>
           </div>
           {device.state === 'missing' && (
             <button className="text-button" disabled={busy} onClick={() => void ensureDevice()}>
@@ -190,12 +212,12 @@ export function DeviceManager({ login }: { login: LoginState }) {
             onEnsure={() => void ensureDevice()}
           />
         ))}
-      {!devices.some((device) => device.kind === 'cloud_desktop') && (
+      {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
         <p className="dialog-note">
           还没有可执行设备。添加云电脑后，Hymio 才能浏览网页、执行命令和操作桌面。
         </p>
       )}
-      {!devices.some((device) => device.kind === 'cloud_desktop') && (
+      {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
         <button className="device-add" disabled={busy} onClick={() => void ensureDevice()}>
           {busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}准备云电脑
         </button>

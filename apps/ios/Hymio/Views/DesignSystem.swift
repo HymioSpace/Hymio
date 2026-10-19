@@ -1,14 +1,14 @@
 import SwiftUI
 
 enum Brand {
-  static let ink = adaptive(0x172033, dark: 0xEFF2FA)
-  static let blue = adaptive(0x425DE8, dark: 0x9AABFF)
-  static let muted = adaptive(0x606A7A, dark: 0xA4ABBA)
-  static let mist = adaptive(0xF4F5F9, dark: 0x1D202A)
+  static let ink = adaptive(0x202536, dark: 0xEFF1F7)
+  static let blue = adaptive(0x425DE8, dark: 0xA2B0FF)
+  static let muted = adaptive(0x626B7D, dark: 0xA7AFC1)
+  static let mist = adaptive(0xF6F7FA, dark: 0x202530)
   static let surface = Color(uiColor: .systemBackground)
-  static let companionFill = adaptive(0xFFFFFF, dark: 0x272B38)
-  static let userBubble = adaptive(0xF0F2FB, dark: 0x242B43)
-  static let band = Color(red: 0.29, green: 0.42, blue: 0.98)
+  static let userBubble = adaptive(0xEEF1FF, dark: 0x28314A)
+  static let onAccent = adaptive(0xFFFFFF, dark: 0x18214A)
+  static let line = adaptive(0xE6E8EF, dark: 0x353B4B)
 
   private static func adaptive(_ light: UInt32, dark: UInt32) -> Color {
     Color(
@@ -44,4 +44,36 @@ struct GentlePress: ButtonStyle {
       .animation(
         reduceMotion ? nil : .spring(duration: 0.24, bounce: 0.15), value: configuration.isPressed)
   }
+}
+
+struct PrimaryAction: ButtonStyle {
+  @Environment(\.isEnabled) private var enabled
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .frame(maxWidth: .infinity, minHeight: 48)
+      .foregroundStyle(Brand.onAccent)
+      .background(Brand.blue, in: RoundedRectangle(cornerRadius: 14))
+      .opacity(!enabled ? 0.45 : configuration.isPressed ? 0.85 : 1)
+  }
+}
+
+struct ConnectionStatus: View {
+  let text: String
+  let connected: Bool
+  var body: some View {
+    HStack(spacing: 5) {
+      Circle().fill(connected ? Brand.blue : Brand.muted).frame(width: 4, height: 4)
+      Text(text).font(.caption2).foregroundStyle(Brand.muted)
+    }.accessibilityElement(children: .combine)
+  }
+}
+
+struct ToolOutcomeLabel: View {
+  let outcome: String
+  private var label: String {
+    ["running": "执行中", "succeeded": "已完成", "failed": "失败", "denied": "已拒绝",
+     "awaiting_approval": "等待授权", "expired": "授权已过期", "timeout": "超时",
+     "timed_out": "超时", "outcome_unknown": "结果待确认"][outcome] ?? outcome
+  }
+  var body: some View { Text(label).font(.caption).foregroundStyle(Brand.muted) }
 }

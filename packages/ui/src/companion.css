@@ -1,0 +1,83 @@
+.companion {
+  display: block;
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  flex: none;
+}
+.companion-sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-size: 300% 200%;
+  background-position: 0 0;
+  background-repeat: no-repeat;
+  animation: companion-breathe 5s ease-in-out infinite;
+}
+.companion.mood-working .companion-sprite {
+  background-position: 50% 0;
+  animation: companion-think 3s ease-in-out infinite;
+}
+.companion.mood-replying .companion-sprite {
+  background-position: 100% 0;
+}
+.companion.mood-waiting .companion-sprite {
+  background-position: 0 100%;
+}
+.companion.mood-offline .companion-sprite {
+  background-position: 50% 100%;
+  animation: none;
+}
+.companion.waving .companion-sprite {
+  background-position: 100% 100%;
+  animation: companion-greet 1.2s ease-in-out;
+}
+.companion.compact {
+  width: 40px;
+  height: 40px;
+  cursor: default;
+  overflow: hidden;
+  border-radius: 0;
+  background: transparent;
+}
+.companion.compact .companion-sprite {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+  animation: none;
+}
+.companion-paused *,
+.companion-paused {
+  animation-play-state: paused !important;
+}
+@keyframes companion-breathe {
+  50% {
+    transform: translateY(-1.5px);
+  }
+}
+@keyframes companion-think {
+  50% {
+    transform: rotate(-2deg);
+  }
+}
+@keyframes companion-greet {
+  30%,
+  70% {
+    transform: rotate(3deg);
+  }
+  50% {
+    transform: rotate(-2deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .companion *,
+  .companion {
+    animation: none !important;
+  }
+}

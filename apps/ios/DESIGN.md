@@ -1,30 +1,15 @@
 # Hymio iOS — design direction
 
-A quiet place to talk to one agent that stays with you. The line companion supplies personality;
+A quiet place to talk to one agent that stays with you. The blue-scarf companion supplies personality;
 reading and typing remain the main actions. Native navigation, sheets and controls supply familiarity.
 
-## What changes
+## Shared foundations
 
-The initial MVP had a slab behind the input, static character poses, an oversized profile tint,
-and fixed light-only colors. Use a floating input surface, restrained monochrome navigation,
-a companion with breathing/blinking/greeting motion, and adaptive colors. Remove decorative controls
-that have no working capability. Keep the app to one conversation and account details.
+The Web/Desktop and native clients share semantic color roles, action hierarchy and character artwork. Web components live in `packages/ui`; SwiftUI uses `DesignSystem.swift`. See [the shared design guide](../../packages/ui/README.md) and [feature15](../../spec/feature15-unified-design.md).
 
-## Tokens
+The character is a half-body ivory otter with small navy ears, delicate contours and a flowing blue scarf. Web and iOS bundle an identical transparent 3 × 2 state atlas. Welcome screens and small avatars use the same half-body portrait, retaining the ears and scarf for recognition. This is rendered artwork, not a live 3D model. Scene state and Reduce Motion govern lightweight movement.
 
-| Role | Light | Dark | Contrast against white / black |
-| --- | --- | --- | --- |
-| Primary content | #172033 | #EFF2FA | 16.27 / 18.75 |
-| Action / status | #425DE8 | #9AABFF | 5.30 / 9.64 |
-| Secondary content | #606A7A | #A4ABBA | 5.47 / 9.11 |
-| Content fill | #F4F5F9 | #1D202A | Not used as text |
-| User message | #F0F2FB | #242B43 | Primary content above |
-| Background | System background | System background | Adaptive |
-| Companion bridge | #4A6BFA | #4A6BFA | Illustration only |
-
-SF rounded display text gives the greeting a soft voice. Body, captions and navigation use semantic
-system text styles and Dynamic Type. Primary controls provide a 44-point touch region. Increased
-contrast and Reduce Transparency replace the custom glass input with an opaque outlined surface.
+System text styles provide Dynamic Type. Primary controls provide a 44-point touch region. Primary actions use `Brand.blue` with `Brand.onAccent` in both appearances. Increased contrast and Reduce Transparency replace the floating glass input with an opaque outlined surface. No unavailable feature receives a navigation button.
 
 ## Layout
 
@@ -47,7 +32,7 @@ Wider iPhone: same hierarchy with extra line length; no dashboard or second colu
 
 ## Motion
 
-- Companion: low amplitude breathing, brief blink, occasional small hand greeting; active foreground only.
+- Companion: low amplitude breathing, explicit pose changes and a brief tap greeting; active foreground only.
 - Send: immediate press feedback and selection haptic after the command is saved.
 - Replies: short spring on message insertion, never animate individual tokens or force a reader off history.
 - Account: system zoom transition starts at the profile control; swipe dismissal remains native.

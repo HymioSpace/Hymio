@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   RefreshCw,
-  ArrowRight,
   CircleCheck,
   TriangleAlert,
   Download,
@@ -11,41 +10,15 @@ import {
   Radio,
 } from 'lucide-react';
 import { type ClientState } from '@hymio/client';
-import {
-  obj,
-  str,
-  type Connection,
-  type Trace,
-  type TraceSummary,
-  type Span,
-} from '@hymio/protocol';
+import { obj, str, type Connection, type Trace, type TraceSummary } from '@hymio/protocol';
+import { conversation } from '@hymio/client';
+import { Button, IconButton, StatusBadge } from '@hymio/ui';
+import { TraceDetails, duration as ms } from './TraceDetails';
 import { bizGet } from './platform';
 import { JsonView as Json } from './JsonView';
-const ms = (value: number | null | undefined) =>
-  value == null ? '—' : value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`;
-function SpanView({ span, total }: { span: Span; total: number }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="span-item">
-      <button className="span-row" onClick={() => setOpen(!open)}>
-        <ChevronRight size={14} className={open ? 'rotated' : ''} />
-        <span className={`span-dot ${span.status}`} />
-        <strong>{span.name}</strong>
-        <small>{ms(span.duration_ms)}</small>
-      </button>
-      <div className="span-track">
-        <i
-          style={{
-            width: `${Math.min(100, Math.max(2, ((span.duration_ms ?? 0) / Math.max(total, 1)) * 100))}%`,
-          }}
-        />
-      </div>
-      {open && <Json value={span} />}
-    </div>
-  );
-}
 export function DebugPanel({
   state,
+  modal,
   connection,
   onClose,
   onStatus,
@@ -53,49 +26,75 @@ export function DebugPanel({
   onRetry,
 }: {
   state: ClientState;
+  modal: boolean;
   connection: Connection;
   onClose: () => void;
   onStatus: () => void;
   onCancel: () => void;
   onRetry: () => void;
 }) {
-  const [tab, setTab] = useState('events'),
+  const [tab, setTab] = useState('traces'),
     [filter, setFilter] = useState(''),
     [traces, setTraces] = useState<TraceSummary[]>([]),
     [trace, setTrace] = useState<Trace>(),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(false),
     [biz, setBiz] = useState<'idle' | 'alive' | 'failed'>('idle');
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
+  const generation = useRef(0);
+  const projection = useMemo(() => conversation(state.events), [state.events]);
+  const [updated, setUpdated] = useState('');
   async function refresh() {
+    const current = ++generation.current;
     setLoading(true);
     setError('');
     onStatus();
-    try {
-      await bizGet(connection.bizUrl, '/heartbeat', connection.credential, connection.userId);
-      setBiz('alive');
-      if (tab === 'traces') {
-        const data = await bizGet<{ trace_ids: TraceSummary[] }>(
-          connection.bizUrl,
-          '/list_traces?limit=30',
-          connection.credential,
-          connection.userId,
-        );
-        if (!Array.isArray(data.trace_ids)) throw new Error('Biz Trace 列表格式不兼容');
-        setTraces(data.trace_ids);
-      }
-    } catch (e) {
-      setBiz('failed');
-      setError(
-        `${String(e instanceof Error ? e.message : e)}。网页版跨域时，请配置同源代理或服务端 CORS。`,
-      );
-    } finally {
-      setLoading(false);
+    const [health, records] = await Promise.allSettled([
+      bizGet(connection.bizUrl, '/heartbeat', connection.credential, connection.userId),
+      tab === 'traces'
+        ? bizGet<{ trace_ids: TraceSummary[] }>(
+            connection.bizUrl,
+            '/list_traces?limit=30',
+            connection.credential,
+            connection.userId,
+          )
+        : Promise.resolve(undefined),
+    ]);
+    if (current !== generation.current) return;
+    setBiz(health.status === 'fulfilled' ? 'alive' : 'failed');
+    const errors: string[] = [];
+    if (health.status === 'rejected') errors.push('业务接口暂不可达，请检查连接后重试。');
+    if (records.status === 'rejected') errors.push('执行记录读取失败，请重试。');
+    else if (records.value) {
+      if (Array.isArray(records.value.trace_ids)) setTraces(records.value.trace_ids);
+      else errors.push('执行记录格式不兼容。');
     }
+    setError(errors.join(' '));
+    setLoading(false);
+    setUpdated(
+      new Date().toLocaleTimeString('zh-CN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }),
+    );
   }
   useEffect(() => {
     void refresh();
+    return () => {
+      generation.current++;
+    };
   }, [tab]);
   async function select(id: string) {
+    const current = ++generation.current;
     setLoading(true);
     setError('');
     try {
@@ -105,12 +104,13 @@ export function DebugPanel({
         connection.credential,
         connection.userId,
       );
-      if (!Array.isArray(data.spans)) throw new Error('Biz Trace 详情格式不兼容');
+      if (current !== generation.current) return;
+      if (!Array.isArray(data.spans)) throw new Error('执行详情格式不兼容');
       setTrace(data);
     } catch (e) {
-      setError(String(e));
+      if (current === generation.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (current === generation.current) setLoading(false);
     }
   }
   function exportEvents() {
@@ -125,35 +125,82 @@ export function DebugPanel({
   const steps = obj(state.runtime?.steps),
     calls = obj(state.runtime?.calls);
   return (
-    <aside className="debug-panel" aria-label="工作观察">
+    <aside
+      ref={panel}
+      id="work-observer"
+      className="debug-panel"
+      aria-label="工作观察"
+      role={modal ? 'dialog' : undefined}
+      aria-modal={modal || undefined}
+      onKeyDown={(e) => {
+        if (!modal || e.key !== 'Tab') return;
+        const items = Array.from(
+          panel.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), input, summary, a[href], [tabindex="0"]',
+          ) ?? [],
+        ).filter((el) => el.getClientRects().length);
+        const first = items[0],
+          last = items.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }}
+    >
       <div className="panel-head">
         <div>
           <span className="eyebrow">BEHIND THE SCENES</span>
           <h2>工作观察</h2>
         </div>
-        <button className="icon-button" aria-label="关闭工作观察" onClick={onClose}>
+        <IconButton label="关闭工作观察" onClick={onClose}>
           <X size={19} />
-        </button>
+        </IconButton>
       </div>
-      <div className="flow-strip">
-        <span className={state.phase === 'connected' ? 'live' : ''}>
-          <Radio size={15} />
-          客户端
-        </span>
-        <ArrowRight size={13} />
-        <span className={state.phase === 'connected' ? 'live' : ''}>Oath</span>
-        <ArrowRight size={13} />
-        <span>工具</span>
+      <div className="execution-flow" aria-label="可观测链路">
+        <div>
+          <Radio size={17} />
+          <strong>消息</strong>
+          <StatusBadge tone={state.phase === 'connected' ? 'active' : 'neutral'}>
+            {state.phase === 'connected' ? '已连接' : '未连接'}
+          </StatusBadge>
+        </div>
+        <span
+          className={state.phase === 'connected' ? 'flow-link connected' : 'flow-link'}
+          aria-hidden="true"
+        />
+        <div>
+          <CircleCheck size={17} />
+          <strong>Agent</strong>
+          <small>
+            {{
+              running: '工作中',
+              prepared: '准备中',
+              failed: '需要查看',
+              paused: '已暂停',
+              completed: '已完成',
+            }[projection.latestStep?.status || ''] || '查看执行记录'}
+          </small>
+        </div>
+        <span className="flow-link" aria-hidden="true" />
+        <div>
+          <ChevronRight size={17} />
+          <strong>工具</strong>
+          <small>{projection.tools.length} 项记录</small>
+        </div>
       </div>
       <div className="panel-tabs">
         {[
+          ['traces', '执行'],
           ['events', '事件'],
-          ['traces', 'Trace'],
-          ['status', '状态'],
+          ['status', '连接'],
         ].map(([value, label]) => (
           <button
             key={value}
             className={tab === value ? 'selected' : ''}
+            aria-pressed={tab === value}
             onClick={() => setTab(value)}
           >
             {label}
@@ -162,12 +209,17 @@ export function DebugPanel({
         <button
           className="icon-button refresh"
           aria-label="刷新调试数据"
-          onClick={() => void refresh()}
+          disabled={loading}
+          onClick={() => {
+            setTrace(undefined);
+            void refresh();
+          }}
         >
           {loading ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
         </button>
       </div>
-      <div className="panel-content">
+      <div className="panel-updated">{updated ? `接口最近检查于 ${updated}` : '正在检查连接…'}</div>
+      <div className="panel-content" aria-busy={loading}>
         {error && (
           <div className="debug-error" role="alert">
             <TriangleAlert size={15} />
@@ -192,7 +244,7 @@ export function DebugPanel({
                 <Download size={16} />
               </button>
             </div>
-            <p className="panel-caption">按服务端 event_seq 排序 · {state.events.length} 条</p>
+            <p className="panel-caption">最近事件 · 按序号倒序 · 最多显示 200 条</p>
             <div className="event-list">
               {[...state.events]
                 .reverse()
@@ -210,8 +262,12 @@ export function DebugPanel({
                     <Json value={e} />
                   </details>
                 ))}
-              {!state.events.length && (
-                <div className="panel-empty">对话开始后，实际事件会出现在这里。</div>
+              {!state.events.some((e) => e.event_type.includes(filter)) && (
+                <div className="panel-empty">
+                  {filter
+                    ? '没有匹配的事件，试试其他关键词。'
+                    : '对话开始后，实际事件会出现在这里。'}
+                </div>
               )}
             </div>
           </>
@@ -219,29 +275,7 @@ export function DebugPanel({
         {tab === 'traces' && (
           <>
             {trace ? (
-              <>
-                <button className="text-button trace-back" onClick={() => setTrace(undefined)}>
-                  ← 全部 Trace
-                </button>
-                <div className="trace-heading">
-                  <span className="eyebrow">TRACE</span>
-                  <code>{trace.trace_id}</code>
-                  <div className="trace-metrics">
-                    <span>
-                      <strong>{ms(trace.duration_ms)}</strong>总耗时
-                    </span>
-                    <span>
-                      <strong>{trace.spans.length}</strong>Spans
-                    </span>
-                  </div>
-                </div>
-                {trace.spans.map((span) => (
-                  <SpanView key={span.span_id} span={span} total={trace.duration_ms ?? 0} />
-                ))}
-                <p className="panel-caption">
-                  展开 Span 查看原始模型输入、输出、性能属性与因果 links。
-                </p>
-              </>
+              <TraceDetails trace={trace} onBack={() => setTrace(undefined)} />
             ) : (
               <>
                 <p className="panel-caption">当前用户的实际执行记录</p>
@@ -260,8 +294,18 @@ export function DebugPanel({
                     </p>
                   </button>
                 ))}
-                {!traces.length && !loading && (
-                  <div className="panel-empty">还没有 Trace。发送一条消息后刷新。</div>
+                {loading && !traces.length && (
+                  <div className="panel-empty" role="status">
+                    <LoaderCircle size={20} className="spin" />
+                    <p>正在读取执行记录…</p>
+                  </div>
+                )}
+                {!traces.length && !loading && !error && (
+                  <div className="panel-empty">
+                    这里记录 Hymio 如何完成工作。
+                    <br />
+                    聊一句，再回来看看。
+                  </div>
                 )}
               </>
             )}
@@ -322,20 +366,12 @@ export function DebugPanel({
                 <code>{str(obj(state.runtime?.meta).run_id).slice(0, 12) || '—'}</code>
               </p>
               <div className="runtime-controls">
-                <button
-                  className="secondary-button"
-                  disabled={state.phase !== 'connected'}
-                  onClick={onRetry}
-                >
+                <Button disabled={state.phase !== 'connected'} onClick={onRetry}>
                   重试失败步骤
-                </button>
-                <button
-                  className="secondary-button"
-                  disabled={state.phase !== 'connected'}
-                  onClick={onCancel}
-                >
+                </Button>
+                <Button disabled={state.phase !== 'connected'} onClick={onCancel}>
                   停止当前任务
-                </button>
+                </Button>
               </div>
             </div>
             <details className="state-detail">

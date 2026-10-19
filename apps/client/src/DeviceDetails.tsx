@@ -24,6 +24,7 @@ export function DeviceDetails({
 }) {
   const [records, setRecords] = useState<CommandRecord[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
     const load = () =>
@@ -36,6 +37,9 @@ export function DeviceDetails({
         })
         .catch(() => {
           if (active) setError('暂时无法读取执行记录');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
         });
     void load();
     const timer = setInterval(() => void load(), 10000);
@@ -91,7 +95,12 @@ export function DeviceDetails({
         </button>
       </div>
       <h4>最近执行</h4>
-      {!records.length && <p className="dialog-note">还没有执行记录。</p>}
+      {loading && (
+        <p className="dialog-note" role="status">
+          正在读取执行记录…
+        </p>
+      )}
+      {!loading && !error && !records.length && <p className="dialog-note">还没有执行记录。</p>}
       {records.map((record) => (
         <details className="device-command" key={record.invocation_id}>
           <summary>

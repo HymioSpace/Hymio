@@ -1,0 +1,143 @@
+.h-button,
+.h-icon-button {
+  font: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: none;
+  transition:
+    background 150ms,
+    border-color 150ms;
+}
+.h-button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface);
+}
+.h-button:hover {
+  background: var(--subtle);
+}
+.h-button-primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--on-accent);
+}
+.h-button-primary:hover {
+  background: var(--blue);
+  filter: brightness(0.94);
+}
+.h-button-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.h-button-danger {
+  color: var(--danger);
+}
+.h-button:disabled,
+.h-icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.h-icon-button {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+}
+.h-icon-button:hover {
+  background: var(--subtle);
+  color: var(--ink);
+}
+.h-button:focus-visible,
+.h-icon-button:focus-visible,
+.h-sheet summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.h-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.h-status i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.h-status-active {
+  color: var(--blue);
+}
+.h-status-attention {
+  color: var(--danger);
+}
+.h-sheet {
+  color: var(--ink);
+  background: var(--surface);
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 28px;
+  box-shadow: var(--shadow-panel);
+}
+.h-sheet::backdrop {
+  background: #141a2c40;
+  backdrop-filter: blur(6px);
+}
+.h-spinner {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: h-spin 0.8s linear infinite;
+}
+@keyframes h-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 600px) {
+  .h-button,
+  .h-icon-button {
+    min-height: 44px;
+  }
+  .h-icon-button {
+    width: 44px;
+  }
+  .h-sheet {
+    padding: 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .h-button,
+  .h-icon-button {
+    transition: none;
+  }
+  .h-spinner {
+    animation: none;
+    border-style: dotted;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .h-sheet::backdrop {
+    backdrop-filter: none;
+    background: #141a2cbb;
+  }
+}

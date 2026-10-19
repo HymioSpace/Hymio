@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, LoaderCircle, Eye, EyeOff } from 'lucide-react';
-import { Companion } from '@hymio/ui';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Companion, Button } from '@hymio/ui';
 import type { LoginState } from './useLogin';
 
 export function LoginScreen({ login }: { login: LoginState }) {
@@ -29,13 +29,8 @@ export function LoginScreen({ login }: { login: LoginState }) {
         <div className="login-companion">
           <Companion mood="idle" />
         </div>
-        <p className="login-eyebrow">YOUR EVERYDAY COMPANION</p>
         <h1 id="login-heading">你好，我是 Hymio。</h1>
-        <p className="login-description">
-          从一句话开始，慢慢懂你。
-          <br />
-          你的日常，在这里接着聊。
-        </p>
+        <p className="login-description">一个 Hymio，随时接着聊。</p>
         {method === 'account' ? (
           <form
             className="account-form"
@@ -85,11 +80,10 @@ export function LoginScreen({ login }: { login: LoginState }) {
             {mode === 'signup' && (
               <p className="account-hint">用户名为 3–32 位字母、数字、下划线或连字符。</p>
             )}
-            <button className="login-continue" type="submit" disabled={login.busy}>
-              {login.busy ? <LoaderCircle className="spin" size={18} /> : null}
+            <Button className="login-continue" variant="primary" type="submit" busy={login.busy}>
               {login.busy ? '正在处理…' : mode === 'signup' ? '创建账号' : '登录'}
               {!login.busy && <ArrowRight size={17} />}
-            </button>
+            </Button>
             <p className="login-help">
               {mode === 'signup' ? '已有账号？' : '第一次来？'}
               <button
@@ -98,6 +92,7 @@ export function LoginScreen({ login }: { login: LoginState }) {
                 onClick={() => {
                   setMode(mode === 'signup' ? 'login' : 'signup');
                   setPassword('');
+                  setReveal(false);
                 }}
               >
                 {mode === 'signup' ? '登录' : '创建账号'}
@@ -106,14 +101,10 @@ export function LoginScreen({ login }: { login: LoginState }) {
           </form>
         ) : (
           <>
-            <button
-              className="login-continue"
-              disabled={login.busy}
-              onClick={() => void login.login()}
-            >
-              {login.busy ? <LoaderCircle size={18} className="spin" /> : <GoogleMark />}
+            <Button className="login-continue" busy={login.busy} onClick={() => void login.login()}>
+              {!login.busy && <GoogleMark />}
               {login.busy ? '等待浏览器确认…' : '使用 Google 继续'}
-            </button>
+            </Button>
             {login.busy ? (
               <div className="login-help">
                 在浏览器中完成登录。<button onClick={login.cancel}>取消</button>

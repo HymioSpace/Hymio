@@ -1,5 +1,5 @@
-import { Check, ChevronRight, CircleAlert, LoaderCircle, Terminal } from 'lucide-react';
-import type { Message, ToolActivity } from '@hymio/client';
+import { Check, ChevronRight, CircleAlert, Clock3, LoaderCircle, Terminal } from 'lucide-react';
+import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { obj, str } from '@hymio/protocol';
 import { JsonView } from './JsonView';
 
@@ -12,6 +12,7 @@ const names: Record<string, string> = {
   skill: '使用技能',
 };
 const states: Record<string, string> = {
+  expired: '授权已过期',
   succeeded: '已完成',
   running: '执行中',
   failed: '失败',
@@ -23,12 +24,32 @@ const states: Record<string, string> = {
   awaiting_approval: '等待授权',
 };
 
-export function ToolCalls({ message, tools }: { message: Message; tools: ToolActivity[] }) {
+function outcome(id: string, result: ToolActivity | undefined, approvals: Approval[]) {
+  if (result && result.outcome !== 'running') return result.outcome;
+  const permission = approvals.find((a) => a.id === id);
+  if (permission?.status === 'pending')
+    return permission.expiresAt * 1000 <= Date.now() ? 'expired' : 'awaiting_approval';
+  if (!result || result.outcome === 'running') {
+    if (permission?.status === 'denied') return 'denied';
+    return 'running';
+  }
+  return result.outcome;
+}
+export function ToolCalls({
+  message,
+  tools,
+  approvals = [],
+}: {
+  message: Message;
+  tools: ToolActivity[];
+  approvals?: Approval[];
+}) {
   return (
     <div className="tool-pills">
       {message.calls?.map((call, i) => {
         const args = obj(call.arguments);
         const result = tools.find((t) => t.id === `${message.stepId}-${i}`);
+        const state = outcome(`${message.stepId}-${i}`, result, approvals);
         const name = str(call.name);
         const hint = name === 'skill' ? str(args.query) || str(args.name) : str(args.action);
         return (
@@ -37,7 +58,7 @@ export function ToolCalls({ message, tools }: { message: Message; tools: ToolAct
               <Terminal size={13} />
               <strong>{names[name] || name}</strong>
               {hint && <span className="tool-call-hint">{hint}</span>}
-              <span>{states[result?.outcome || ''] || result?.outcome || '已请求'}</span>
+              <span>{states[state] || state}</span>
               <ChevronRight size={12} className="tool-chevron" />
             </summary>
             <div className="tool-call-content">
@@ -60,32 +81,41 @@ export function ToolCalls({ message, tools }: { message: Message; tools: ToolAct
 export function ToolActivityGroup({
   messages,
   tools,
+  approvals = [],
 }: {
   messages: Message[];
   tools: ToolActivity[];
+  approvals?: Approval[];
 }) {
   const calls = messages.flatMap((m) =>
     (m.calls || []).map((_, i) => ({
       call: m.calls![i],
-      result: tools.find((t) => t.id === `${m.stepId}-${i}`),
+      state: outcome(
+        `${m.stepId}-${i}`,
+        tools.find((t) => t.id === `${m.stepId}-${i}`),
+        approvals,
+      ),
     })),
   );
-  const running = calls.find((c) => !c.result || c.result.outcome === 'running');
-  const failed = calls.some(
-    (c) =>
-      c.result &&
-      ['failed', 'denied', 'timeout', 'timed_out', 'outcome_unknown'].includes(c.result.outcome),
+  const running = calls.find((c) => c.state === 'running');
+  const waiting = calls.some((c) => c.state === 'awaiting_approval');
+  const failed = calls.some((c) =>
+    ['failed', 'denied', 'timeout', 'timed_out', 'outcome_unknown', 'expired'].includes(c.state),
   );
   const label = running
     ? `${names[str(running.call.name)] || str(running.call.name)}…`
-    : failed
-      ? '工具活动 · 有结果需要查看'
-      : '已完成工具活动';
+    : waiting
+      ? '等待你的授权'
+      : failed
+        ? '工具活动 · 有结果需要查看'
+        : '已完成工具活动';
   return (
     <details className="activity-group" data-testid="tool-activity-group">
       <summary>
         {running ? (
           <LoaderCircle size={14} className="spin" />
+        ) : waiting ? (
+          <Clock3 size={14} />
         ) : failed ? (
           <CircleAlert size={14} />
         ) : (
@@ -97,7 +127,7 @@ export function ToolActivityGroup({
       </summary>
       <div className="activity-items">
         {messages.map((m) => (
-          <ToolCalls key={m.id} message={m} tools={tools} />
+          <ToolCalls key={m.id} message={m} tools={tools} approvals={approvals} />
         ))}
       </div>
     </details>
