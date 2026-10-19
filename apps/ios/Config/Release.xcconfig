@@ -1,0 +1,3 @@
+// Set your HTTPS origin and signing team in the ignored Local.xcconfig before archiving.
+HYMIO_BACKEND_URL = https:/$()/invalid.example
+#include? "Local.xcconfig"

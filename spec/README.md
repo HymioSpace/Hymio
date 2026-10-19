@@ -17,6 +17,7 @@
 | 12 | [本机命令行](feature12-command-line.md) | Implemented |
 | 11 | [单机云部署](feature11-cloud-deployment.md) | Implemented：部署入口；公网验收待部署 |
 | 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：E2B Desktop |
+| 14 | [iOS MVP](feature14-ios-mvp.md) | Implemented：SwiftUI、同账号持续对话与前台恢复 |
 
 ## 设计与实现
 

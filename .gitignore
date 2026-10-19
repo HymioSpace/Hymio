@@ -84,3 +84,7 @@ xcuserdata/
 
 # Generated cloud deployment configuration
 /deploy/cloud/generated/
+
+# Private iOS deployment and signing overrides
+/apps/ios/Config/Local.xcconfig
+*.xcresult/
