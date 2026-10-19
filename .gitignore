@@ -88,3 +88,19 @@ xcuserdata/
 # Private iOS deployment and signing overrides
 /apps/ios/Config/Local.xcconfig
 *.xcresult/
+
+# Apple build and distribution artifacts
+*.ipa
+*.xcarchive/
+*.dSYM
+*.dSYM.zip
+*.hmap
+*.xccheckout
+*.xcscmblueprint
+
+# Apple signing certificates and private keys
+*.p8
+*.pfx
+*.cer
+*.certSigningRequest
+*.provisionprofile
