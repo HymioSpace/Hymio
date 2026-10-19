@@ -303,7 +303,7 @@ export class OathClient {
       if (generation === this.generation)
         this.update({ error: '无法连接 Oath，请确认服务正在运行。' });
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (generation !== this.generation) return;
       this.ready = false;
       clearTimeout(this.ackTimer);
@@ -311,6 +311,13 @@ export class OathClient {
       clearInterval(this.heartbeat);
       clearTimeout(this.watchdog);
       if (!this.config) return;
+      if (event.code === 1009) {
+        this.update({
+          phase: 'error',
+          error: '连接因消息过大而关闭，请检查待发送内容或服务端限制后再重连。',
+        });
+        return;
+      }
       this.update({ phase: 'reconnecting' });
       const delay = Math.min(1000 * 2 ** this.retries++, 15000);
       this.timer = setTimeout(() => this.open(), delay);
