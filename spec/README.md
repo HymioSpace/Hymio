@@ -13,6 +13,10 @@
 | 07 | [Web / Desktop Client MVP](feature07-client-mvp.md) | Implemented |
 | 09 | [本机统一启动](feature09-local-start.md) | Implemented |
 | 08 | [登录与 Oath 身份接入](feature08-login-auth.md) | Implemented |
+| 13 | [会话快照与历史分页](feature13-conversation-history.md) | Implemented |
+| 12 | [本机命令行](feature12-command-line.md) | Implemented |
+| 11 | [单机云部署](feature11-cloud-deployment.md) | Implemented：部署入口；公网验收待部署 |
+| 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：E2B Desktop |
 
 ## 设计与实现
 

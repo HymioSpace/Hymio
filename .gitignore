@@ -81,3 +81,6 @@ xcuserdata/
 
 # Generated Tauri schemas
 **/src-tauri/gen/
+
+# Generated cloud deployment configuration
+/deploy/cloud/generated/

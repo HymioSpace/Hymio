@@ -1,0 +1,222 @@
+"""Install and operate the source-based Hymio local stack."""
+
+import argparse
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+from .process import alive, health, save, stop
+
+
+def read(path):
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text())
+
+
+def options(args, root, previous):
+    defaults = {
+        "client": "web",
+        "backend_config": str(root / "backend/hymio.toml"),
+        "oath_config": str(Path.home() / ".oath/oath.toml"),
+        "auth_project": "hymio-auth",
+    }
+    return {
+        key: (
+            str(getattr(args, key))
+            if getattr(args, key) is not None
+            else previous.get(key, value)
+        )
+        for key, value in defaults.items()
+    }
+
+
+def start(home, root, args, state, restarting=False):
+    settings = options(
+        args, root, state.get("settings", read(home / "preferences.json"))
+    )
+    if alive(state):
+        if settings != state["settings"]:
+            raise RuntimeError(
+                "A managed instance uses different settings. Use hymio restart with your options."
+            )
+        backend, web = health(settings["client"])
+        print(
+            "Hymio already running."
+            if backend
+            and web
+            and read(home / "ready.json").get("instance") == state["instance"]
+            else "Hymio is running but not ready; use status or logs."
+        )
+        return
+    backend, web = health(settings["client"])
+    if backend or (settings["client"] != "none" and web):
+        if backend and web and not restarting:
+            print(
+                "Existing Hymio services are available: http://127.0.0.1:1420"
+                if settings["client"] != "none"
+                else "Existing Backend: http://127.0.0.1:8080"
+            )
+            print(
+                "Not managed by this command; no processes were changed. Stop their original launchers before CLI management."
+            )
+            save(home / "preferences.json", settings)
+            return
+        raise RuntimeError(
+            "A service is already responding on 8080/1420. No process was stopped; close its original launcher first."
+        )
+    instance = uuid.uuid4().hex
+    command = [
+        sys.executable,
+        str(root / "deploy/start.py"),
+        "--instance",
+        instance,
+        "--ready-file",
+        str(home / "ready.json"),
+    ]
+    for key, value in settings.items():
+        command.extend(["--" + key.replace("_", "-"), value])
+    log = home / "hymio.log"
+    with log.open("ab") as output:
+        log.chmod(0o600)
+        output.write(f"\n--- Starting Hymio {time.ctime()} ---\n".encode())
+        output.flush()
+        child = subprocess.Popen(
+            command,
+            cwd=root,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    state = {
+        "pid": child.pid,
+        "instance": instance,
+        "root": str(root),
+        "settings": settings,
+    }
+    save(home / "state.json", state)
+    save(home / "preferences.json", settings)
+    deadline = time.monotonic() + args.timeout
+    while time.monotonic() < deadline:
+        if child.poll() is not None:
+            raise RuntimeError(f"Startup failed. Run hymio logs or inspect {log}")
+        if read(home / "ready.json").get("instance") == instance and all(
+            health(settings["client"])
+        ):
+            print(
+                "Hymio ready: http://127.0.0.1:1420"
+                if settings["client"] != "none"
+                else "Hymio Backend ready: http://127.0.0.1:8080"
+            )
+            return
+        time.sleep(0.5)
+    raise RuntimeError(
+        "Startup is still in progress. Use hymio status / logs; do not launch a second copy."
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "command", choices=("start", "stop", "restart", "status", "logs")
+    )
+    parser.add_argument("--home", type=Path, default=Path.home() / ".hymio")
+    parser.add_argument("--client", choices=("web", "desk", "none"))
+    parser.add_argument(
+        "--backend-config", type=lambda p: str(Path(p).expanduser().resolve())
+    )
+    parser.add_argument(
+        "--oath-config", type=lambda p: str(Path(p).expanduser().resolve())
+    )
+    parser.add_argument("--auth-project")
+    parser.add_argument("--timeout", type=float, default=180)
+    parser.add_argument("--follow", "-f", action="store_true")
+    args = parser.parse_args()
+    try:
+        if os.name != "posix":
+            raise RuntimeError("The local manager supports macOS/Linux only")
+        if args.timeout <= 0:
+            raise ValueError("--timeout must be positive")
+        home = args.home.expanduser().resolve()
+        home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if args.command == "logs":
+            log = home / "hymio.log"
+            if not log.exists():
+                print("No managed launch log yet.")
+                return
+            subprocess.run(
+                ["tail", *(["-f"] if args.follow else []), "-n", "100", str(log)],
+                check=True,
+            )
+            return
+        if args.command == "status":
+            state = read(home / "state.json")
+            settings = state.get("settings", {"client": "web"})
+            backend, web = health(settings["client"])
+            print(
+                "Manager: "
+                + (
+                    "running"
+                    if alive(state)
+                    else "stopped (existing services may be unmanaged)"
+                )
+            )
+            print("Backend: " + ("ready" if backend else "unavailable"))
+            if settings["client"] != "none":
+                print(
+                    "Client: "
+                    + ("ready — http://127.0.0.1:1420" if web else "unavailable")
+                )
+            print(f"Log: {home / 'hymio.log'}")
+            return
+        with (home / "command.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError(
+                    "Another Hymio lifecycle command is in progress"
+                ) from None
+            state = read(home / "state.json")
+            if args.command in ("stop", "restart"):
+                was_running = alive(state)
+                stop(state)
+                if args.command == "stop" and not was_running:
+                    print(
+                        "No managed instance. Existing unmanaged services were left untouched."
+                    )
+                    return
+                if args.command == "stop":
+                    print(
+                        "Managed Backend/client stopped. Oath, Casdoor and E2B remain running."
+                    )
+                    return
+            installation = read(home / "installation.json")
+            root = (
+                Path(installation.get("root", state.get("root", "")))
+                .expanduser()
+                .resolve()
+            )
+            if (
+                not installation
+                and not state.get("root")
+                or not (root / "deploy/start.py").is_file()
+            ):
+                raise RuntimeError(
+                    "Run bash scripts/hymio-install from the source checkout first"
+                )
+            start(home, root, args, state, restarting=args.command == "restart")
+    except KeyboardInterrupt:
+        print("\nUse hymio status to check background services.")
+    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
+        print(f"Hymio: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+if __name__ == "__main__":
+    main()

@@ -14,6 +14,12 @@ export interface OathEvent {
   payload: Data;
   occur_dt: string;
 }
+export interface ConversationPage {
+  events: OathEvent[];
+  checkpoint: number;
+  before_cursor: number | null;
+  has_more: boolean;
+}
 export interface Frame {
   v: 2;
   type: string;
@@ -22,6 +28,10 @@ export interface Frame {
   payload?: Data;
   after_cursor?: number;
   through_cursor?: number;
+  events?: OathEvent[];
+  checkpoint?: number;
+  before_cursor?: number | null;
+  has_more?: boolean;
   code?: string;
   message?: string;
 }

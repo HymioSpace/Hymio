@@ -35,16 +35,36 @@ cd ..
 
 Setup prompts for the secret and generates ignored private files. In `backend/hymio.toml`, set `host = "0.0.0.0"` so Docker Oath can reach the host Backend. Keep port 8080 and the default localhost service URLs for this launcher. Bind exposure must be appropriate for your local network.
 
-## Start
+## Install and start
 
-From Hymio's root:
+From Hymio's root (after the first-run login/model/E2B configuration above):
+
+```bash
+bash scripts/hymio-install
+hymio start                      # Web, background
+hymio status
+hymio logs -f
+# Other clients:
+hymio restart --client desk
+hymio restart --client none
+```
+
+The installer uses uv to expose the command and records the source location in
+`~/.hymio/installation.json`. Keep the checkout in place; this is a source-based local
+launcher, not a standalone binary. No Node/TypeScript installation is added at the repo root.
+Logs, lifecycle lock and state live under `~/.hymio/`, never in the repository.
+To move the checkout, stop Hymio and rerun the installer from its new location.
+If `hymio` is not on PATH, run `uv tool update-shell` and reopen the terminal.
+
+Repeated start returns the existing managed instance; changed client/config options require
+restart. An already-running unmanaged Hymio is reported with its URL, without taking ownership
+or killing processes. Other occupied ports remain errors. `status` reports Backend/client
+health separately from whether CLI owns their launcher; it does not verify every Oath service.
+
+For foreground development, the original entry remains available:
 
 ```bash
 uv run --python 3.12 --no-project python deploy/start.py --client web
-# Or:
-uv run --python 3.12 --no-project python deploy/start.py --client desk
-# Services without a client:
-uv run --python 3.12 --no-project python deploy/start.py --client none
 ```
 
 Default client is `web`. Open http://127.0.0.1:1420 and sign in. The client gets its public Backend address from `apps/client/client.toml`; users do not enter service URLs. Desktop opens its own window. First Desktop compilation can take several minutes.
@@ -57,13 +77,22 @@ Default client is `web`. Open http://127.0.0.1:1420 and sign in. The client gets
 | Oath WS | ws://127.0.0.1:8765 |
 | Oath Biz | http://127.0.0.1:8766 |
 
-Options: `--backend-config PATH`, `--oath-config PATH`, `--auth-project NAME`. Relative paths are relative to your working directory. Backend credential paths resolve against its config directory. Model settings stay in Oath's config; login settings stay in Backend's config. No `.env` is required.
+CLI options: `--client web|desk|none`, `--home PATH`, `--timeout SECONDS`, `--backend-config PATH`, `--oath-config PATH`, `--auth-project NAME`. Relative paths are relative to your working directory. Backend credential paths resolve against its config directory. Model settings stay in Oath's config; login settings stay in Backend's config. No `.env` is required.
 
-**Existing local setup:** if Casdoor was initialized under `hymio-auth-dev`, append `--auth-project hymio-auth-dev` on every launch. Using a different project creates a different data volume; it does not migrate accounts or OIDC applications.
+**Existing local setup:** the installer detects a single existing Casdoor Compose project on port 8000. You can also select `hymio start --auth-project hymio-auth-dev` once; subsequent CLI starts preserve the selection. Using a different project creates a different data volume; it does not migrate accounts or OIDC applications.
 
 ## Stop and restart
 
-Keep the launcher terminal open. Ctrl+C stops only the Backend and client it launched. Docker services remain available so accepted Agent work continues. Run the same command to start again; dependency installation uses lockfiles and existing configuration is preserved.
+```bash
+hymio stop
+hymio restart
+```
+
+Stop/restart only manages the launcher and Backend/client processes it owns. Oath, Casdoor
+and E2B environments remain running so accepted Agent work can continue. Closing the terminal
+does not stop a CLI-managed stack. Foreground `deploy/start.py` still uses Ctrl+C.
+A stale PID or unrelated process is never stopped; failed startup details are in `hymio logs`.
+The CLI preserves settings across restarts; it does not replace model/login/E2B credentials.
 
 To stop Docker services explicitly:
 
@@ -76,3 +105,16 @@ docker compose -f deploy/auth/compose.yaml down
 Do not add `--volumes` unless you intend to delete login data. The launcher rejects occupied Backend/client ports rather than stopping someone else's processes. Failures show the failing command or service output; Docker resources are left intact for inspection.
 
 Production deployment, Nostalgia and connector services are not included. See [feature09](../spec/feature09-local-start.md) for boundaries and [Backend](../backend/README.md) for the authentication contract.
+
+## Device environments
+
+The launcher mounts Hymio device tools/skills; cloud desktops are provisioned through E2B.
+It writes a private `hymio-runtime.local.toml` beside the Oath config, disabling host Bash;
+your source Oath configuration is unchanged. See [computer environments](computer/README.md)
+for E2B configuration, device management and the end-to-end check.
+
+## Cloud deployment
+
+For Linux servers, use the separate [cloud deployment entry](cloud/README.md): containerized
+Backend, static Web and Caddy HTTPS, with E2B computers and independently managed Oath/OIDC.
+The development launcher above is not the cloud deployment command.

@@ -21,6 +21,9 @@ class Settings:
     login_method: str = "account"
     host: str = "127.0.0.1"
     port: int = 8080
+    computer_provider: str = "e2b"
+    e2b_key_file: Path | None = None
+    e2b_template: str = "hymio-desktop"
 
     @classmethod
     def load(cls, path):
@@ -30,7 +33,16 @@ class Settings:
             file = Path(data[key]).expanduser()
             data[key] = file if file.is_absolute() else path.parent / file
         data["origins"] = tuple(data["origins"])
+        if data.get("e2b_key_file"):
+            key = Path(data["e2b_key_file"]).expanduser()
+            data["e2b_key_file"] = key if key.is_absolute() else path.parent / key
         result = cls(**data)
+        if result.computer_provider != "e2b":
+            raise ValueError("Only the e2b computer provider is supported")
+        if result.computer_provider == "e2b" and not result.e2b_key_file:
+            raise ValueError("e2b requires e2b_key_file")
+        if result.e2b_key_file and not result.e2b_key_file.read_text().strip():
+            raise ValueError("Missing E2B credential")
         if result.login_method not in ("account", "google"):
             raise ValueError("login_method must be account or google")
         if result.access_seconds < 1 or result.refresh_seconds < result.access_seconds:

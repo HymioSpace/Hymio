@@ -18,10 +18,10 @@ async fn biz_get(
         || url.password().is_some()
         || !matches!(
             url.path().strip_prefix("/oath-biz").unwrap_or(url.path()),
-            "/heartbeat" | "/list_traces" | "/query_trace"
+            "/heartbeat" | "/list_traces" | "/query_trace" | "/conversation_history"
         )
     {
-        return Err("仅允许 Biz 健康与 Trace 查询".into());
+        return Err("仅允许 Biz 健康、Trace 与会话历史查询".into());
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))

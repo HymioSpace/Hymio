@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ArrowUp,
   ArrowDown,
@@ -24,9 +24,11 @@ import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
 import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
+import { groupMessages, ToolActivityGroup } from './ToolActivityGroup';
 import { DebugPanel } from './DebugPanel';
-import { desktop } from './platform';
+import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
+import { deviceRequest } from './deviceApi';
 const client = new OathClient();
 function Brand() {
   return (
@@ -69,12 +71,59 @@ export default function App() {
       setConnection((value) => ({ ...value, credential: '', userId: undefined }));
     },
   );
+  useEffect(() => {
+    if (!login.session) return;
+    let active = true;
+    let deviceId = '';
+    const key = `hymio.installation:${login.backend}:${login.session.user_id}`;
+    const installation = localStorage.getItem(key) || crypto.randomUUID();
+    localStorage.setItem(key, installation);
+    void deviceRequest(login, '/register', {
+      installation_id: installation,
+      kind: desktop ? 'mac' : 'web',
+    })
+      .then((device) => {
+        if (!active) return;
+        deviceId = device.device_id;
+        client.setSourceDevice(deviceId);
+      })
+      .catch(() => {
+        if (active) setNotice('设备绑定暂不可用，对话仍可继续。');
+      });
+    const timer = setInterval(() => {
+      if (deviceId) void deviceRequest(login, `/${deviceId}/heartbeat`, {}).catch(() => {});
+    }, 30000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      client.setSourceDevice('');
+    };
+  }, [login.session?.access_token]);
+  useEffect(() => {
+    if (!login.session) return;
+    let active = true;
+    void deviceRequest(login, '/ensure', {})
+      .then((binding) => {
+        if (active && binding.action === 'replaced')
+          setNotice('原云电脑已失效，已自动绑定新环境；旧文件未恢复，聊天记录保留。');
+      })
+      .catch(() => {
+        if (active) setNotice('云电脑暂时无法准备，对话仍可继续；需要用电脑时会自动重试。');
+      });
+    return () => {
+      active = false;
+    };
+  }, [login.session?.user_id, login.backend]);
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
     (a) => a.status === 'pending' && a.expiresAt * 1000 > clock,
   );
   const approvalIds = new Set(pendingApprovals.map((a) => a.id));
+  const attachedToolIds = new Set(
+    model.messages.flatMap((m) => (m.calls || []).map((_, i) => `${m.stepId}-${i}`)),
+  );
+  const unattachedTools = model.tools.filter((t) => !attachedToolIds.has(t.id));
   const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
   const busy = toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || '');
   const streaming = model.messages.some((m) => m.streaming);
@@ -129,11 +178,55 @@ export default function App() {
       input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px`;
     }
   }, [draft]);
-  useEffect(() => {
-    if (nearBottom) {
-      viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyAnchor = useRef<{ top: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = viewport.current;
+    const anchor = historyAnchor.current;
+    if (el && anchor) {
+      el.scrollTop = anchor.top + el.scrollHeight - anchor.height;
+      historyAnchor.current = null;
     }
-  }, [state.events.length, state.pending.length, debug]);
+  }, [state.events]);
+  async function loadHistory() {
+    if (historyLoading || !state.history?.before) return;
+    setHistoryLoading(true);
+    try {
+      const page = await bizGet(
+        connection.bizUrl,
+        `/conversation_history?before=${state.history.before}&limit=10`,
+        connection.credential,
+      );
+      const el = viewport.current;
+      following.current = false;
+      if (el) historyAnchor.current = { top: el.scrollTop, height: el.scrollHeight };
+      await client.prependHistory(page);
+    } catch (error) {
+      historyAnchor.current = null;
+      setNotice(`历史加载失败：${String(error)}`);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+  const following = useRef(true);
+  const scrollFrame = useRef(0);
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(scrollFrame.current);
+      if (!following.current) return;
+      scrollFrame.current = requestAnimationFrame(() => {
+        if (following.current) el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+      });
+    });
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(scrollFrame.current);
+    };
+  }, [model.messages.length === 0]);
   useEffect(() => {
     const timer = setInterval(() => {
       setClock(Date.now());
@@ -255,9 +348,22 @@ export default function App() {
         <div
           className="conversation-scroll"
           ref={viewport}
+          onWheel={(event) => {
+            if (event.deltaY < 0) following.current = false;
+          }}
+          onTouchStart={() => {
+            following.current = false;
+          }}
+          onPointerDown={() => {
+            following.current = false;
+          }}
           onScroll={() => {
             const el = viewport.current;
-            if (el) setNearBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 100);
+            if (el) {
+              const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+              following.current = atBottom;
+              setNearBottom(atBottom);
+            }
           }}
         >
           {welcome ? (
@@ -300,6 +406,15 @@ export default function App() {
             </section>
           ) : (
             <div className="transcript">
+              {state.history?.hasMore && (
+                <button
+                  className="load-history"
+                  disabled={historyLoading}
+                  onClick={() => void loadHistory()}
+                >
+                  {historyLoading ? '正在加载…' : '加载更早的消息'}
+                </button>
+              )}
               <div className="day-divider">
                 <span>同一段对话，随时接着聊</span>
               </div>
@@ -311,19 +426,38 @@ export default function App() {
                     : `已同步 ${state.replay.received} 条服务端事件`}
                 </div>
               )}
-              {model.messages.map((m) => (
-                <MessageView key={m.id} message={m} tools={model.tools} />
-              ))}
-              {model.tools.length > 0 && (
+              {groupMessages(model.messages).map((group) => {
+                const first = group[0];
+                return first.role === 'assistant' &&
+                  !first.content.trim() &&
+                  first.calls?.length ? (
+                  <article
+                    key={first.id}
+                    className="message message-assistant message-tool-activity"
+                  >
+                    <div className="message-avatar">
+                      <Companion compact mood="idle" />
+                    </div>
+                    <div className="message-body">
+                      <ToolActivityGroup messages={group} tools={model.tools} />
+                    </div>
+                  </article>
+                ) : (
+                  <MessageView key={first.id} message={first} tools={model.tools} login={login} />
+                );
+              })}
+              {unattachedTools.length > 0 && (
                 <div className="work-summary">
                   <button onClick={() => setToolsOpen(!toolsOpen)}>
                     <span className={`work-dot ${toolsRunning ? 'running' : ''}`} />
-                    {toolsRunning ? '正在处理工具任务' : `已记录 ${model.tools.length} 次工具调用`}
+                    {toolsRunning
+                      ? '正在处理工具任务'
+                      : `其他工具活动 · ${unattachedTools.length} 次调用`}
                     <ChevronDown size={14} className={toolsOpen ? 'rotated' : ''} />
                   </button>
                   {toolsOpen && (
                     <div className="tool-results">
-                      {model.tools.map((t) => (
+                      {unattachedTools.map((t) => (
                         <details key={t.id}>
                           <summary>
                             <Terminal size={14} />
@@ -391,8 +525,10 @@ export default function App() {
                 </section>
               ))}
               {(busy || streaming) && (
-                <div className="working-indicator">
-                  <Companion compact mood={mood} />
+                <div className="message working-indicator">
+                  <div className="message-avatar">
+                    <Companion compact mood={mood} />
+                  </div>
                   <span>
                     Hymio {streaming ? '正在回复' : '正在接着做'}
                     <i />
@@ -434,10 +570,11 @@ export default function App() {
             <button
               className="jump-bottom"
               onClick={() => {
+                following.current = true;
                 setNearBottom(true);
                 viewport.current?.scrollTo({
                   top: viewport.current.scrollHeight,
-                  behavior: 'smooth',
+                  behavior: 'instant',
                 });
               }}
             >
@@ -448,6 +585,7 @@ export default function App() {
           {(notice || state.error || login.error) && (
             <div role="alert" className="notice-bar">
               <span>{notice || state.error || login.error}</span>
+              {!connected && login.session && <button onClick={login.reconnect}>重新连接</button>}
               <button
                 className="icon-button"
                 aria-label="收起提示"
@@ -473,6 +611,7 @@ export default function App() {
             <div className="offline-banner">
               <WifiOff size={14} />
               <span>连接暂时离开，Oath 上的工作仍会继续。</span>
+              <button onClick={login.reconnect}>重新连接</button>
               <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
           )}

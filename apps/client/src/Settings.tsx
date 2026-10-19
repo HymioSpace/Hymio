@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X, UserRound, LoaderCircle } from 'lucide-react';
 import type { LoginState } from './useLogin';
+import { DeviceManager } from './DeviceManager';
 export function Settings({ login, onClose }: { login: LoginState; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -27,6 +28,7 @@ export function Settings({ login, onClose }: { login: LoginState; onClose: () =>
       <h2 id="settings-title">我的账号</h2>
       <p className="dialog-intro">{login.session?.name}</p>
       <p className="dialog-note">在不同设备上，继续同一段对话。</p>
+      <DeviceManager login={login} />
       {login.error && (
         <p role="alert" className="form-error">
           {login.error}

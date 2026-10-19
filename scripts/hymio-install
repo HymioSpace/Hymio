@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if ! command -v uv >/dev/null; then
+  echo 'Install uv first: https://docs.astral.sh/uv/getting-started/installation/' >&2
+  exit 1
+fi
+uv tool install --python 3.12 --editable --force ./deploy/cli
+uv run --python 3.12 --no-project python - <<'PY'
+import json
+import shutil
+import subprocess
+from pathlib import Path
+root = Path.cwd().resolve()
+home = Path.home() / '.hymio'
+home.mkdir(mode=0o700, exist_ok=True)
+path = home / 'installation.json'
+path.write_text(json.dumps({'root': str(root)}, indent=2) + '\n')
+path.chmod(0o600)
+preferences = home / 'preferences.json'
+if not preferences.exists() and shutil.which('docker'):
+    try:
+        result = subprocess.run(
+            ['docker', 'ps', '--filter', 'publish=8000', '--format', '{{.Label "com.docker.compose.project"}}'],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        projects = set(result.stdout.split())
+    except (OSError, subprocess.SubprocessError):
+        projects = set()
+    if len(projects) == 1:
+        preferences.write_text(json.dumps({'auth_project': projects.pop()}) + '\n')
+        preferences.chmod(0o600)
+print('Installed hymio. Keep this source checkout in place.')
+print('If not on PATH: uv tool update-shell, then reopen your terminal.')
+print('Use: hymio start --client web | hymio status | hymio logs -f')
+print('Existing Casdoor data under hymio-auth-dev? Start with --auth-project hymio-auth-dev.')
+PY
