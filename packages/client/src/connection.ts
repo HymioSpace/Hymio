@@ -10,7 +10,7 @@ import {
   type ConversationPage,
 } from '@hymio/protocol';
 import { storage, type Pending } from './storage';
-const identity = () =>
+export const createIdentity = () =>
   crypto.randomUUID?.() ??
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
     value.toString(16).padStart(2, '0'),
@@ -57,7 +57,7 @@ export class OathClient {
   private saving = new Set<string>();
   private ready = false;
   private pingAt = 0;
-  private clientId = `hymio-${identity()}`;
+  private clientId = `hymio-${createIdentity()}`;
   private sourceDeviceId = '';
   private cursor = 0;
   private statusRequest?: { id: string; through: number };
@@ -133,7 +133,7 @@ export class OathClient {
     const socket = new WebSocket(config.wsUrl);
     this.socket = socket;
     let chain = Promise.resolve();
-    const attachId = identity();
+    const attachId = createIdentity();
     // A window owns its delivery cursor. Duplicating a tab must not fence the original socket.
     const clientId = this.clientId;
     this.watchdog = setTimeout(() => socket.close(), 12000);
@@ -196,7 +196,7 @@ export class OathClient {
               });
             }
             if (e.event_seq > this.cursor + 1) {
-              this.clientId = `hymio-${identity()}`;
+              this.clientId = `hymio-${createIdentity()}`;
               socket.close();
               return;
             }
@@ -214,7 +214,7 @@ export class OathClient {
           } else if (frame.type === 'offline.start') {
             if ((frame.after_cursor ?? 0) > this.cursor) {
               // Local storage was evicted after an ACK. A fresh device cursor requests full replay.
-              this.clientId = `hymio-${identity()}`;
+              this.clientId = `hymio-${createIdentity()}`;
               socket.close();
               return;
             }
@@ -355,7 +355,7 @@ export class OathClient {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(command));
   }
   private ephemeral(type: string, payload: Data) {
-    this.raw({ v: 2, id: identity(), type, payload });
+    this.raw({ v: 2, id: createIdentity(), type, payload });
   }
   private flush() {
     if (!this.ready) return;
@@ -372,7 +372,7 @@ export class OathClient {
   async command(type: string, payload: Data) {
     if (!this.ready || !this.account) throw new Error('连接恢复后再发送，草稿会保留。');
     const generation = this.generation;
-    const command: Command = { v: 2, id: identity(), type, payload };
+    const command: Command = { v: 2, id: createIdentity(), type, payload };
     const pending: Pending = { id: command.id, account: this.account, command, at: Date.now() };
     if (type === 'user.message') {
       command.payload = {
@@ -412,7 +412,7 @@ export class OathClient {
   }
   status() {
     if (this.ready) {
-      const id = identity();
+      const id = createIdentity();
       this.statusRequest = { id, through: this.cursor };
       this.raw({ v: 2, id, type: 'agent.status', payload: {} });
     }

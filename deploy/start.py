@@ -21,6 +21,8 @@ except ModuleNotFoundError:
     ) from None
 from urllib.request import urlopen
 
+from local_network import lan_address, load_network, prepare_lan, write_ios_network
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -101,6 +103,9 @@ def main():
         "--oath-config", type=Path, default=Path.home() / ".oath/oath.toml"
     )
     parser.add_argument("--auth-project", default="hymio-auth")
+    parser.add_argument(
+        "--deploy-config", type=Path, default=ROOT / "deploy/local.toml"
+    )
     parser.add_argument("--instance", help=argparse.SUPPRESS)
     parser.add_argument("--ready-file", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -158,13 +163,10 @@ def main():
             raise RuntimeError(
                 "Backend oath_ws/oath_biz must match the local Oath configured ports"
             )
-        client_settings = tomllib.loads((ROOT / "apps/client/client.toml").read_text())
-        if args.client != "none" and client_settings.get("backend_url", "").rstrip(
-            "/"
-        ) != config["public_url"].rstrip("/"):
-            raise RuntimeError(
-                "Client client.toml backend_url must match Backend public_url"
-            )
+        address = lan_address(load_network(args.deploy_config.expanduser().resolve()))
+        if address:
+            config, config_path = prepare_lan(ROOT, config, config_path, address)
+        write_ios_network(ROOT, config["public_url"])
         free_port(8080)
         if args.client != "none":
             free_port(1420)
@@ -237,6 +239,11 @@ def main():
             children.append(
                 subprocess.Popen(
                     ["pnpm", "dev" if args.client == "web" else "desktop"],
+                    env={
+                        **os.environ,
+                        "HYMIO_BACKEND_URL": config["public_url"],
+                        "HYMIO_LAN": "1" if address else "0",
+                    },
                     cwd=ROOT / "apps/client",
                     start_new_session=True,
                 )
@@ -247,12 +254,25 @@ def main():
             else "Hymio Backend running: http://localhost:8080",
             flush=True,
         )
+        if address:
+            print(
+                f"iPhone Backend: {config['public_url']} | Web: http://{address}:1420 | iOS Debug network configuration generated",
+                flush=True,
+            )
         print(
             "Ctrl+C stops Backend/client. Docker services remain running.", flush=True
         )
         if args.ready_file and args.instance:
             temporary = args.ready_file.with_suffix(".tmp")
-            temporary.write_text(json.dumps({"instance": args.instance}))
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "instance": args.instance,
+                        "backend_url": config["public_url"],
+                        "web_url": f"http://{address or '127.0.0.1'}:1420",
+                    }
+                )
+            )
             temporary.chmod(0o600)
             temporary.replace(args.ready_file)
         while all(child.poll() is None for child in children):
@@ -282,6 +302,7 @@ if __name__ == "__main__":
         RuntimeError,
         OSError,
         ValueError,
+        TypeError,
         KeyError,
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,

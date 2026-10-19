@@ -18,6 +18,7 @@
 | 11 | [单机云部署](feature11-cloud-deployment.md) | Implemented：部署入口；公网验收待部署 |
 | 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：E2B Desktop |
 | 14 | [iOS MVP](feature14-ios-mvp.md) | Implemented：SwiftUI、同账号持续对话与前台恢复 |
+| 16 | [单入口与局域网真机体验](feature16-lan-entry.md) | Implemented：单入口、LAN 启动与配置 |
 | 15 | [统一设计与组件](feature15-unified-design.md) | Implemented |
 
 

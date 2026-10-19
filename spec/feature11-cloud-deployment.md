@@ -13,7 +13,7 @@ Oath 用自己的 CLI 启动，Casdoor 使用独立部署或托管地址；不�
 部署输入集中在私有 cloud TOML；Backend/Oath 各自保留自己的配置。
 部署脚本生成忽略的 Compose、Caddyfile 与公开 Web 构建配置，不使用 .env。
 私有目录只读挂到 Backend，运行库写独立卷。密钥不进镜像、不传给客户端。
-Web / Backend / Oath WS 分别通过域名提供 HTTPS / WSS；Oath Biz 仅供服务器内部访问。
+Web / Backend 通过两个域名提供 HTTPS；聊天 WSS 走 Backend 的 /agent/ws。Oath WS/Biz 仅供服务器内部访问。旧 agent_domain 为兼容选项，新部署不需要第三个域名。
 反向代理的 host gateway 连接本机 Oath，Oath 启用 Hymio remote auth。
 Backend 通过 host gateway 访问 Oath Biz；Oath 通过宿主机 Docker bridge 转发端口访问 Backend 验证器和工具路由。
 

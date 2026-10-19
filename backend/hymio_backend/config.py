@@ -56,7 +56,21 @@ class Settings:
                 or parsed.password
             ):
                 raise ValueError("Invalid service URL")
-        if result.callback_url != result.public_url.rstrip("/") + "/auth/callback":
+        agent = urlsplit(result.oath_ws)
+        if (
+            agent.scheme not in ("ws", "wss")
+            or not agent.hostname
+            or agent.username
+            or agent.password
+        ):
+            raise ValueError("oath_ws must be an internal WS(S) service URL")
+        public = urlsplit(result.public_url)
+        if agent.netloc == public.netloc and agent.path == public.path.rstrip("/") + "/agent/ws":
+            raise ValueError("oath_ws must not point back to the Hymio WebSocket proxy")
+        if (
+            result.login_method != "account"
+            and result.callback_url != result.public_url.rstrip("/") + "/auth/callback"
+        ):
             raise ValueError("callback_url must be public_url + /auth/callback")
         if not result.client_secret_file.read_text().strip():
             raise ValueError("Missing OIDC client secret")

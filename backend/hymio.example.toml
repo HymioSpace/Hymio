@@ -6,6 +6,7 @@ public_url = "http://localhost:8080"
 callback_url = "http://localhost:8080/auth/callback"
 service_token_file = "./private/oath-auth-token"
 origins = ["http://127.0.0.1:1420", "http://localhost:1420", "http://tauri.localhost", "tauri://localhost"]
+# Internal upstream. Clients receive public_url + /agent/ws.
 oath_ws = "ws://127.0.0.1:8765"
 oath_biz = "http://127.0.0.1:8766"
 access_seconds = 900

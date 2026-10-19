@@ -19,7 +19,7 @@ python scripts/setup.py --client-id YOUR_CASDOOR_CLIENT_ID
 uv run python -m hymio_backend --config hymio.toml
 ```
 
-Setup prompts for the Casdoor secret and generates a separate Oath verifier service credential. All private files are ignored. Configuration lives in `hymio.toml`; secrets are file references. `access_seconds` and `refresh_seconds` are configurable. For a production domain, change `issuer`, `public_url`, `callback_url`, `origins`, and public `oath_ws` together. `oath_biz` is the backend's private upstream address.
+Setup prompts for the Casdoor secret and generates a separate Oath verifier service credential. All private files are ignored. Configuration lives in `hymio.toml`; secrets are file references. `access_seconds` and `refresh_seconds` are configurable. For a production domain, change `issuer`, `public_url`, `callback_url`, `origins`, together. `oath_ws` and `oath_biz` are private upstream addresses; login responses advertise `public_url` with `/agent/ws` and `/oath-biz`.
 
 ## Connect Oath
 

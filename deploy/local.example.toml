@@ -1,0 +1,4 @@
+# Copy to local.toml (ignored). Restart Hymio after changing this file.
+# off: local Mac only; auto: choose the default-route private IPv4 address.
+# With multiple interfaces/VPNs, set the private IPv4 address of the desired interface.
+lan_host = "off"

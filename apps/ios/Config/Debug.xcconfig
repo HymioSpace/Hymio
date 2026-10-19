@@ -1,3 +1,5 @@
-// Simulator uses the local Hymio stack. For a real phone, override in Local.xcconfig.
+// Hymio start derives the Debug endpoint from the local deployment configuration.
 HYMIO_BACKEND_URL = http:/$()/127.0.0.1:8080
 #include? "Local.xcconfig"
+
+#include? "Network.generated.xcconfig"

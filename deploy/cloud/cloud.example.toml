@@ -1,7 +1,8 @@
 # Copy to cloud.local.toml. Public hostnames only, no scheme or path.
 web_domain = "app.example.com"
 api_domain = "api.example.com"
-agent_domain = "agent.example.com"
+# Optional legacy direct Oath WSS entry; clients normally use api_domain/agent/ws.
+# agent_domain = "agent.example.com"
 # Directory contains hymio.toml and private/ secret files; outside the image context.
 backend_config_dir = "/opt/hymio/config"
 # Oath WS port on this host. Keep Oath Biz private.
