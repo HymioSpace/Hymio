@@ -108,11 +108,31 @@ class DeviceTests(unittest.TestCase):
         def connect(*args, **kwargs):
             raise AssertionError("State query resumed a sandbox")
 
-        sdk = SimpleNamespace(Sandbox=SimpleNamespace(get_info=info, connect=connect))
+        sdk = SimpleNamespace(
+            Sandbox=SimpleNamespace(get_info=info, connect=connect),
+            SandboxNotFoundException=type("NotFound", (Exception,), {}),
+        )
         with patch.dict("sys.modules", {"e2b": sdk, "e2b_desktop": sdk}):
             provider = E2BComputer(key_file, "test")
             self.assertEqual(provider.state({"provider_ref": "sandbox"}), "paused")
         self.assertEqual(calls, ["info"])
+
+    def test_missing_sandbox_is_distinct_from_connection_failure(self):
+        missing = type("NotFound", (Exception,), {})
+        key_file = Path(self.temp.name) / "key"
+        key_file.write_text("synthetic")
+        for error, expected in ((missing(), "missing"), (TimeoutError(), "offline")):
+            sdk = SimpleNamespace(
+                Sandbox=SimpleNamespace(get_info=lambda *a, **kw: None),
+                SandboxNotFoundException=missing,
+            )
+            with (
+                patch.dict("sys.modules", {"e2b": sdk}),
+                patch.object(sdk.Sandbox, "get_info", side_effect=error),
+            ):
+                self.assertEqual(
+                    E2BComputer(key_file, "test").state({"provider_ref": "id"}), expected
+                )
 
     def test_late_result_cannot_replace_unknown(self):
         self.store.claim("alice", self.device, "tool1", {}, 10)

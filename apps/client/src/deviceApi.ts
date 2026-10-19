@@ -8,6 +8,7 @@ export interface Device {
   online: boolean;
   capabilities: string[];
   preserves_files_on_revoke: boolean;
+  replaces_device_id?: string | null;
 }
 export async function deviceRequest(login: LoginState, path = '', data?: object) {
   const session = login.session;
@@ -20,7 +21,11 @@ export async function deviceRequest(login: LoginState, path = '', data?: object)
     },
     body: data ? JSON.stringify(data) : undefined,
     signal: AbortSignal.timeout(
-      path === '/provision' ? 130000 : /\/(pause|resume)$/.test(path) ? 90000 : 15000,
+      ['/provision', '/ensure'].includes(path)
+        ? 130000
+        : /\/(pause|resume)$/.test(path)
+          ? 90000
+          : 15000,
     ),
   });
   if (!response.ok)

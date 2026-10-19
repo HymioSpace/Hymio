@@ -5,6 +5,7 @@ import {
   type Data,
   type Frame,
   type OathEvent,
+  type ConversationPage,
 } from '@hymio/protocol';
 import { storage, type Pending } from './storage';
 const identity = () =>
@@ -29,6 +30,7 @@ export interface ClientState {
   replay?: { after: number; through: number; received: number };
   runtime?: Data;
   latency?: number;
+  history?: { before: number | null; hasMore: boolean };
 }
 export class OathClient {
   private state: ClientState = {
@@ -54,6 +56,7 @@ export class OathClient {
   private clientId = `hymio-${identity()}`;
   private sourceDeviceId = '';
   private cursor = 0;
+  private ackTimer?: ReturnType<typeof setTimeout>;
   setSourceDevice(deviceId: string) {
     this.sourceDeviceId = deviceId;
   }
@@ -80,7 +83,14 @@ export class OathClient {
     this.disconnect();
     this.account = '';
     this.seen.clear();
-    this.update({ events: [], pending: [], userId: '', replay: undefined, latency: undefined });
+    this.update({
+      events: [],
+      pending: [],
+      userId: '',
+      replay: undefined,
+      history: undefined,
+      latency: undefined,
+    });
     this.config = { ...config };
     this.retries = 0;
     this.open();
@@ -89,6 +99,8 @@ export class OathClient {
     this.generation++;
     this.ready = false;
     clearTimeout(this.timer);
+    clearTimeout(this.ackTimer);
+    this.ackTimer = undefined;
     clearInterval(this.heartbeat);
     clearTimeout(this.watchdog);
     this.socket?.close();
@@ -124,7 +136,12 @@ export class OathClient {
         v: 2,
         type: 'agent.attach',
         id: attachId,
-        payload: { credential: config.credential, user_id: config.userId, client_id: clientId! },
+        payload: {
+          credential: config.credential,
+          user_id: config.userId,
+          client_id: clientId!,
+          history_limit: 10,
+        },
       });
     socket.onmessage = (event) => {
       chain = chain
@@ -134,19 +151,35 @@ export class OathClient {
           if (frame.type === 'ack' && frame.id === attachId && frame.user_id) {
             clearTimeout(this.watchdog);
             this.account = `${config.wsUrl}|${frame.user_id}`;
-            const events = await storage.events(this.account);
+            const snapshot = await storage.snapshot(this.account);
+            const cached = snapshot ? await storage.events(this.account) : [];
+            const visible = new Set(snapshot?.events.map((e) => e.event_seq));
+            const events = cached.filter(
+              (e) => e.event_seq > (snapshot?.checkpoint || 0) || visible.has(e.event_seq),
+            );
             const pending = await storage.commands(this.account);
             if (generation !== this.generation) return;
             this.seen = new Set(events.map((e) => e.event_seq));
-            this.cursor = 0;
+            this.cursor = snapshot?.checkpoint || 0;
             while (this.seen.has(this.cursor + 1)) this.cursor++;
             this.update({ userId: frame.user_id, events, pending, phase: 'syncing' });
+          } else if (frame.type === 'conversation.snapshot') {
+            const snapshot = this.validatePage(frame);
+            await storage.savePage(this.account, snapshot, true);
+            if (generation !== this.generation) return;
+            this.seen = new Set(snapshot.events.map((e) => e.event_seq));
+            this.cursor = snapshot.checkpoint;
+            this.update({
+              events: snapshot.events,
+              history: { before: snapshot.before_cursor, hasMore: snapshot.has_more },
+            });
+            this.ephemeral('event.ack', { cursor: this.cursor });
           } else if (frame.type === 'event') {
             const e = frame as OathEvent;
             if (e.user_id !== this.state.userId) throw new Error('用户身份与事件不一致');
-            await storage.saveEvent(this.account, e);
-            if (generation !== this.generation) return;
             if (!this.seen.has(e.event_seq)) {
+              await storage.saveEvent(this.account, e);
+              if (generation !== this.generation) return;
               this.seen.add(e.event_seq);
               this.update({
                 events: [...this.state.events, e].sort((a, b) => a.event_seq - b.event_seq),
@@ -158,7 +191,12 @@ export class OathClient {
               return;
             }
             this.cursor = Math.max(this.cursor, e.event_seq);
-            this.ephemeral('event.ack', { cursor: this.cursor });
+            if (!this.ackTimer)
+              this.ackTimer = setTimeout(() => {
+                this.ackTimer = undefined;
+                if (generation === this.generation)
+                  this.ephemeral('event.ack', { cursor: this.cursor });
+              }, 100);
             if (this.state.replay && this.state.phase === 'syncing')
               this.update({
                 replay: { ...this.state.replay, received: this.state.replay.received + 1 },
@@ -180,6 +218,7 @@ export class OathClient {
             });
             this.cursor = frame.after_cursor ?? 0;
           } else if (frame.type === 'offline.end') {
+            this.ephemeral('event.ack', { cursor: this.cursor });
             this.ready = true;
             this.retries = 0;
             this.update({ phase: 'connected' });
@@ -206,6 +245,11 @@ export class OathClient {
               // Keep the original identity for an explicit retry after rejection.
               this.update({ error: f.message || '命令被拒绝' });
               this.sent.delete(f.id);
+            } else if (f.code === 'connection_closed') {
+              // The gateway also uses this for temporary auth-service outages.
+              // Preserve connection settings so onclose can retry with backoff.
+              this.update({ phase: 'reconnecting', error: f.message || '连接暂时中断，正在重连…' });
+              socket.close();
             } else {
               this.config = undefined;
               this.update({ phase: 'error', error: f.message || f.code || '连接认证失败' });
@@ -227,6 +271,8 @@ export class OathClient {
     socket.onclose = () => {
       if (generation !== this.generation) return;
       this.ready = false;
+      clearTimeout(this.ackTimer);
+      this.ackTimer = undefined;
       clearInterval(this.heartbeat);
       clearTimeout(this.watchdog);
       if (!this.config) return;
@@ -234,6 +280,41 @@ export class OathClient {
       const delay = Math.min(1000 * 2 ** this.retries++, 15000);
       this.timer = setTimeout(() => this.open(), delay);
     };
+  }
+  private validatePage(value: unknown): ConversationPage {
+    const page = value as ConversationPage;
+    if (
+      !page ||
+      !Number.isSafeInteger(page.checkpoint) ||
+      page.checkpoint < 0 ||
+      !Array.isArray(page.events) ||
+      typeof page.has_more !== 'boolean' ||
+      !(page.before_cursor === null || Number.isSafeInteger(page.before_cursor))
+    )
+      throw new Error('会话快照格式无效');
+    for (const event of page.events) {
+      parseFrame(JSON.stringify(event));
+      if (event.user_id !== this.state.userId || event.event_seq > page.checkpoint)
+        throw new Error('会话快照身份或进度无效');
+    }
+    return page;
+  }
+  async prependHistory(value: unknown) {
+    const incoming = this.validatePage(value);
+    const page = {
+      ...incoming,
+      events: incoming.events.filter((event) => event.event_seq <= this.cursor),
+    };
+    const generation = this.generation;
+    await storage.savePage(this.account, page, false);
+    if (generation !== this.generation) return;
+    for (const event of page.events) this.seen.add(event.event_seq);
+    const events = new Map(page.events.map((e) => [e.event_seq, e]));
+    for (const event of this.state.events) events.set(event.event_seq, event);
+    this.update({
+      events: [...events.values()].sort((a, b) => a.event_seq - b.event_seq),
+      history: { before: page.before_cursor, hasMore: page.has_more },
+    });
   }
   private raw(command: Command) {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(command));

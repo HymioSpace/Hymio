@@ -65,6 +65,7 @@ export function useLogin(
       !Number.isFinite(value.expires_at)
     )
       throw new Error('登录响应格式无效');
+    setError('');
     sessionStorage.setItem(key, JSON.stringify(value));
     setSession(value);
     callbacks.current.onConnection(
@@ -257,6 +258,11 @@ export function useLogin(
     error,
     login,
     account,
+    reconnect: () => {
+      if (!session) return;
+      if (session.expires_at * 1000 <= Date.now() + 1000) void refresh(session);
+      else apply(session);
+    },
     logout,
     cancel: () => {
       generation.current++;

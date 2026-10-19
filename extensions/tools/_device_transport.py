@@ -10,7 +10,12 @@ from core.protocol.error import ToolExecutionError
 
 def call(invocation, operation, capability=None):
     config = json.loads(Path(__file__).with_name("_connection.local").read_text())
-    timeout = min(25, invocation.deadline - time.monotonic()) if invocation.deadline else 25
+    budget = 110 if operation == "list" else 25
+    timeout = (
+        min(budget, invocation.deadline - time.monotonic())
+        if invocation.deadline
+        else budget
+    )
     if timeout <= 0:
         raise ToolExecutionError("Device request deadline expired")
     data = {"user_id": invocation.user.user_id}
@@ -40,8 +45,14 @@ def call(invocation, operation, capability=None):
         with urlopen(request, timeout=timeout) as response:
             return ToolResult(json.loads(response.read(1024 * 1024)))
     except HTTPError as error:
-        raise ToolExecutionError("Device service rejected request: " + str(error.code)) from error
+        raise ToolExecutionError(
+            "Device service rejected request: " + str(error.code)
+        ) from error
     except (URLError, TimeoutError) as error:
+        if operation == "list":
+            raise ToolExecutionError(
+                "Computer preparation may still be running. Call devices again; do not repeat commands."
+            ) from error
         raise ToolExecutionError(
             f"Result unavailable for device_id={invocation.arguments.get('device_id')}, "
             f"invocation_id={invocation.invocation_id}. "

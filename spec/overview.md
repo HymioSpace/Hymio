@@ -2,11 +2,13 @@
 
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
-当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 集成尚未实现，本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)。详见 [feature07](feature07-client-mvp.md)。
+当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 集成尚未实现，本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。
 
 ## 产品边界
 
 一个用户对应一段持续的 Agent 对话，不创建 session。客户端连接与执行生命周期分离；Oath 接纳的工作在用户断线后继续，重连按设备 cursor 接收持久事件。
+
+会话首屏加载最近十轮快照，旧历史按轮次分页；快照 checkpoint 之后接实时事件，见 [feature13](feature13-conversation-history.md)。
 
 设备绑定与投递 client_id 分开：每个窗口独立 ACK，不能用其他端的进度跳过消息。
 Hymio 管设备归属、在线状态与执行命令；Oath 扩展显式指定 device_id。

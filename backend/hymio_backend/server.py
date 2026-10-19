@@ -175,7 +175,7 @@ def build_app(settings, *, provider=None):
     ]
     routes += [
         Route("/oath-biz" + path, endpoint)
-        for path in ("/heartbeat", "/list_traces", "/query_trace")
+        for path in ("/heartbeat", "/list_traces", "/query_trace", "/conversation_history")
     ]
     routes += [
         Route(path, endpoint, methods=["POST"])

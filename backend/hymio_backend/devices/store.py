@@ -33,12 +33,17 @@ class DeviceStore:
                 CREATE TABLE IF NOT EXISTS device_locks (
                     device_id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
                     invocation_id TEXT NOT NULL, deadline REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS device_ensures (
+                    user_id TEXT PRIMARY KEY, owner TEXT NOT NULL, deadline REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS device_media (
                     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_id TEXT NOT NULL,
                     content BLOB NOT NULL, created_at REAL NOT NULL);
             """)
             additions = {
-                "devices": {"control_state": "TEXT NOT NULL DEFAULT 'active'"},
+                "devices": {
+                    "control_state": "TEXT NOT NULL DEFAULT 'active'",
+                    "replaces_device_id": "TEXT",
+                },
                 "device_commands": {
                     "request_json": "TEXT NOT NULL DEFAULT '{}'",
                     "submitted_at": "REAL NOT NULL DEFAULT 0",
@@ -92,10 +97,51 @@ class DeviceStore:
 
     def set_ref(self, user_id, device_id, reference):
         with self.transaction() as db:
-            db.execute(
+            changed = db.execute(
                 "UPDATE devices SET provider_ref=? WHERE id=? AND user_id=? AND revoked_at IS NULL",
                 (reference, device_id, user_id),
+            ).rowcount
+            if changed != 1:
+                raise DeviceConflict("device_revoked_during_provision")
+
+    def begin_ensure(self, user_id):
+        owner = uuid.uuid4().hex
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT deadline FROM device_ensures WHERE user_id=?", (user_id,)
+            ).fetchone()
+            if row and row[0] > time.time():
+                return None
+            db.execute(
+                "INSERT OR REPLACE INTO device_ensures VALUES(?,?,?)",
+                (user_id, owner, time.time() + 180),
             )
+        return owner
+
+    def finish_ensure(self, user_id, owner):
+        with self.transaction() as db:
+            db.execute("DELETE FROM device_ensures WHERE user_id=? AND owner=?", (user_id, owner))
+
+    def replace_missing(self, user_id, device_id):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT id FROM devices WHERE user_id=? AND id=? AND revoked_at IS NULL",
+                (user_id, device_id),
+            ).fetchone()
+            if not row:
+                raise DeviceConflict("binding_changed")
+            db.execute(
+                "UPDATE devices SET revoked_at=?,generation=generation+1 WHERE user_id=? AND id=?",
+                (time.time(), user_id, device_id),
+            )
+            new_id = uuid.uuid4().hex
+            db.execute(
+                "INSERT INTO devices(id,user_id,name,kind,provider,provider_ref,created_at,"
+                "replaces_device_id) "
+                "VALUES(?,?,'E2B cloud desktop','cloud_desktop','e2b','',?,?)",
+                (new_id, user_id, time.time(), device_id),
+            )
+        return self.get(user_id, new_id)
 
     def bind(self, user_id, installation_id, kind):
         if (

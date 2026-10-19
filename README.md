@@ -20,6 +20,7 @@ Account settings now manage devices and a cloud desktop. Bash, browser DOM autom
 controls share one E2B cloud environment, with an explicit execution device and independent message
 delivery cursors per client window. The execution environment is hosted by E2B.
 See the [computer environment guide](deploy/computer/README.md) for setup and current limits.
+Conversations open from a recent snapshot, with earlier messages loaded on demand and live events delivered from the snapshot checkpoint.
 Cloud desktops can be paused and resumed from device settings. Recent operations are queryable
 without replaying commands, and browser tools support explicit tabs and navigation history.
 
@@ -51,16 +52,17 @@ For a complete local login-enabled stack, complete the one-time setup in the
 [deployment guide](deploy/README.md), then run from the repository root:
 
 ```bash
-uv run --python 3.12 --no-project python deploy/start.py --client web
+bash scripts/hymio-install
+hymio start
 # Desktop instead: --client desk; services only: --client none
 ```
 
 The launcher starts Casdoor, Backend and Oath before the chosen development client.
-Ctrl+C closes Backend/client while leaving Docker services and Agent work running.
+`hymio status`, `hymio logs -f`, `hymio stop` and `hymio restart` manage the local stack. Stop leaves Oath/Casdoor and accepted Agent work running.
 
 ### Client only
 
-Requires Node.js 22.12+ and pnpm 11. Start [Oath](https://github.com/HymioSpace/Oath) separately, then:
+Requires Node.js 22.12+, pnpm 11 and a configured Hymio Backend with its Oath services running, then:
 
 ```bash
 git clone https://github.com/HymioSpace/Hymio.git

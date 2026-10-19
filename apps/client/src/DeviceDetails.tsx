@@ -14,11 +14,13 @@ export function DeviceDetails({
   login,
   busy,
   onAction,
+  onEnsure,
 }: {
   device: Device;
   login: LoginState;
   busy: boolean;
   onAction: (path: string) => void;
+  onEnsure: () => void;
 }) {
   const [records, setRecords] = useState<CommandRecord[]>([]);
   const [error, setError] = useState('');
@@ -46,30 +48,46 @@ export function DeviceDetails({
     <section className="device-details" aria-label="设备详情">
       <h4>{device.name}</h4>
       <code>{device.device_id}</code>
-      <p className="dialog-note">暂停保留桌面状态，继续时回到原来的工作。</p>
+      <p className="dialog-note">
+        {device.state === 'preparing'
+          ? '正在自动准备云电脑，无需手动绑定。'
+          : device.replaces_device_id
+            ? '原环境已失效，系统已自动更换为空环境。旧文件未恢复，聊天记录保留。'
+            : device.state === 'missing'
+              ? '原沙箱已不存在，无法继续运行。系统会自动绑定新环境；原沙箱文件无法恢复，聊天记录仍保留。'
+              : '到期自动暂停，继续时回到原来的工作。'}
+      </p>
       <div className="device-actions">
         <button
-          disabled={busy || device.state === 'changing'}
+          disabled={busy || ['changing', 'preparing'].includes(device.state)}
           onClick={() =>
-            onAction(`/${device.device_id}/${device.state === 'online' ? 'pause' : 'resume'}`)
+            device.state === 'missing'
+              ? onEnsure()
+              : onAction(`/${device.device_id}/${device.state === 'online' ? 'pause' : 'resume'}`)
           }
         >
-          {device.state === 'online' ? '暂停电脑' : '继续运行'}
+          {device.state === 'missing'
+            ? '重试连接'
+            : device.state === 'online'
+              ? '暂停电脑'
+              : '继续运行'}
         </button>
         <button
           disabled={busy}
           onClick={() => {
             if (
               window.confirm(
-                device.preserves_files_on_revoke
-                  ? '解除并停止云电脑？文件仍保留。'
-                  : '解除会销毁云电脑及文件，确认已备份？',
+                device.state === 'missing'
+                  ? '移除失效设备记录？历史执行记录仍会保留。'
+                  : device.preserves_files_on_revoke
+                    ? '解除并停止云电脑？文件仍保留。'
+                    : '解除会销毁云电脑及文件，确认已备份？',
               )
             )
               onAction(`/${device.device_id}/revoke`);
           }}
         >
-          解除绑定
+          {device.state === 'missing' ? '移除失效设备' : '解除绑定'}
         </button>
       </div>
       <h4>最近执行</h4>

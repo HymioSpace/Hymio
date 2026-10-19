@@ -18,6 +18,11 @@ export function DeviceManager({ login }: { login: LoginState }) {
     },
     [screen],
   );
+  const cloudId = devices.find((device) => device.kind === 'cloud_desktop')?.device_id;
+  useEffect(() => {
+    setScreen('');
+    setZoomed(false);
+  }, [cloudId]);
   const load = () => deviceRequest(login).then((result) => setDevices(result.devices));
   useEffect(() => {
     let active = true;
@@ -36,6 +41,20 @@ export function DeviceManager({ login }: { login: LoginState }) {
       clearInterval(timer);
     };
   }, [login.session?.access_token]);
+  useEffect(() => {
+    let active = true;
+    void deviceRequest(login, '/ensure', {})
+      .then(() => deviceRequest(login))
+      .then((result) => {
+        if (active) setDevices(result.devices);
+      })
+      .catch(() => {
+        if (active) setError('暂时无法自动准备云电脑，需要使用时会自动重试');
+      });
+    return () => {
+      active = false;
+    };
+  }, [login.session?.user_id, login.backend]);
   async function action(path: string) {
     setBusy(true);
     setError('');
@@ -47,6 +66,21 @@ export function DeviceManager({ login }: { login: LoginState }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      setBusy(false);
+    }
+  }
+  async function ensureDevice() {
+    setBusy(true);
+    setError('');
+    try {
+      const binding = await deviceRequest(login, '/ensure', {});
+      if (binding.device?.device_id) setExpanded(binding.device.device_id);
+      if (binding.action === 'unavailable')
+        setError('云服务暂时无法连接，原环境会保留，稍后自动重试。');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      await load().catch(() => setError('暂时无法读取设备，请稍后刷新'));
       setBusy(false);
     }
   }
@@ -92,7 +126,9 @@ export function DeviceManager({ login }: { login: LoginState }) {
               {(
                 {
                   online: '在线',
-                  offline: '离线',
+                  offline: '暂时无法连接',
+                  missing: '等待自动更换',
+                  preparing: '正在自动准备',
                   paused: '已暂停',
                   changing: '切换中',
                   recovery_required: '需要恢复',
@@ -102,7 +138,12 @@ export function DeviceManager({ login }: { login: LoginState }) {
             </small>
             <code title={device.device_id}>{device.device_id.slice(0, 10)}</code>
           </div>
-          {device.capabilities.includes('computer') && (
+          {device.state === 'missing' && (
+            <button className="text-button" disabled={busy} onClick={() => void ensureDevice()}>
+              重试连接
+            </button>
+          )}
+          {device.capabilities.includes('computer') && device.state !== 'missing' && (
             <button
               className="text-button"
               disabled={busy || !device.online}
@@ -146,6 +187,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
             login={login}
             busy={busy}
             onAction={(path) => void action(path)}
+            onEnsure={() => void ensureDevice()}
           />
         ))}
       {!devices.some((device) => device.kind === 'cloud_desktop') && (
@@ -154,8 +196,8 @@ export function DeviceManager({ login }: { login: LoginState }) {
         </p>
       )}
       {!devices.some((device) => device.kind === 'cloud_desktop') && (
-        <button className="device-add" disabled={busy} onClick={() => void action('/provision')}>
-          {busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}添加云电脑
+        <button className="device-add" disabled={busy} onClick={() => void ensureDevice()}>
+          {busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}准备云电脑
         </button>
       )}
       <p className="dialog-note">云电脑可执行命令、浏览网页和操作桌面。手机仅用于对话。</p>

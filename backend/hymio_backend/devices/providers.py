@@ -55,6 +55,7 @@ class E2BComputer(ComputerProvider):
             raise ValueError("Desktop not provisioned")
         return Sandbox.connect(
             device["provider_ref"],
+            timeout=3600,
             api_key=self.key_file.read_text().strip(),
             request_timeout=request_timeout,
         )
@@ -68,8 +69,10 @@ class E2BComputer(ComputerProvider):
         desktop = Sandbox.create(
             template=self.template,
             timeout=3600,
+            lifecycle={"on_timeout": "pause", "auto_resume": False},
             resolution=(1280, 800),
             metadata={"hymio_device_id": device["id"]},
+            request_timeout=40,
             api_key=self.key_file.read_text().strip(),
         )
         try:
@@ -108,13 +111,15 @@ else:
         return self.state(device) == "online"
 
     def state(self, device):
-        from e2b import Sandbox
+        from e2b import Sandbox, SandboxNotFoundException
 
         try:
             info = Sandbox.get_info(
                 device["provider_ref"], api_key=self.key_file.read_text().strip(), request_timeout=5
             )
             return "paused" if info.state.value == "paused" else "online"
+        except SandboxNotFoundException:
+            return "missing"
         except Exception:
             return "offline"
 
@@ -159,8 +164,13 @@ else:
         )
 
     def stop(self, device):
-        from e2b import Sandbox
+        from e2b import Sandbox, SandboxNotFoundException
 
-        Sandbox.kill(
-            device["provider_ref"], api_key=self.key_file.read_text().strip(), request_timeout=10
-        )
+        try:
+            Sandbox.kill(
+                device["provider_ref"],
+                api_key=self.key_file.read_text().strip(),
+                request_timeout=10,
+            )
+        except SandboxNotFoundException:
+            pass

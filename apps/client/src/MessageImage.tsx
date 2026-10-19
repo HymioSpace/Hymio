@@ -24,7 +24,7 @@ export function MessageImage({
     setError('');
     setZoomed(false);
     async function load() {
-      if (!src) throw new Error('图片地址为空');
+      if (!src?.trim()) return;
       const base = session?.backend || login.backend;
       const url = new URL(src, base + '/');
       const media = /^\/devices\/media\/[a-f0-9]{32}$/.test(url.pathname);
@@ -49,6 +49,7 @@ export function MessageImage({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [src, session?.access_token, session?.backend, login.backend, attempt]);
+  if (!src?.trim()) return null;
   if (error)
     return (
       <span className="message-image-error" role="status">

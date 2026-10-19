@@ -22,17 +22,24 @@ e2b_key_file = "./private/e2b-api-key"
 e2b_template = "hymio-desktop"
 ```
 
-Start with the [launcher](../README.md), sign in, open avatar → 我的设备 → 添加云电脑.
+Start with the [launcher](../README.md) and sign in. Hymio automatically prepares and binds
+your cloud computer; the Agent also ensures availability before listing execution devices.
 Provisioning uses your own E2B account. The API key stays in Backend, never in tool arguments,
 model context or sandbox environment. Backend does not need a Docker socket.
 
 ## Lifecycle
 
 One active cloud desktop per user. Every tool requires its exact device_id.
-Pause/resume restores the original sandbox, including tabs and form input. Listing devices
-never resumes them. Unavailable sandboxes are not silently recreated.
-Sandboxes start with a one-hour timeout; automatic renewal, idle policy and backups are not implemented.
+Pause/resume restores the original sandbox, including tabs and form input. Passive GET listing
+never wakes them; login and the Agent devices tool explicitly ensure availability. A confirmed
+missing sandbox is replaced automatically and reported as a new empty environment.
+Transient network/authentication failures do not trigger replacement.
+Sandboxes start with a one-hour timeout and automatically pause rather than being destroyed.
+Automatic resume is disabled; resume explicitly in device settings. Activity-based idle policy,
+automatic renewal and backups are not implemented.
 Revoking a sandbox destroys it and can delete files: export data first.
+A missing sandbox is shown as expired, separately from transient connectivity failures.
+An ensure request replaces a confirmed missing sandbox and records the replaced device ID.
 Unknown command outcomes block further commands; do not blindly repeat side effects.
 There is no destructive restart endpoint disguised as recovery. A blocked device currently
 requires operator investigation or explicit revoke/reprovision with data-loss confirmation.
@@ -47,7 +54,7 @@ requires operator investigation or explicit revoke/reprovision with data-loss co
 
 Public routes use the Hymio bearer token:
 GET /devices; POST /devices/register; POST /devices/{id}/heartbeat;
-POST /devices/provision; POST /devices/execute; POST /devices/{id}/pause;
+POST /devices/ensure; POST /devices/provision; POST /devices/execute; POST /devices/{id}/pause;
 POST /devices/{id}/resume; POST /devices/{id}/revoke;
 GET /devices/{id}/commands; GET /devices/{id}/commands/{invocation_id}; GET /devices/media/{id}.
 Internal list/execute/command routes require a service credential and authoritative user_id.

@@ -4,7 +4,7 @@ import base64
 import time
 
 from .providers import E2BComputer
-from .store import DeviceStore
+from .store import DeviceConflict, DeviceStore
 from .validation import validate
 
 
@@ -28,7 +28,25 @@ class DeviceService:
             if channel
             else (self.provider(device).state(device) if device["provider_ref"] else "offline")
         )
-        state = device["control_state"] if device["control_state"] != "active" else physical
+        state = (
+            "missing"
+            if physical == "missing"
+            else device["control_state"]
+            if device["control_state"] != "active"
+            else physical
+        )
+        if not channel and not device["provider_ref"]:
+            try:
+                record = self.store.commands(
+                    device["user_id"], device["id"], "provision:" + device["id"]
+                )
+            except KeyError:
+                record = None
+            state = (
+                "preparing"
+                if record is None or record["status"] == "running"
+                else "recovery_required"
+            )
         return {
             "device_id": device["id"],
             "name": "E2B 云电脑" if device["provider"] == "e2b" else device["name"],
@@ -42,6 +60,7 @@ class DeviceService:
             "workspace": None if channel else "~/workspace",
             "resolution": {"width": 1280, "height": 800},
             "preserves_files_on_revoke": False,
+            "replaces_device_id": device.get("replaces_device_id"),
         }
 
     def provision(self, user_id):
@@ -54,7 +73,11 @@ class DeviceService:
             if result is None:
                 try:
                     reference = self.provider(device).provision(device)
-                    self.store.set_ref(user_id, device["id"], reference)
+                    try:
+                        self.store.set_ref(user_id, device["id"], reference)
+                    except Exception:
+                        self.provider(device).stop({**device, "provider_ref": reference})
+                        raise
                     self.store.finish(user_id, invocation, {"status": "succeeded"})
                 except Exception:
                     self.store.finish(
@@ -62,6 +85,53 @@ class DeviceService:
                     )
                     raise
         return self.describe(self.store.get(user_id, device["id"]))
+
+    def ensure_available(self, user_id, *, wake=False):
+        owner = self.store.begin_ensure(user_id)
+        if owner is None:
+            return {
+                "action": "preparing",
+                "notice": "Cloud computer preparation is already in progress.",
+            }
+        try:
+            device = next(
+                (d for d in self.store.list(user_id) if d["kind"] == "cloud_desktop"), None
+            )
+            action = "created" if device is None else "reused"
+            if device and device["provider_ref"]:
+                physical = self.provider(device).state(device)
+                if physical == "missing":
+                    device = self.store.replace_missing(user_id, device["id"])
+                    action = "replaced"
+                elif physical == "offline":
+                    return {
+                        "action": "unavailable",
+                        "device": self.describe(device),
+                        "notice": "Provider unavailable; existing environment was not replaced.",
+                    }
+                elif physical == "paused":
+                    if device["control_state"] == "paused" and not wake:
+                        return {"action": "paused", "device": self.describe(device)}
+                    result = self.control(user_id, device["id"], "resume")
+                    return {"action": "resumed", "device": result}
+                elif device["control_state"] != "active":
+                    return {"action": "recovery_required", "device": self.describe(device)}
+            try:
+                result = self.provision(user_id)
+            except DeviceConflict:
+                return {
+                    "action": "preparing",
+                    "notice": "Computer busy or awaiting recovery; commands were not repeated.",
+                }
+            return {
+                "action": action if result["online"] else result["state"],
+                "device": result,
+                "notice": "Deleted sandbox replaced by empty computer. Old files were not restored."
+                if result.get("replaces_device_id")
+                else "",
+            }
+        finally:
+            self.store.finish_ensure(user_id, owner)
 
     def execute(self, user_id, data):
         device_id, invocation_id = data["device_id"], data["invocation_id"]

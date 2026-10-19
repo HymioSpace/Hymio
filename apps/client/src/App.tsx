@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ArrowUp,
   ArrowDown,
@@ -26,7 +26,7 @@ import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
 import { groupMessages, ToolActivityGroup } from './ToolActivityGroup';
 import { DebugPanel } from './DebugPanel';
-import { desktop } from './platform';
+import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
@@ -99,6 +99,21 @@ export default function App() {
       client.setSourceDevice('');
     };
   }, [login.session?.access_token]);
+  useEffect(() => {
+    if (!login.session) return;
+    let active = true;
+    void deviceRequest(login, '/ensure', {})
+      .then((binding) => {
+        if (active && binding.action === 'replaced')
+          setNotice('原云电脑已失效，已自动绑定新环境；旧文件未恢复，聊天记录保留。');
+      })
+      .catch(() => {
+        if (active) setNotice('云电脑暂时无法准备，对话仍可继续；需要用电脑时会自动重试。');
+      });
+    return () => {
+      active = false;
+    };
+  }, [login.session?.user_id, login.backend]);
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
@@ -163,6 +178,36 @@ export default function App() {
       input.current.style.height = `${Math.min(180, input.current.scrollHeight)}px`;
     }
   }, [draft]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const historyAnchor = useRef<{ top: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = viewport.current;
+    const anchor = historyAnchor.current;
+    if (el && anchor) {
+      el.scrollTop = anchor.top + el.scrollHeight - anchor.height;
+      historyAnchor.current = null;
+    }
+  }, [state.events]);
+  async function loadHistory() {
+    if (historyLoading || !state.history?.before) return;
+    setHistoryLoading(true);
+    try {
+      const page = await bizGet(
+        connection.bizUrl,
+        `/conversation_history?before=${state.history.before}&limit=10`,
+        connection.credential,
+      );
+      const el = viewport.current;
+      following.current = false;
+      if (el) historyAnchor.current = { top: el.scrollTop, height: el.scrollHeight };
+      await client.prependHistory(page);
+    } catch (error) {
+      historyAnchor.current = null;
+      setNotice(`历史加载失败：${String(error)}`);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
   const following = useRef(true);
   const scrollFrame = useRef(0);
   useEffect(() => {
@@ -361,6 +406,15 @@ export default function App() {
             </section>
           ) : (
             <div className="transcript">
+              {state.history?.hasMore && (
+                <button
+                  className="load-history"
+                  disabled={historyLoading}
+                  onClick={() => void loadHistory()}
+                >
+                  {historyLoading ? '正在加载…' : '加载更早的消息'}
+                </button>
+              )}
               <div className="day-divider">
                 <span>同一段对话，随时接着聊</span>
               </div>
@@ -377,7 +431,17 @@ export default function App() {
                 return first.role === 'assistant' &&
                   !first.content.trim() &&
                   first.calls?.length ? (
-                  <ToolActivityGroup key={first.id} messages={group} tools={model.tools} />
+                  <article
+                    key={first.id}
+                    className="message message-assistant message-tool-activity"
+                  >
+                    <div className="message-avatar">
+                      <Companion compact mood="idle" />
+                    </div>
+                    <div className="message-body">
+                      <ToolActivityGroup messages={group} tools={model.tools} />
+                    </div>
+                  </article>
                 ) : (
                   <MessageView key={first.id} message={first} tools={model.tools} login={login} />
                 );
@@ -461,8 +525,10 @@ export default function App() {
                 </section>
               ))}
               {(busy || streaming) && (
-                <div className="working-indicator">
-                  <Companion compact mood={mood} />
+                <div className="message working-indicator">
+                  <div className="message-avatar">
+                    <Companion compact mood={mood} />
+                  </div>
                   <span>
                     Hymio {streaming ? '正在回复' : '正在接着做'}
                     <i />
@@ -519,6 +585,7 @@ export default function App() {
           {(notice || state.error || login.error) && (
             <div role="alert" className="notice-bar">
               <span>{notice || state.error || login.error}</span>
+              {!connected && login.session && <button onClick={login.reconnect}>重新连接</button>}
               <button
                 className="icon-button"
                 aria-label="收起提示"
@@ -544,6 +611,7 @@ export default function App() {
             <div className="offline-banner">
               <WifiOff size={14} />
               <span>连接暂时离开，Oath 上的工作仍会继续。</span>
+              <button onClick={login.reconnect}>重新连接</button>
               <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
           )}

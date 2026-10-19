@@ -101,6 +101,8 @@ def main():
         "--oath-config", type=Path, default=Path.home() / ".oath/oath.toml"
     )
     parser.add_argument("--auth-project", default="hymio-auth")
+    parser.add_argument("--instance", help=argparse.SUPPRESS)
+    parser.add_argument("--ready-file", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     children = []
     try:
@@ -248,6 +250,11 @@ def main():
         print(
             "Ctrl+C stops Backend/client. Docker services remain running.", flush=True
         )
+        if args.ready_file and args.instance:
+            temporary = args.ready_file.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"instance": args.instance}))
+            temporary.chmod(0o600)
+            temporary.replace(args.ready_file)
         while all(child.poll() is None for child in children):
             time.sleep(0.5)
         if any(child.returncode not in (None, 0) for child in children):

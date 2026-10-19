@@ -9,9 +9,10 @@ class DevicesTool(Tool):
     def definition(self):
         return ToolDefinition(
             "devices",
-            "List this user’s bound devices, capabilities, online state and workspace. "
-            "Call before choosing an execution target. If only channels exist, direct the user "
-            "to avatar → 我的设备 → 添加云电脑; binding a phone or Mac does not enable control.",
+            "Ensure this user's cloud computer is available, then list bound devices and capabilities. "
+            "Automatically creates a missing computer and resumes a paused one. "
+            "Read binding notices: a replaced computer is empty; do not assume old files exist. "
+            "Call before choosing an explicit execution device.",
             schema({}, []),
         )
 
@@ -47,7 +48,10 @@ class DeviceCommandTool(Tool):
             "device_command",
             "Query an existing invocation without repeating it. "
             "Requires the original device_id and invocation_id.",
-            schema({"device_id": DEVICE, "invocation_id": TEXT}, ["device_id", "invocation_id"]),
+            schema(
+                {"device_id": DEVICE, "invocation_id": TEXT},
+                ["device_id", "invocation_id"],
+            ),
         )
 
     def execute(self, invocation):

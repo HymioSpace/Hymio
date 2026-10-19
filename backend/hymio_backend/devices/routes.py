@@ -31,6 +31,17 @@ def device_routes(settings, sessions, bearer, body):
                 identity = await asyncio.to_thread(sessions.verify, bearer(request))
                 user_id = identity["user_id"]
             path = request.url.path
+            binding = None
+            if path.endswith("/ensure"):
+                return JSONResponse(await asyncio.to_thread(service.ensure_available, user_id))
+            if internal and path.endswith("/list"):
+                try:
+                    binding = await asyncio.to_thread(service.ensure_available, user_id, wake=True)
+                except DeviceConflict:
+                    binding = {
+                        "action": "blocked",
+                        "notice": "Computer requires recovery; do not repeat commands.",
+                    }
             if "/commands" in path or path.endswith("/command"):
                 device_id = data["device_id"] if internal else request.path_params["device_id"]
                 invocation_id = (
@@ -85,15 +96,14 @@ def device_routes(settings, sessions, bearer, body):
             return JSONResponse(
                 {
                     "devices": described,
+                    "binding": binding,
                     "guidance": (
                         "Use an online device with the required capability. "
                         "Web, iOS and Mac bindings currently provide conversation only; "
                         "binding them does not enable native control."
                         if any(device["capabilities"] for device in described)
-                        else "No controllable device exists. Ask the user to open their avatar "
-                        "→ 我的设备 → 添加云电脑, wait until online, then call devices again. "
-                        "Web, iOS and Mac bindings are conversation channels only; "
-                        "do not suggest binding a phone or Mac as an execution target."
+                        else "Cloud computer may be preparing. Check binding and retry devices. "
+                        "Web, iOS and Mac are conversation channels, not execution targets."
                     ),
                 }
             )
@@ -111,6 +121,7 @@ def device_routes(settings, sessions, bearer, body):
     return [
         Route("/devices", endpoint),
         Route("/devices/provision", endpoint, methods=["POST"]),
+        Route("/devices/ensure", endpoint, methods=["POST"]),
         Route("/devices/register", endpoint, methods=["POST"]),
         Route("/devices/{device_id}/heartbeat", endpoint, methods=["POST"]),
         Route("/devices/{device_id}/pause", endpoint, methods=["POST"]),

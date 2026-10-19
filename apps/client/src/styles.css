@@ -533,7 +533,7 @@ a {
   display: flex;
   gap: 12px;
   margin: 25px 0;
-  animation: appear 0.2s ease;
+  animation: none;
 }
 .message-user {
   justify-content: flex-end;
@@ -2184,4 +2184,96 @@ a {
 .message-image-loading {
   min-width: min(420px, 100%);
   min-height: 180px;
+}
+.load-history {
+  display: block;
+  margin: 0 auto 24px;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #68748a;
+  cursor: pointer;
+}
+.load-history:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* Replies, tool activity and pending work share the same avatar column. */
+.message-assistant,
+.message.working-indicator {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+}
+.message-assistant > .message-body {
+  max-width: 100%;
+}
+.message-tool-activity .activity-group {
+  margin: 0;
+  max-width: 100%;
+}
+.message-tool-activity .activity-group > summary {
+  min-height: 32px;
+}
+.message.working-indicator > span {
+  min-height: 40px;
+}
+@media (max-width: 700px) {
+  .message-assistant,
+  .message.working-indicator {
+    grid-template-columns: 30px minmax(0, 1fr);
+    column-gap: 7px;
+  }
+  .message.working-indicator > span {
+    min-height: 30px;
+  }
+}
+
+/* Keep inline execution details small without changing message alignment. */
+.message-bubble > .tool-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 8px;
+}
+.message-bubble > .tool-pills > .tool-call-detail {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  background: transparent;
+  border-color: transparent;
+  border-radius: 7px;
+}
+.message-bubble > .tool-pills > .tool-call-detail > summary {
+  padding: 4px 0;
+  min-height: 28px;
+  list-style: none;
+  gap: 7px;
+  line-height: 20px;
+  color: #7a8598;
+}
+.message-bubble > .tool-pills > .tool-call-detail > summary::-webkit-details-marker {
+  display: none;
+}
+.message-bubble > .tool-pills > .tool-call-detail[open] {
+  width: 100%;
+  border-color: var(--line);
+  background: #fafbfe;
+}
+.message-bubble > .tool-pills > .tool-call-detail[open] > summary {
+  padding-inline: 10px;
+}
+@media (max-width: 700px) {
+  .message-avatar .companion.compact {
+    width: 30px;
+    height: 30px;
+  }
+  .message-bubble {
+    line-height: 1.7;
+  }
 }
