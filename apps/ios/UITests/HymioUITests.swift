@@ -57,7 +57,7 @@ final class HymioUITests: XCTestCase {
     )
     app.buttons["chat.send"].tap()
     let twoReplies = app.staticTexts.matching(
-      NSPredicate(format: "label CONTAINS %@", "AGAIN " + String(code)))
+      NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "AGAIN", String(code)))
     let complete = NSPredicate { _, _ in twoReplies.count >= 1 }
     expectation(for: complete, evaluatedWith: nil)
     waitForExpectations(timeout: 90)
