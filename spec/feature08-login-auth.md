@@ -61,3 +61,5 @@ Google Web OAuth 凭据只进入 Casdoor；Google callback 为 Casdoor /callback
 用户名 3–32 位字母/数字/下划线/连字符；注册密码 8–128 字符，已有账号登录允许原密码。密码仅在本次请求内传递给 Casdoor，不持久化、不日志记录；生产两段链路都使用 HTTPS。每次账号操作使用独立 HTTP client，避免不同用户复用 Casdoor cookie。支持 Plain/AES 密码混淆；不绕过 Casdoor 的注册开关、密码策略、CAPTCHA、MFA 或 consent；需要额外验证时明确失败，浏览器 OIDC 路径继续用于 Google。表单不宣称支持密码找回、MFA 或短信。
 
 Casdoor 必须使用独立 Hymio organization：built-in 是管理组织，禁止自助注册。本机开发的应用可仅启用用户名、显示名、密码和确认项，邮箱/手机号隐藏且不必填，Agreement 项不要求，不能由后台伪造用户同意；不把未验证邮箱当作身份。注册和登录都经服务端检验，不能通过隐藏前端字段规避提供方策略。
+
+登录返回的 WS 地址统一为 Backend public_url 的 /agent/ws，Backend 配置 oath_ws 为内部 upstream。代理只转发，Oath 的 remote auth 与事件确认语义不变。局域网账号登录保留已注册的 OIDC callback，浏览器登录仍使用公开回调。详见 feature16。

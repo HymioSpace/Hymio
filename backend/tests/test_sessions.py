@@ -34,6 +34,11 @@ class SessionTests(unittest.TestCase):
         code, _ = self.store.finish(state, {"iss": self.settings.issuer, "sub": subject})
         return self.store.exchange(handle, code)
 
+    def test_client_endpoints_use_the_public_backend(self):
+        result = self.login()
+        self.assertEqual(result["oath_ws"], "wss://hymio.example/agent/ws")
+        self.assertEqual(result["oath_biz"], "https://hymio.example/oath-biz")
+
     def test_identity_is_stable_and_callback_and_grant_are_single_use(self):
         handle, state, _, _ = self.store.start("https://client.example")
         self.store.claim_callback(state)

@@ -31,15 +31,16 @@ Each installation has its own delivery cursor. Backgrounding the app disconnects
 
 ## Real iPhone / TestFlight
 
-Copy `Config/Local.example.xcconfig` to ignored `Config/Local.xcconfig`, set your backend URL, team and bundle identifier. Do not enter keys or credentials there.
+For a LAN Debug build, set `lan_host = "auto"` in the ignored repository file `deploy/local.toml`, then run `hymio restart --client web`. The launcher derives ignored `Config/Network.generated.xcconfig` from that single network configuration; do not edit the generated file. Debug uses it; Release does not. Signing settings stay unchanged. Select your Team in Xcode → Signing & Capabilities; there is no need to enter the same Team ID twice.
+
+For a remote deployment, copy `Config/Local.example.xcconfig` to ignored `Config/Local.xcconfig` and set your backend URL and bundle identifier. Do not enter keys or credentials there.
 
 ```xcconfig
 HYMIO_BACKEND_URL = https:/$()/your-domain.example
-DEVELOPMENT_TEAM = YOUR_TEAM_ID
 PRODUCT_BUNDLE_IDENTIFIER = your.unique.hymio
 ```
 
-For a local phone test you can use a LAN HTTP address in a **Debug** build; the server must be reachable from the phone. Release accepts HTTPS/WSS only. The backend's public URL and advertised Oath WS/Biz addresses must all be remotely reachable; a phone cannot use your server's `localhost` addresses.
+For a local phone test you can use a LAN HTTP address in a **Debug** build; the server must be reachable from the phone. Release accepts HTTPS/WSS only. The backend public URL must be reachable. Login advertises chat at that same host’s `/agent/ws` and business APIs at `/oath-biz`; Oath upstream addresses stay internal.
 
 Before TestFlight, deploy Hymio/Oath, configure HTTPS/WSS and account login, select your Apple team in Xcode, archive **Release** for a generic iOS device, and upload through Organizer. Never ship the default `invalid.example` endpoint. Signing and App Store Connect access are required; no certificates, provisioning profiles or account secrets are stored in this project.
 
@@ -53,7 +54,7 @@ The app uses only system encryption (TLS, Keychain and file protection). Verify 
 4. Enable Developer Mode on the phone under Settings → Privacy & Security, following the restart prompt.
 5. Select the iPhone as the run destination and press Run (⌘R). This installs a development build without TestFlight or App Store publication.
 
-Installation does not make the backend reachable. If your phone is on another network, it needs a deployed server, a private VPN route or a properly secured HTTPS/WSS tunnel. The backend must advertise a reachable `oath_ws` endpoint as well as its public HTTPS URL; changing only the app URL is not sufficient. Never expose internal queues, databases or service credentials through a tunnel.
+Installation does not make the backend reachable. If your phone is on another network, it needs a deployed server, a private VPN route or a properly secured HTTPS/WSS tunnel. Configure the backend public URL; its WebSocket proxy and business proxy share that public entry. Never expose internal queues, databases or service credentials through a tunnel.
 
 See Apple's [physical-device run guide](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices) and [Developer Mode guide](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
 

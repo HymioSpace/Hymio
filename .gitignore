@@ -104,3 +104,9 @@ xcuserdata/
 *.cer
 *.certSigningRequest
 *.provisionprofile
+
+# Generated local-network deployment overlay
+/backend/hymio-lan.local.toml
+
+/deploy/local.toml
+/apps/ios/Config/Network.generated.xcconfig

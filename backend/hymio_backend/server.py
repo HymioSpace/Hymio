@@ -11,8 +11,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
 
+from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
 from .devices.routes import device_routes
@@ -165,7 +166,11 @@ def build_app(settings, *, provider=None):
         except Exception:
             return JSONResponse({"error": "service_unavailable"}, 503)
 
+    async def agent_socket(websocket):
+        await relay_agent(websocket, settings)
+
     routes = device_routes(settings, store, bearer, body) + [
+        WebSocketRoute("/agent/ws", agent_socket),
         Route("/health", endpoint),
         Route("/auth/options", endpoint),
         Route("/auth/callback", endpoint),

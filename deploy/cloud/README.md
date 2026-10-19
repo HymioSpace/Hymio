@@ -10,8 +10,7 @@ starting point, not a multi-replica deployment or a fully provisioned cloud inst
 1. Install Docker Engine + Compose and Python 3.11+. Deploy Oath using its installer and
    configure the model, Vault credentials and Hymio remote auth. Deploy/configure Casdoor
    separately with a public HTTPS issuer and minimal signup fields.
-2. Point three DNS names at this server: `app.example.com`, `api.example.com`,
-   `agent.example.com`. Allow inbound 80/443. Caddy obtains and renews certificates.
+2. Point two DNS names at this server: `app.example.com` and `api.example.com`. Allow inbound 80/443. Caddy obtains and renews certificates.
 3. Create `/opt/hymio/config/hymio.toml` from the Backend example. Store secrets under
    `/opt/hymio/config/private/`, readable by container UID 10001. Do not copy secrets into
    the repository or loosen them to world-readable. Bind mounts preserve host ownership.
@@ -24,7 +23,7 @@ port = 8080
 public_url = "https://api.example.com"
 callback_url = "https://api.example.com/auth/callback"
 origins = ["https://app.example.com", "http://tauri.localhost", "tauri://localhost"]
-oath_ws = "wss://agent.example.com"
+oath_ws = "ws://host.docker.internal:8765"
 oath_biz = "http://host.docker.internal:8766"
 computer_provider = "e2b"
 e2b_key_file = "./private/e2b-api-key"
@@ -45,8 +44,8 @@ Register the HTTPS callback in Casdoor. Build the E2B template once using the
 6. Oath WS/Biz published ports must be reachable from the Docker bridge. A port bound
    only to host `127.0.0.1` cannot be reached through host.docker.internal. Configure Oath
    bindings accordingly, keeping Biz and direct WS inaccessible from the public network
-   (including Docker's firewall rules). Only Caddy's WSS entry is public; enable Oath
-   remote auth before exposing it. Redis/Vault and other Oath internal ports stay private.
+   (including Docker's firewall rules). Clients use the API domain's `/agent/ws`; no separate agent domain is required. Enable Oath
+   remote auth. Existing deployments can retain optional `agent_domain` for compatibility. Redis/Vault and other Oath internal ports stay private.
 
 ## Operate
 

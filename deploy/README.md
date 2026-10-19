@@ -118,3 +118,34 @@ for E2B configuration, device management and the end-to-end check.
 For Linux servers, use the separate [cloud deployment entry](cloud/README.md): containerized
 Backend, static Web and Caddy HTTPS, with E2B computers and independently managed Oath/OIDC.
 The development launcher above is not the cloud deployment command.
+
+## iPhone and LAN development
+
+Network settings have one local source: `deploy/local.toml` (ignored by Git).
+
+```bash
+cp deploy/local.example.toml deploy/local.toml
+```
+
+Edit that file:
+
+```toml
+lan_host = "auto"
+```
+
+Then run:
+
+```bash
+hymio restart --client web
+hymio status
+```
+
+`auto` chooses the default-route private IPv4 address. With multiple network interfaces or a VPN, put the desired local private IPv4 address in `lan_host` instead. Set it to `off` to return to local Mac development. Restart reloads the file; CLI preferences store only the configuration path. `--deploy-config /path/to/local.toml` selects another configuration file without changing the source configuration. A missing local file defaults to `off`.
+
+The launcher derives an ignored Backend runtime overlay, the Web development API URL and iOS `Network.generated.xcconfig`. Do not edit these generated outputs. The source Backend config, client.toml and iOS signing settings stay unchanged. Debug includes the generated network file; Release does not, so a LAN endpoint is never silently baked into a release build. Team selection remains in Xcode, and private signing overrides can stay in Local.xcconfig.
+
+The phone uses the single Backend URL printed by `hymio status`: login, chat at `/agent/ws`, and queries at `/oath-biz`. Oath ports remain loopback-only. Native iOS requires only port 8080; Web development preview uses port 1420. Development still runs Backend/Web on the host for live editing, with Oath/Casdoor managed in Docker; production uses the separate Compose deployment.
+
+LAN auto-configuration supports account login and preserves the registered Casdoor callback for backend-only code exchange. Browser OIDC deployments configure public callbacks separately. Existing sessions refresh advertised endpoints on login/refresh; sign out/in if an older session still points at a loopback WS address.
+
+Use the same trusted Wi-Fi, allow the Mac firewall prompt and permit Local Network access on iPhone. LAN HTTP is for Debug development; use cloud HTTPS for remote access. Open the printed Backend URL with `/health` in iPhone Safari, then [install through Xcode](../apps/ios/README.md#install-directly-on-your-own-iphone).

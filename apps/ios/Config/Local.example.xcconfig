@@ -1,3 +1,3 @@
 HYMIO_BACKEND_URL = https:/$()/hymio.example.com
-DEVELOPMENT_TEAM = YOUR_TEAM_ID
+// Select your Team in Xcode → Signing & Capabilities.
 PRODUCT_BUNDLE_IDENTIFIER = com.example.hymio

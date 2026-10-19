@@ -17,7 +17,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { OathClient, conversation, executionActivity } from '@hymio/client';
+import { OathClient, conversation, executionActivity, createIdentity } from '@hymio/client';
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
@@ -86,7 +86,7 @@ export default function App() {
     let active = true;
     let deviceId = '';
     const key = `hymio.installation:${login.backend}:${login.session.user_id}`;
-    const installation = localStorage.getItem(key) || crypto.randomUUID();
+    const installation = localStorage.getItem(key) || createIdentity();
     localStorage.setItem(key, installation);
     void deviceRequest(login, '/register', {
       installation_id: installation,

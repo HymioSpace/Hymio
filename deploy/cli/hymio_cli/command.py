@@ -25,6 +25,7 @@ def options(args, root, previous):
         "backend_config": str(root / "backend/hymio.toml"),
         "oath_config": str(Path.home() / ".oath/oath.toml"),
         "auth_project": "hymio-auth",
+        "deploy_config": str(root / "deploy/local.toml"),
     }
     return {
         key: (
@@ -109,10 +110,16 @@ def start(home, root, args, state, restarting=False):
         if read(home / "ready.json").get("instance") == instance and all(
             health(settings["client"])
         ):
+            ready = read(home / "ready.json")
             print(
-                "Hymio ready: http://127.0.0.1:1420"
-                if settings["client"] != "none"
-                else "Hymio Backend ready: http://127.0.0.1:8080"
+                "Hymio ready: "
+                + ready.get(
+                    "web_url" if settings["client"] != "none" else "backend_url",
+                    "http://127.0.0.1:8080",
+                )
+            )
+            print(
+                "iPhone Backend: " + ready.get("backend_url", "http://127.0.0.1:8080")
             )
             return
         time.sleep(0.5)
@@ -135,6 +142,9 @@ def main():
         "--oath-config", type=lambda p: str(Path(p).expanduser().resolve())
     )
     parser.add_argument("--auth-project")
+    parser.add_argument(
+        "--deploy-config", type=lambda p: str(Path(p).expanduser().resolve())
+    )
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--follow", "-f", action="store_true")
     args = parser.parse_args()
@@ -171,7 +181,19 @@ def main():
             if settings["client"] != "none":
                 print(
                     "Client: "
-                    + ("ready — http://127.0.0.1:1420" if web else "unavailable")
+                    + (
+                        "ready — "
+                        + read(home / "ready.json").get(
+                            "web_url", "http://127.0.0.1:1420"
+                        )
+                        if web
+                        else "unavailable"
+                    )
+                )
+            if read(home / "ready.json").get("backend_url"):
+                print(
+                    "iPhone Backend: "
+                    + read(home / "ready.json").get("backend_url", "see hymio logs")
                 )
             print(f"Log: {home / 'hymio.log'}")
             return

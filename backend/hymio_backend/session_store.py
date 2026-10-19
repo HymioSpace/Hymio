@@ -4,6 +4,7 @@ import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
+from urllib.parse import urlsplit
 
 
 def digest(value):
@@ -142,7 +143,12 @@ class SessionStore:
             "expires_at": expiry,
             "user_id": user_id,
             "name": name,
-            "oath_ws": self.settings.oath_ws,
+            "oath_ws": urlsplit(self.settings.public_url)
+            ._replace(
+                scheme="wss" if urlsplit(self.settings.public_url).scheme == "https" else "ws",
+                path=urlsplit(self.settings.public_url).path.rstrip("/") + "/agent/ws",
+            )
+            .geturl(),
             "oath_biz": self.settings.public_url.rstrip("/") + "/oath-biz",
         }
 
