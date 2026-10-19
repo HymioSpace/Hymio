@@ -10,6 +10,17 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 <p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
+## iOS preview
+
+The native SwiftUI client lives in [apps/ios](apps/ios/README.md). It supports the same account and continuous conversation as Web/Desktop, streaming replies, tool approvals, screenshots and foreground reconnection.
+
+```sh
+hymio start --client web
+bash apps/ios/scripts/run-simulator.sh
+```
+
+Use Xcode 26.2 and an iPhone Simulator. Configure your deployed HTTPS backend and signing team before device/TestFlight distribution; see the [iOS guide](apps/ios/README.md).
+
 ## One product, several clients
 
 Web and the Tauri desktop app share one frontend. Chrome can reuse shared web components and protocol packages while keeping its own background tasks and permissions. iOS has a separate platform implementation within the same repository.

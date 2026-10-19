@@ -13,6 +13,7 @@ Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后�
 设备绑定与投递 client_id 分开：每个窗口独立 ACK，不能用其他端的进度跳过消息。
 Hymio 管设备归属、在线状态与执行命令；Oath 扩展显式指定 device_id。
 云电脑统一 Bash / Chromium / 桌面操作，见 [feature10](feature10-multi-device.md)。
+iOS 原生客户端位于 apps/ios，接入同一账号与单一会话，见 [feature14](feature14-ios-mvp.md)。
 
 Context 的入口只有导入与同步：文字、语音、照片、文件和历史快照都属于一次性导入；绑定来源后持续获取变化属于同步。采集、连接器和媒体处理归 Hymio，Context 的规范与检索归 Nostalgia。
 
