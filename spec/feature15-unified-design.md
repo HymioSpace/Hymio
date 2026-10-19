@@ -51,3 +51,7 @@ Web 与 iOS 共用透明 3 × 2 状态图集，按行排列 idle / working / rep
 - [Bear](https://bear.app/)：正文优先，品牌角色停留在适当位置。
 - [Craft](https://www.craft.do/)：内容层次与原生操作习惯。
 - Apple HIG：Accessibility、Typography、Layout、Motion、Sheets。平台规范用于可达性和行为；角色与构图独立设计。
+
+## 执行状态
+
+当前运行快照中的 steps / calls 决定忙碌状态，不用历史 tool call 提案推断当前仍在执行。agent.status 响应必须匹配最近的请求 ID，并记录请求时的事件进度；出现更新事件时先用事件推导状态，等待新快照，避免旧空闲快照覆盖新工作。等待授权不算工具执行中。step 到 completed 后关闭残留流式状态。

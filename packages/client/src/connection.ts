@@ -29,6 +29,7 @@ export interface ClientState {
   error: string;
   replay?: { after: number; through: number; received: number };
   runtime?: Data;
+  runtimeThrough?: number;
   latency?: number;
   history?: { before: number | null; hasMore: boolean };
 }
@@ -56,6 +57,7 @@ export class OathClient {
   private clientId = `hymio-${identity()}`;
   private sourceDeviceId = '';
   private cursor = 0;
+  private statusRequest?: { id: string; through: number };
   private ackTimer?: ReturnType<typeof setTimeout>;
   setSourceDevice(deviceId: string) {
     this.sourceDeviceId = deviceId;
@@ -106,7 +108,8 @@ export class OathClient {
     this.socket?.close();
     this.socket = undefined;
     this.config = undefined;
-    this.update({ phase: 'disconnected', runtime: undefined });
+    this.statusRequest = undefined;
+    this.update({ phase: 'disconnected', runtime: undefined, runtimeThrough: undefined });
   }
   signOut() {
     this.disconnect();
@@ -235,8 +238,13 @@ export class OathClient {
             await storage.removeCommand(frame.id);
             if (generation === this.generation)
               this.update({ pending: this.state.pending.filter((p) => p.id !== frame.id) });
-          } else if (frame.type === 'agent.status') this.update({ runtime: frame.payload });
-          else if (frame.type === 'pong') {
+          } else if (
+            frame.type === 'agent.status' &&
+            this.statusRequest &&
+            frame.id === this.statusRequest.id
+          ) {
+            this.update({ runtime: frame.payload, runtimeThrough: this.statusRequest.through });
+          } else if (frame.type === 'pong') {
             clearTimeout(this.watchdog);
             this.update({ latency: Math.round(performance.now() - this.pingAt) });
           } else if (frame.type === 'error') {
@@ -357,7 +365,11 @@ export class OathClient {
     return this.command('permission.decide', { invocation_id: invocationId, status });
   }
   status() {
-    if (this.ready) this.ephemeral('agent.status', {});
+    if (this.ready) {
+      const id = identity();
+      this.statusRequest = { id, through: this.cursor };
+      this.raw({ v: 2, id, type: 'agent.status', payload: {} });
+    }
   }
   retryPending() {
     this.sent.clear();

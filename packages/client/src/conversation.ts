@@ -128,17 +128,40 @@ export function conversation(events: OathEvent[]) {
         error: str(p.error),
         eventSeq: event.event_seq,
       });
-      if (['failed', 'paused', 'cancelled'].includes(str(p.status))) {
+      if (['completed', 'failed', 'paused', 'cancelled'].includes(str(p.status))) {
         const m = assistants.get(step);
         if (m) m.streaming = false;
       }
     }
   }
-  const latestStep = [...steps.values()].at(-1);
+  const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {
     messages: messages.filter((m) => m.content || m.calls?.length || m.streaming),
     approvals: [...approvals.values()],
     tools: [...tools.values()],
     latestStep,
+  };
+}
+
+/** A current server snapshot owns liveness; historical tool proposals do not. */
+export function executionActivity(events: OathEvent[], runtime?: Data, runtimeThrough?: number) {
+  const model = conversation(events);
+  const newest = events.reduce((seq, e) => Math.max(seq, e.event_seq), 0);
+  if (runtime && runtimeThrough != null && runtimeThrough >= newest) {
+    const toolsRunning = Object.values(obj(runtime.calls)).some((value) =>
+      ['admitting', 'queued', 'running'].includes(str(obj(value).status)),
+    );
+    const stepRunning = Object.values(obj(runtime.steps)).some((value) =>
+      ['prepared', 'running'].includes(str(obj(value).status)),
+    );
+    return { toolsRunning, busy: toolsRunning || stepRunning };
+  }
+  const approvalIds = new Set(
+    model.approvals.filter((a) => a.status === 'pending').map((a) => a.id),
+  );
+  const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
+  return {
+    toolsRunning,
+    busy: toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || ''),
   };
 }

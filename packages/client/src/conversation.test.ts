@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { OathEvent, Data } from '@hymio/protocol';
-import { conversation } from './conversation.ts';
+import { conversation, executionActivity } from './conversation.ts';
 
 const event = (seq: number, type: string, payload: Data): OathEvent => ({
   v: 2,
@@ -82,4 +82,38 @@ test('retry clears the failed step and a later message does not retain its error
     error: 'Still disconnected',
   });
   assert.equal(conversation([failed, retried, later, newFailure]).latestStep?.eventSeq, 4);
+});
+
+test('a completed runtime does not inherit a historical unsubmitted tool proposal', () => {
+  const events = [
+    event(1, 'assistant.message', {
+      step_id: 'old',
+      content: '',
+      tool_calls: [{ name: 'computer', arguments: {} }],
+    }),
+    event(2, 'step.status', { step_id: 'old', status: 'completed' }),
+  ];
+  const runtime = { calls: {}, steps: { old: { status: 'completed' } } };
+  assert.equal(executionActivity(events, runtime, 2).busy, false);
+  assert.equal(executionActivity(events, runtime, 2).toolsRunning, false);
+  assert.equal(executionActivity(events, { calls: { a: { status: 'running' } } }, 2).busy, true);
+  assert.equal(
+    executionActivity(events, { calls: { a: { status: 'waiting_approval' } } }, 2).busy,
+    false,
+  );
+});
+
+test('a stale idle snapshot cannot hide a newer running step', () => {
+  const events = [event(3, 'step.status', { step_id: 'new', status: 'running' })];
+  assert.equal(executionActivity(events, { calls: {}, steps: {} }, 2).busy, true);
+});
+
+test('step completion closes a partial stream and latest status follows event order', () => {
+  const events = [
+    event(1, 'assistant.delta', { step_id: 'a', channel: 'content', text: 'hello' }),
+    event(2, 'step.status', { step_id: 'b', status: 'completed' }),
+    event(3, 'step.status', { step_id: 'a', status: 'completed' }),
+  ];
+  assert.equal(conversation(events).messages[0].streaming, false);
+  assert.equal(conversation(events).latestStep?.id, 'a');
 });

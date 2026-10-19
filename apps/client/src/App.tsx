@@ -17,7 +17,7 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { OathClient, conversation } from '@hymio/client';
+import { OathClient, conversation, executionActivity } from '@hymio/client';
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
@@ -126,13 +126,15 @@ export default function App() {
   const pendingApprovals = model.approvals.filter(
     (a) => a.status === 'pending' && a.expiresAt * 1000 > clock,
   );
-  const approvalIds = new Set(pendingApprovals.map((a) => a.id));
   const attachedToolIds = new Set(
     model.messages.flatMap((m) => (m.calls || []).map((_, i) => `${m.stepId}-${i}`)),
   );
   const unattachedTools = model.tools.filter((t) => !attachedToolIds.has(t.id));
-  const toolsRunning = model.tools.some((t) => t.outcome === 'running' && !approvalIds.has(t.id));
-  const busy = toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || '');
+  const { toolsRunning, busy } = executionActivity(
+    state.events,
+    state.runtime,
+    state.runtimeThrough,
+  );
   const streaming = model.messages.some((m) => m.streaming);
   const connected = state.phase === 'connected';
   const latestFailure =
