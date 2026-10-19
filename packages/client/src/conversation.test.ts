@@ -117,3 +117,37 @@ test('step completion closes a partial stream and latest status follows event or
   assert.equal(conversation(events).messages[0].streaming, false);
   assert.equal(conversation(events).latestStep?.id, 'a');
 });
+
+test('local messages render before events and exact echoed IDs replace them', () => {
+  const make = (id: string) => ({
+    id,
+    account: 'test',
+    at: 1,
+    command: {
+      v: 2 as const,
+      id,
+      type: 'user.message',
+      payload: { content: 'same', user_context: { hymio_message_id: id } },
+    },
+  });
+  const pending = [make('one'), make('two')];
+  assert.equal(conversation([], pending).messages.length, 2);
+  assert.equal(conversation([], pending).messages[0].delivery, 'queued');
+  const echo = event(1, 'user.message', {
+    content: 'same',
+    user_context: { hymio_message_id: 'one' },
+  });
+  const messages = conversation([echo], pending).messages;
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].id, 'user:1');
+  assert.equal(messages[1].id, 'local:two');
+  const other = event(2, 'user.message', {
+    content: 'same',
+    user_context: { hymio_message_id: 'other-device' },
+  });
+  assert.equal(conversation([other], pending).messages.length, 3);
+  assert.equal(
+    conversation([], [{ ...make('one'), delivery: 'accepted' as const }]).messages[0].delivery,
+    'accepted',
+  );
+});

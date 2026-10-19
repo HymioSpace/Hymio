@@ -47,7 +47,10 @@ function Brand() {
 export default function App() {
   const narrow = useSyncExternalStore(watchOverlay, overlaySnapshot, () => false);
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
-  const model = useMemo(() => conversation(state.events), [state.events]);
+  const model = useMemo(
+    () => conversation(state.events, state.pending),
+    [state.events, state.pending],
+  );
   const [connection, setConnection] = useState<Connection>({
     wsUrl: '',
     bizUrl: '',
@@ -136,6 +139,15 @@ export default function App() {
     state.runtimeThrough,
   );
   const streaming = model.messages.some((m) => m.streaming);
+  const lastMessage = model.messages.at(-1);
+  const awaitingReply =
+    lastMessage?.role === 'user' &&
+    lastMessage.delivery !== 'failed' &&
+    (!!lastMessage.delivery ||
+      !['failed', 'paused', 'cancelled'].includes(model.latestStep?.status || ''));
+  const delayedCommands = state.pending.filter(
+    (p) => p.delivery === 'failed' || (p.delivery !== 'accepted' && clock - p.at > 8000),
+  );
   const connected = state.phase === 'connected';
   const latestFailure =
     model.latestStep?.status === 'failed' || model.latestStep?.status === 'paused'
@@ -155,7 +167,7 @@ export default function App() {
         ? 'waiting'
         : streaming
           ? 'replying'
-          : busy
+          : busy || awaitingReply
             ? 'working'
             : 'idle';
   const status =
@@ -169,7 +181,7 @@ export default function App() {
             ? '未连接'
             : pendingApprovals.length
               ? '等你确认'
-              : busy || streaming
+              : busy || streaming || awaitingReply
                 ? '正在处理'
                 : '随时在这里';
   useEffect(() => () => client.disconnect(), []);
@@ -270,9 +282,11 @@ export default function App() {
     }
     const content = draft.trim();
     setSending(true);
+    setDraft('');
+    following.current = true;
+    setNearBottom(true);
     try {
       await client.message(content);
-      setDraft('');
       following.current = true;
       setNearBottom(true);
       requestAnimationFrame(() =>
@@ -280,6 +294,7 @@ export default function App() {
       );
       input.current?.focus();
     } catch (e) {
+      setDraft((current) => current || content);
       setNotice(e instanceof Error ? e.message : String(e));
     } finally {
       setSending(false);
@@ -533,13 +548,13 @@ export default function App() {
                   )}
                 </section>
               ))}
-              {(busy || streaming) && (
+              {(busy || streaming || awaitingReply) && (
                 <div className="message working-indicator">
                   <div className="message-avatar">
                     <Companion compact mood={mood} />
                   </div>
                   <span>
-                    Hymio {streaming ? '正在回复' : '正在接着做'}
+                    Hymio {streaming ? '正在回复' : awaitingReply ? '正在等候回复' : '正在接着做'}
                     <i />
                     <i />
                     <i />
@@ -607,11 +622,11 @@ export default function App() {
               </button>
             </div>
           )}
-          {state.pending.length > 0 && (
+          {delayedCommands.length > 0 && (
             <div className="pending-note">
               <LoaderCircle size={12} className="spin" />
-              {state.pending.length} 条操作等待服务端确认
-              <button disabled={!connected} onClick={() => client.retryPending()}>
+              {delayedCommands.length} 条操作尚未完成发送
+              <button disabled={!connected} onClick={() => void act(() => client.retryPending())}>
                 重试未确认操作
               </button>
             </div>

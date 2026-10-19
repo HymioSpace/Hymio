@@ -4,6 +4,7 @@ export interface Pending {
   account: string;
   command: Command;
   at: number;
+  delivery?: 'queued' | 'accepted' | 'failed';
 }
 let database: Promise<IDBDatabase> | undefined;
 function db() {

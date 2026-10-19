@@ -1,3 +1,4 @@
+import type { Pending } from './storage';
 import { obj, str, list, type Data, type OathEvent } from '@hymio/protocol';
 export interface Message {
   id: string;
@@ -8,6 +9,7 @@ export interface Message {
   attempt?: number;
   stepId?: string;
   calls?: Data[];
+  delivery?: 'queued' | 'accepted' | 'failed';
 }
 export interface Approval {
   id: string;
@@ -23,7 +25,7 @@ export interface ToolActivity {
   result: string;
   time: string;
 }
-export function conversation(events: OathEvent[]) {
+export function conversation(events: OathEvent[], pending: Pending[] = []) {
   const messages: Message[] = [];
   const assistants = new Map<string, Message>();
   const approvals = new Map<string, Approval>();
@@ -133,6 +135,26 @@ export function conversation(events: OathEvent[]) {
         if (m) m.streaming = false;
       }
     }
+  }
+  const echoed = new Set(
+    events
+      .filter((e) => e.event_type === 'user.message')
+      .map((e) => str(obj(e.payload.user_context).hymio_message_id)),
+  );
+  for (const p of [...pending].sort((a, b) => a.at - b.at)) {
+    if (
+      p.command.type !== 'user.message' ||
+      str(obj(p.command.payload.user_context).hymio_message_id) !== p.id ||
+      echoed.has(p.id)
+    )
+      continue;
+    messages.push({
+      id: `local:${p.id}`,
+      role: 'user',
+      content: str(p.command.payload.content),
+      time: new Date(p.at).toISOString(),
+      delivery: p.delivery || 'queued',
+    });
   }
   const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {

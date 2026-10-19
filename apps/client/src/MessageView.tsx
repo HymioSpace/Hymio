@@ -116,6 +116,15 @@ export function MessageView({
               hour12: false,
             })}
           </span>
+          {message.delivery && (
+            <span role="status">
+              {
+                { queued: '正在发送…', accepted: '已送达', failed: '发送失败，可重试' }[
+                  message.delivery
+                ]
+              }
+            </span>
+          )}
           {message.role === 'assistant' && message.content && !message.streaming && (
             <IconButton
               className="copy-message"
