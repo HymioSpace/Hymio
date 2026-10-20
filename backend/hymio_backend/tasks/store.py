@@ -3,6 +3,7 @@ import time
 import uuid
 
 from .schedule import next_due, normalize
+from .schema import initialize
 
 LIVE = {"scheduled", "delivering", "ready", "running", "blocked"}
 TERMINAL = {"succeeded", "failed", "cancelled"}
@@ -12,32 +13,7 @@ class TaskStore:
     def __init__(self, sessions):
         self.transaction = sessions.transaction
         with self.transaction() as db:
-            db.executescript("""
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL,
-                objective TEXT NOT NULL, success_criteria TEXT NOT NULL,
-                state TEXT NOT NULL, schedule TEXT NOT NULL, generation INTEGER NOT NULL,
-                created_at REAL NOT NULL, updated_at REAL NOT NULL);
-            CREATE INDEX IF NOT EXISTS tasks_owner ON tasks(user_id,updated_at DESC);
-            CREATE TABLE IF NOT EXISTS task_runs (
-                id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id),
-                user_id TEXT NOT NULL, generation INTEGER NOT NULL, due_at REAL NOT NULL,
-                status TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', agent_id TEXT,
-                request_id TEXT, lease_until REAL NOT NULL DEFAULT 0,
-                started_at REAL, finished_at REAL, created_at REAL NOT NULL,
-                reconciled INTEGER NOT NULL DEFAULT 0);
-            CREATE UNIQUE INDEX IF NOT EXISTS task_request ON task_runs(user_id,request_id)
-                WHERE request_id IS NOT NULL;
-            CREATE UNIQUE INDEX IF NOT EXISTS one_active_task_run ON task_runs(task_id)
-                WHERE status IN ('scheduled','delivering','ready','running','blocked');
-            CREATE INDEX IF NOT EXISTS task_due ON task_runs(status,due_at,lease_until);
-            CREATE TABLE IF NOT EXISTS task_updates (
-                id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL,
-                note_id TEXT NOT NULL, content TEXT NOT NULL, created_at REAL NOT NULL,
-                UNIQUE(run_id,note_id));
-            """)
-            if "reconciled" not in {r["name"] for r in db.execute("PRAGMA table_info(task_runs)")}:
-                db.execute("ALTER TABLE task_runs ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0")
+            initialize(db)
 
     def _task(self, db, uid, tid):
         row = db.execute("SELECT * FROM tasks WHERE user_id=? AND id=?", (uid, tid)).fetchone()
@@ -90,12 +66,13 @@ class TaskStore:
             run.pop("reconciled", None)
             if summary:
                 run["result"] = run["result"][:600]
+                run["progress"] = run["progress"][:600]
                 run["updates"] = []
                 continue
             run["updates"] = [
                 dict(r)
                 for r in db.execute(
-                    "SELECT note_id,content,created_at FROM task_updates WHERE "
+                    "SELECT note_id,content,created_at,status,phase FROM task_updates WHERE "
                     "run_id=? ORDER BY id DESC LIMIT 20",
                     (run["id"],),
                 )
@@ -117,7 +94,16 @@ class TaskStore:
         with self.transaction() as db:
             return self._view(db, self._task(db, uid, tid))
 
-    def create(self, uid, data, request_id=None):
+    def capture(self, uid, data, request_id=None):
+        """Record work already admitted by the conversation, without dispatching it again."""
+        key = data.get("intent_key")
+        if not isinstance(key, str) or not 1 <= len(key.strip()) <= 160:
+            raise ValueError("A stable intent_key is required")
+        if data.get("schedule"):
+            raise ValueError("Capture does not schedule work; use create for future work")
+        return self.create(uid, data, request_id, captured=True)
+
+    def create(self, uid, data, request_id=None, *, captured=False):
         if request_id is not None and (
             not isinstance(request_id, str) or not 1 <= len(request_id) <= 256
         ):
@@ -129,7 +115,25 @@ class TaskStore:
         if any(not v or len(v) > 10000 for v in fields.values()) or len(fields["title"]) > 160:
             raise ValueError("Title, objective and success criteria required")
         schedule = normalize(data.get("schedule", {"mode": "now"}))
+        key = data["intent_key"].strip() if captured else None
+        status = data.get("status", "running") if captured else "scheduled"
+        if captured and status not in {"running", "blocked", "succeeded"}:
+            raise ValueError("Invalid capture status")
+        content = data.get("content", "") if captured else ""
+        phase, next_step = self._milestone(data)
+        if status == "succeeded":
+            next_step = ""
+        if not isinstance(content, str) or len(content) > 16000:
+            raise ValueError("Invalid update")
+        if status in {"blocked", "succeeded"} and not content.strip():
+            raise ValueError("A blocker or completed task needs an explanation")
         with self.transaction() as db:
+            if key:
+                old = db.execute(
+                    "SELECT * FROM tasks WHERE user_id=? AND intent_key=?", (uid, key)
+                ).fetchone()
+                if old:
+                    return self._view(db, old)
             if request_id:
                 old = db.execute(
                     "SELECT task_id FROM task_runs WHERE user_id=? AND request_id=?",
@@ -139,15 +143,20 @@ class TaskStore:
                     return self._view(db, self._task(db, uid, old[0]))
             if (
                 db.execute(
-                    "SELECT COUNT(*) FROM tasks WHERE user_id=? AND state!='archived'", (uid,)
+                    "SELECT COUNT(*) FROM tasks t WHERE t.user_id=? AND t.state!='archived' "
+                    "AND EXISTS(SELECT 1 FROM task_runs r WHERE r.task_id=t.id AND r.status "
+                    "IN ('scheduled','delivering','ready','running','blocked'))",
+                    (uid,),
                 ).fetchone()[0]
                 >= 100
             ):
-                raise ValueError("At most 100 unarchived tasks per user")
+                raise ValueError("At most 100 unfinished tasks per user")
             tid = uuid.uuid4().hex
             now = time.time()
             db.execute(
-                "INSERT INTO tasks VALUES(?,?,?,?,?,'active',?,1,?,?)",
+                "INSERT INTO "
+                "tasks(id,user_id,title,objective,success_criteria,state,schedule,generation,"
+                "created_at,updated_at,source,intent_key) VALUES(?,?,?,?,?,'active',?,1,?,?,?,?)",
                 (
                     tid,
                     uid,
@@ -157,9 +166,44 @@ class TaskStore:
                     json.dumps(schedule),
                     now,
                     now,
+                    "conversation"
+                    if captured
+                    else "scheduled"
+                    if schedule["mode"] != "now"
+                    else "manual",
+                    key,
                 ),
             )
-            self._plan(db, self._task(db, uid, tid), request_id=request_id)
+            if captured:
+                rid = uuid.uuid4().hex
+                db.execute(
+                    "INSERT INTO "
+                    "task_runs(id,task_id,user_id,generation,due_at,status,result,progress,phase,"
+                    "next_step,request_id,started_at,finished_at,created_at) "
+                    "VALUES(?,?,?,1,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        rid,
+                        tid,
+                        uid,
+                        now,
+                        status,
+                        content if status == "succeeded" else "",
+                        content if status != "succeeded" else "",
+                        phase,
+                        next_step,
+                        request_id,
+                        now,
+                        now if status == "succeeded" else None,
+                        now,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO task_updates(run_id,note_id,content,created_at,status,phase) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (rid, request_id or rid, content, now, status, phase),
+                )
+            else:
+                self._plan(db, self._task(db, uid, tid), request_id=request_id)
             return self._view(db, self._task(db, uid, tid))
 
     def edit(self, uid, tid, data):
@@ -302,7 +346,20 @@ class TaskStore:
                 "success_criteria": task["success_criteria"],
             }
 
-    def update_run(self, uid, rid, status, content, note_id):
+    @staticmethod
+    def _milestone(data):
+        values = [data.get("phase", ""), data.get("next_step", "")]
+        if any(not isinstance(v, str) or len(v) > 500 for v in values):
+            raise ValueError("Phase and next step must be strings of at most 500 characters")
+        return tuple(v.strip() for v in values)
+
+    def update_run(self, uid, rid, status, content, note_id, *, phase=None, next_step=None):
+        self._milestone(
+            {
+                "phase": "" if phase is None else phase,
+                "next_step": "" if next_step is None else next_step,
+            }
+        )
         if not isinstance(content, str) or not content.strip() or len(content) > 16000:
             raise ValueError("Nonempty update required")
         if not isinstance(note_id, str) or not 1 <= len(note_id) <= 256:
@@ -313,21 +370,48 @@ class TaskStore:
             run = self._run(db, uid, rid)
             task = self._task(db, uid, run["task_id"])
             old = db.execute(
-                "SELECT content FROM task_updates WHERE run_id=? AND note_id=?", (rid, note_id)
+                "SELECT content,status,phase FROM task_updates WHERE run_id=? AND note_id=?",
+                (rid, note_id),
             ).fetchone()
             if old:
-                if old[0] != content:
+                if (
+                    old[0] != content
+                    or (old[1] and old[1] != status)
+                    or (phase is not None and old[2] != phase)
+                ):
                     raise ValueError("Update identity conflict")
                 return self._view(db, task)
             if run["status"] not in {"running", "blocked"}:
                 raise ValueError("Run is not active")
             db.execute(
-                "INSERT INTO task_updates(run_id,note_id,content,created_at) VALUES(?,?,?,?)",
-                (rid, note_id, content, time.time()),
+                "INSERT INTO "
+                "task_updates(run_id,note_id,content,created_at,status,phase) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    rid,
+                    note_id,
+                    content,
+                    time.time(),
+                    status,
+                    phase if phase is not None else run["phase"],
+                ),
             )
             db.execute(
-                "UPDATE task_runs SET status=?,result=?,finished_at=? WHERE id=?",
-                (status, content, time.time() if status in TERMINAL else None, rid),
+                "UPDATE task_runs SET "
+                "status=?,result=?,progress=?,phase=?,next_step=?,finished_at=? WHERE id=?",
+                (
+                    status,
+                    content if status in TERMINAL else "",
+                    content if status not in TERMINAL else run["progress"],
+                    phase if phase is not None else run["phase"],
+                    ""
+                    if status in TERMINAL
+                    else next_step
+                    if next_step is not None
+                    else run["next_step"],
+                    time.time() if status in TERMINAL else None,
+                    rid,
+                ),
             )
             db.execute("UPDATE tasks SET updated_at=? WHERE id=?", (time.time(), task["id"]))
             if (

@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   CalendarDays,
+  MessageSquare,
   Check,
   CheckCheck,
   ChevronRight,
@@ -162,7 +163,7 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
           <h2 id="tasks-title">
             交给 Hymio 的事<span className="tasks-count">{tasks.length}</span>
           </h2>
-          <p>从一句想法，到一件做成的事。</p>
+          <p>聊天里交给我的事，进展和结果都在这里。</p>
         </div>
         <IconButton label="关闭任务" onClick={onClose}>
           <X size={20} />
@@ -214,7 +215,7 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                 </div>
                 <h3>{filter === 'done' ? '好结果，会留在这里。' : '把想做的事，留给我。'}</h3>
                 <p>
-                  现在开始，或约个时间。
+                  聊一句你想完成的事，进展会留在这里。
                   <br />
                   你离开后，工作仍会继续。
                 </p>
@@ -244,10 +245,14 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                     </span>
                     <span className="task-card-copy">
                       <span className="task-card-title">{t.title}</span>
-                      <span className="task-card-preview">{t.runs[0]?.result || t.objective}</span>
+                      <span className="task-card-preview">
+                        {t.runs[0]?.result || t.runs[0]?.progress || t.objective}
+                      </span>
                       <span className="task-card-meta">
                         <span className={`task-state ${state}`}>{labels[state] || state}</span>
-                        <span>{scheduleLabel(t.schedule)}</span>
+                        <span>
+                          {t.source === 'conversation' ? '来自对话' : scheduleLabel(t.schedule)}
+                        </span>
                       </span>
                     </span>
                     <ChevronRight size={14} />
@@ -268,8 +273,12 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                     {labels[status(task)] || status(task)}
                   </span>
                   <span className="task-detail-schedule">
-                    <CalendarDays size={14} />
-                    {scheduleLabel(task.schedule)}
+                    {task.source === 'conversation' ? (
+                      <MessageSquare size={14} />
+                    ) : (
+                      <CalendarDays size={14} />
+                    )}
+                    {task.source === 'conversation' ? '来自对话' : scheduleLabel(task.schedule)}
                   </span>
                 </div>
                 <h3>{task.title}</h3>
@@ -281,6 +290,23 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                     <p>{task.success_criteria}</p>
                   </div>
                 </div>
+                {run &&
+                  ['running', 'blocked'].includes(run.status) &&
+                  (run.phase || run.next_step || run.progress) && (
+                    <section className={`task-milestone ${run.status}`} aria-label="当前进展">
+                      <span className="task-milestone-label">
+                        {run.status === 'blocked' ? '等待解决' : '推进到这里'}
+                      </span>
+                      {run.phase && <h4>{run.phase}</h4>}
+                      {run.progress && <p>{run.progress}</p>}
+                      {run.next_step && (
+                        <div>
+                          <ArrowUpRight size={14} />
+                          <span>下一步 · {run.next_step}</span>
+                        </div>
+                      )}
+                    </section>
+                  )}
                 <div className="task-actions">
                   {['paused', 'cancelled'].includes(task.state) ? (
                     <button
@@ -292,13 +318,16 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                     </button>
                   ) : (
                     <>
-                      <button
-                        disabled={busy}
-                        onClick={() => void change({ action: 'pause', task_id: task.id })}
-                      >
-                        <Pause size={14} />
-                        暂停日程
-                      </button>
+                      {task.source !== 'conversation' &&
+                        !['succeeded', 'failed', 'cancelled'].includes(run?.status || '') && (
+                          <button
+                            disabled={busy}
+                            onClick={() => void change({ action: 'pause', task_id: task.id })}
+                          >
+                            <Pause size={14} />
+                            暂停日程
+                          </button>
+                        )}
                       <button
                         disabled={busy}
                         onClick={() => void change({ action: 'cancel', task_id: task.id })}
@@ -359,7 +388,15 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                         <div className="task-note" key={n.note_id}>
                           <span className="task-note-dot" />
                           <div>
-                            <time>{date(n.created_at)}</time>
+                            <div className="task-note-heading">
+                              <time>{date(n.created_at)}</time>
+                              {n.status && (
+                                <span className={`task-state ${n.status}`}>
+                                  {labels[n.status] || n.status}
+                                </span>
+                              )}
+                            </div>
+                            {n.phase && <strong>{n.phase}</strong>}
                             <p>{n.content}</p>
                           </div>
                         </div>
@@ -391,7 +428,7 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
       <footer className="tasks-footer">
         <span>
           <RefreshCw size={12} />
-          进展自动同步
+          {tasks.length === 100 ? '最近 100 件事 · 进展自动同步' : '进展自动同步'}
         </span>
         <span>一个 Hymio，持续为你推进。</span>
       </footer>

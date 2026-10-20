@@ -111,7 +111,9 @@ Choose the conversation model in Settings without creating another conversation.
 
 ### Work that carries on
 
-Arrange a task for now, a specific time, or a daily/weekly routine. Web/Desktop and iOS share a task
-panel for objectives, progress, results and schedule controls. The personal agent can do the work
-itself or delegate a bounded independent expert; you still have one conversation.
+Ask naturally: compare two offers, investigate a problem, or prepare a document. Hymio is prompted
+to keep accepted work in a shared task list, with intermediate findings, blockers, next steps and final
+results. Recording current work does not schedule it a second time. You can also arrange future work
+or a daily/weekly routine. The agent can work directly or delegate a bounded independent expert;
+Web/Desktop and iOS show the same records, within one continuing conversation.
 [Tasks and delegation](spec/feature23-tasks-and-delegation.md) describes the execution boundaries.

@@ -16,9 +16,13 @@ class TasksTool(Tool):
     def definition(self):
         return ToolDefinition(
             "tasks",
-            "Manage durable tasks and scheduled work. Create requires title, objective and success_criteria. "
+            "Track user intentions and outcomes from everyday conversation. Capture current work early with "
+            "capture(title, objective, success_criteria, intent_key): records an already admitted running task, "
+            "NEVER dispatches it again. Reuse the intent_key for the same outcome; use returned run_id for updates. "
+            "For a quick task capture with status=succeeded and content=result. "
+            "Create schedules NEW work; do not create a second run for work already underway. "
             "For app.task.due call start(run_id) before acting; cancelled runs must not execute. "
-            "Record progress, complete/fail/block with content. Delegate a started run for independent asynchronous work. "
+            "Record progress, complete/fail/block with content, phase and next_step. Delegate a started run for independent asynchronous work. "
             "Schedule: mode now/once/daily/weekly, timezone IANA; once at ISO8601 with offset; daily/weekly time HH:MM, weekday Monday=0. "
             "Never poll in a loop; delegated completion arrives automatically.",
             {
@@ -30,6 +34,7 @@ class TasksTool(Tool):
                             "list",
                             "get",
                             "create",
+                            "capture",
                             "edit",
                             "delete",
                             "pause",
@@ -52,7 +57,14 @@ class TasksTool(Tool):
                             "objective",
                             "success_criteria",
                             "content",
+                            "intent_key",
+                            "phase",
+                            "next_step",
                         ]
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["running", "blocked", "succeeded"],
                     },
                     "schedule": {
                         "type": "object",

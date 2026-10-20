@@ -1429,16 +1429,22 @@ a {
 .json-node > summary {
   cursor: pointer;
   overflow-wrap: anywhere;
+  padding: 6px 9px;
+  border-radius: 6px;
+  min-height: 30px;
+  line-height: 1.6;
 }
 .json-children {
-  margin-left: 9px;
+  margin-left: 12px;
   padding-left: 13px;
-  border-left: 1px solid var(--line);
+  border-left: 2px solid var(--line);
+  padding: 3px 0 3px 15px;
 }
 .json-leaf {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  padding: 2px 0;
+  padding: 5px 9px;
+  line-height: 1.65;
 }
 .json-tree b {
   font-weight: 500;
@@ -1924,13 +1930,10 @@ a {
 .trace-fold-body {
   border-left: 1px solid var(--line);
   margin: 6px 0 0 6px;
-  padding: 2px 0 2px 14px;
-}
-.trace-fold-body .message:first-child {
-  margin-top: 14px;
-}
-.trace-fold-body .message:last-child {
-  margin-bottom: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--subtle);
 }
 .trace-live {
   margin: -8px 0 16px;
@@ -1958,6 +1961,9 @@ a {
 }
 .message-assistant > .message-body {
   max-width: 100%;
+  padding: 18px 20px 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--subtle) 75%, var(--surface));
 }
 .message-tool-activity .activity-group {
   margin: 0;
@@ -2746,13 +2752,14 @@ a {
   box-shadow: none;
 }
 .trace-page-open .debug-panel .panel-content {
-  max-width: 1200px;
+  max-width: none;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
   box-sizing: border-box;
+  padding: 24px 32px 48px;
 }
 .trace-page-open .execution-flow {
-  max-width: 1000px;
+  max-width: none;
 }
 .trace-page-open .panel-head {
   padding: 30px 32px 16px;
@@ -3118,4 +3125,85 @@ a {
 }
 .reasoning-panel > div {
   text-align: left;
+}
+
+/* Branch headings stay distinct from their values at every nesting level. */
+
+.json-node > summary:hover {
+  background: var(--subtle);
+}
+.json-node.json-depth-0 > summary {
+  background: var(--subtle);
+  border-bottom: 1px solid var(--line);
+  font-weight: 650;
+}
+.json-node.json-depth-1 {
+  margin: 8px 0;
+}
+.json-node.json-depth-1 > summary {
+  background: color-mix(in srgb, var(--blue) 5%, var(--surface));
+  border: 1px solid var(--line);
+}
+.json-kind {
+  display: inline-block;
+  margin: 0 8px 0 3px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.json-leaf + .json-leaf {
+  border-top: 1px dashed var(--line);
+}
+.json-tree .json-leaf b {
+  color: var(--muted);
+  font-weight: 500;
+  margin-right: 6px;
+}
+.json-number {
+  color: var(--blue);
+}
+.json-boolean {
+  color: #936027;
+  font-weight: 600;
+}
+.json-null {
+  color: var(--muted);
+  font-style: italic;
+}
+.trace-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px;
+}
+.trace-catalog .trace-card {
+  width: 100%;
+  margin: 0;
+}
+@media (min-width: 1400px) {
+  .trace-exchange {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  .trace-performance {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.trace-fold-body .message-assistant > .message-body {
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+
+.trace-fold-body .message {
+  margin: 12px 0;
+}
+@media (max-width: 700px) {
+  .trace-page-open .panel-content {
+    padding: 16px;
+  }
+  .message-assistant > .message-body {
+    padding: 14px 15px;
+  }
 }

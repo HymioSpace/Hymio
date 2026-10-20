@@ -44,11 +44,11 @@ struct TasksScreen: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         VStack(alignment: .leading, spacing: 9) {
-          Text("A LITTLE FURTHER, EVERY DAY").font(.system(size: 9, weight: .medium)).tracking(1.8)
+          Text("A LITTLE FURTHER, EVERY DAY").font(.system(size: 11, weight: .medium)).tracking(1.8)
             .foregroundStyle(.secondary)
           Text("交给 Hymio 的事").font(.system(size: 29, weight: .semibold, design: .rounded)).tracking(
             -1)
-          Text("从一句想法，到一件做成的事。").font(.subheadline).foregroundStyle(.secondary)
+          Text("聊天里交给我的事，进展和结果都在这里。").font(.subheadline).foregroundStyle(.secondary)
         }.padding(.top, 16)
         Picker("筛选任务", selection: $filter) {
           Text("全部").tag(0)
@@ -64,7 +64,7 @@ struct TasksScreen: View {
             ).padding(22).background(
               Brand.blue.opacity(0.05), in: RoundedRectangle(cornerRadius: 22))
             Text(filter == 2 ? "好结果，会留在这里。" : "把想做的事，留给我。").font(.headline)
-            Text("现在开始，或约个时间。\n你离开后，工作仍会继续。").font(.subheadline).foregroundStyle(.secondary)
+            Text("聊一句你想完成的事。\n进展会留在这里。").font(.subheadline).foregroundStyle(.secondary)
               .multilineTextAlignment(.center)
             Button("安排第一件事", systemImage: "plus") { creating = true }.buttonStyle(
               .borderedProminent
@@ -89,14 +89,17 @@ struct TasksScreen: View {
                 ).multilineTextAlignment(.leading)
                 Text(
                   item["runs"].items.first?["result"].text.isEmpty == false
-                    ? item["runs"].items.first!["result"].text : item["objective"].text
+                    ? item["runs"].items.first!["result"].text
+                    : (item["runs"].items.first?["progress"].text.isEmpty == false
+                      ? item["runs"].items.first!["progress"].text : item["objective"].text)
                 ).font(.caption).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(
                   .leading)
                 HStack {
                   Text(taskLabel(taskStatus(item))).foregroundStyle(Brand.blue)
                   Text("·")
-                  Text(taskSchedule(item["schedule"]))
-                }.font(.system(size: 10)).foregroundStyle(.secondary)
+                  Text(
+                    item["source"].text == "conversation" ? "来自对话" : taskSchedule(item["schedule"]))
+                }.font(.system(size: 11)).foregroundStyle(.secondary)
               }.frame(maxWidth: .infinity, alignment: .leading)
               Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary).padding(
                 .top, 11)
@@ -106,8 +109,8 @@ struct TasksScreen: View {
         }
         HStack(spacing: 6) {
           Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
-          Text("进展自动同步 · 一个 Hymio，持续为你推进。")
-        }.font(.system(size: 10)).foregroundStyle(.tertiary).padding(.top, 10)
+          Text(items.count == 100 ? "最近 100 件事 · 进展自动同步" : "进展自动同步 · 一个 Hymio，持续为你推进。")
+        }.font(.system(size: 11)).foregroundStyle(.tertiary).padding(.top, 10)
       }.padding(.horizontal, 22).padding(.bottom, 30)
     }.background(Brand.surface).navigationTitle("任务").navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -153,7 +156,10 @@ private struct TaskDetailScreen: View {
           HStack {
             Text(taskLabel(taskStatus(item))).font(.caption).foregroundStyle(Brand.blue)
             Spacer()
-            Label(taskSchedule(item["schedule"]), systemImage: "calendar").font(.system(size: 10))
+            Label(
+              item["source"].text == "conversation" ? "来自对话" : taskSchedule(item["schedule"]),
+              systemImage: item["source"].text == "conversation" ? "bubble.left" : "calendar"
+            ).font(.system(size: 11))
               .foregroundStyle(.secondary)
           }
           Text(item["title"].text).font(.system(size: 27, weight: .semibold, design: .rounded))
@@ -172,6 +178,28 @@ private struct TaskDetailScreen: View {
             MessageContent(content: run["result"].text, account: account)
           }.frame(maxWidth: .infinity, alignment: .leading).padding(20).background(
             Brand.blue.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
+        }
+        if let run = item["runs"].items.first, ["running", "blocked"].contains(run["status"].text),
+          !run["progress"].text.isEmpty || !run["phase"].text.isEmpty
+            || !run["next_step"].text.isEmpty
+        {
+          VStack(alignment: .leading, spacing: 10) {
+            Label(
+              run["status"].text == "blocked" ? "等待解决" : "推进到这里",
+              systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+            )
+            .font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+            if !run["phase"].text.isEmpty { Text(run["phase"].text).font(.headline) }
+            if !run["progress"].text.isEmpty {
+              Text(run["progress"].text).font(.subheadline).foregroundStyle(Brand.ink)
+            }
+            if !run["next_step"].text.isEmpty {
+              Divider()
+              Label("下一步 · \(run["next_step"].text)", systemImage: "arrow.up.right")
+                .font(.subheadline).foregroundStyle(Brand.muted)
+            }
+          }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
+            .background(Brand.mist, in: RoundedRectangle(cornerRadius: 16))
         }
         Divider()
         HStack {
@@ -196,8 +224,15 @@ private struct TaskDetailScreen: View {
               HStack(alignment: .top, spacing: 12) {
                 Circle().fill(Brand.blue.opacity(0.3)).frame(width: 5, height: 5).padding(.top, 6)
                 VStack(alignment: .leading, spacing: 6) {
-                  Text(taskDate(note["created_at"].double)).font(.system(size: 10)).foregroundStyle(
-                    .tertiary)
+                  HStack {
+                    Text(taskDate(note["created_at"].double)).foregroundStyle(.secondary)
+                    if !note["status"].text.isEmpty {
+                      Text(taskLabel(note["status"].text)).foregroundStyle(Brand.blue)
+                    }
+                  }.font(.caption2)
+                  if !note["phase"].text.isEmpty {
+                    Text(note["phase"].text).font(.subheadline.weight(.medium))
+                  }
                   Text(note["content"].text).font(.subheadline).lineSpacing(5).textSelection(
                     .enabled)
                 }
@@ -217,7 +252,12 @@ private struct TaskDetailScreen: View {
             if ["paused", "cancelled"].contains(item["state"].text) {
               Button("重新安排", systemImage: "play") { Task { await action("resume") } }
             } else {
-              Button("暂停日程", systemImage: "pause") { Task { await action("pause") } }
+              if item["source"].text != "conversation",
+                !["succeeded", "failed", "cancelled"].contains(
+                  item["runs"].items.first?["status"].text ?? "")
+              {
+                Button("暂停日程", systemImage: "pause") { Task { await action("pause") } }
+              }
               Button("取消任务", systemImage: "xmark.circle") { Task { await action("cancel") } }
             }
             Button("编辑", systemImage: "pencil") { editing = true }.disabled(

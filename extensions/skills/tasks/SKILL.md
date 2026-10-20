@@ -1,35 +1,40 @@
 ---
 name: tasks
-description: Manage durable outcomes, scheduled work and bounded expert delegation.
+description: Track user intentions, intermediate findings, blockers and results from conversation; optionally schedule or delegate work.
 ---
 
-# Work that carries on
+# Keep the user's work in view
 
-Use the `tasks` tool for a concrete commitment with a goal and completion condition.
-Keep one task for the same outcome; do not create another on every continuation.
+A task is an outcome accepted from conversation, including ordinary questions that require research,
+comparisons, writing and practical work. Scheduling is optional. Keep one record for the same intent.
+Do not create tasks for greetings or interpret a tentative idea as permission to act.
 
-- `create`: title, objective, success_criteria, schedule. The service records the first run.
-- `list` / `get(task_id)`: inspect commitments, recent runs and results before changing them.
-- `edit(task_id)`: change a future contract. Cancel an active run before editing.
-- `pause`: pause future scheduling; it does not retract work already admitted.
-- `cancel` / `delete`: stop future work and request cancellation of a linked expert.
-- `resume`: schedule work again. Completed records remain available.
+## Current conversation
 
-## Work admission
+`capture(title, objective, success_criteria, intent_key)` records an already admitted task as running.
+It does not enqueue a reminder, rerun the request or interrupt the conversation. Choose a stable key
+for this specific outcome and reuse it after uncertainty; the returned runs[0].id is the run_id.
+An existing key returns its original task, including a completed one; it never reopens it.
 
-When `app.task.due` supplies run_id, call `start(run_id)` first. A rejected start means no work
-should execute. The returned objective and success criteria are the current contract.
-Record significant findings with `progress(run_id, content)`. End with `complete` or `fail`;
-use `block` for work that needs new information or user action. Do not leave a known blocker
-labelled running. A final chat message alone does not update the task.
+For a small completed answer, capture with status=succeeded and content to save the outcome in one call.
+For ongoing work, use `progress(run_id, content, phase, next_step)`. Record discoveries, decisions,
+partial deliverables and what remains. Use `block` for missing access or a decision, explaining both
+what is missing and how to proceed. Later `progress` resumes the same run. Use `complete` or `fail`
+for the actual terminal result. A chat response alone does not update the task. Do not fabricate stages
+or percentages. Backend restart does not prove the underlying work is still executing.
 
-For independent work, call `delegate(run_id)` after start. This returns immediately; Backend
-records the expert's findings and final outcome. Do not complete the run yourself while it is
-delegated. Notifications arrive automatically; never poll for completion in a tool loop.
+```json
+{"action":"capture","intent_key":"compare-two-offers-2026-10-21","title":"Compare the two offers","objective":"Compare the attached offers for the user's requirements","success_criteria":"A sourced recommendation with tradeoffs","phase":"Reading the offers","next_step":"Compare costs and exclusions"}
+```
 
-## Schedules
+Use list/get to find existing work before creating a continuation. Cancel obsolete work when the
+user changes direction. Separate deliverables can have separate tasks; tool invocations cannot.
 
-Always include an explicit IANA timezone for timed work. Ask if unknown.
+## Future work
+
+`create(title, objective, success_criteria, schedule)` admits NEW work through the scheduler.
+Do not use it to record work already being executed. For app.task.due call start(run_id) before any
+external action. A rejected start means no work should execute. Then record milestones and finish.
 
 ```json
 {"mode":"now","timezone":"UTC"}
@@ -38,5 +43,15 @@ Always include an explicit IANA timezone for timed work. Ask if unknown.
 {"mode":"weekly","weekday":0,"time":"09:00","timezone":"Asia/Shanghai"}
 ```
 
-Weekday is Monday=0 through Sunday=6. Late recurring work catches up once, then resumes at the
-next future date. Do not promise an exact delivery time: dependencies and running work can delay results.
+Timed work requires the user's IANA timezone. Weekday is Monday=0. Late recurrence catches up once,
+then resumes at the next future date. Do not promise precise delivery times.
+
+## Controls and experts
+
+- edit changes a future contract; cancel an active run before changing it.
+- pause stops future scheduling, not work already admitted; resume schedules another attempt if none is live.
+- cancel/delete stop future work and request cancellation of a linked expert.
+- delegate(run_id) attaches a bounded independent expert to a running run. Progress and completion
+  arrive automatically. Do not poll, delegate twice or complete its run yourself.
+- list/get show owner-scoped records, findings and results. A task's schedule state is separate from
+  the run's execution status. A running record means accepted unfinished work, not proof of a live worker.

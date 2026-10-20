@@ -49,4 +49,4 @@
 
 - [Models and media](feature22-models-and-media.md): model preferences, private attachments, multimodal understanding and image creation.
 
-- [Tasks and delegation](feature23-tasks-and-delegation.md): durable work, schedules, bounded experts and Web/iOS task panels.
+- [Tasks and delegation](feature23-tasks-and-delegation.md): conversational intentions, milestones, optional schedules, bounded experts and Web/iOS task panels.

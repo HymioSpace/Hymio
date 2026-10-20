@@ -5,7 +5,9 @@ Status: Implemented
 ## Overview
 
 Hymio gives its single personal agent a durable work list. Each task describes an outcome;
-each run records one attempt, its findings and final result. Scheduling never creates another chat.
+each run records one attempt, its findings and final result. Ordinary conversation is the primary
+entry point; the model extracts accepted intentions, records intermediate outcomes and closes them.
+Scheduling is an optional trigger and never creates another chat.
 Oath owns bounded delegated execution; Hymio owns task business state and schedules.
 
 ```mermaid
@@ -31,6 +33,22 @@ Start atomically checks task generation and status. Editing or pausing invalidat
 cancelling also terminates linked delegation. An already dispatched external action cannot be undone.
 Completed one-time tasks can be run again explicitly. Findings and results remain visible.
 
+## Capturing conversational work
+
+`capture` records work already admitted by the current conversation. It creates a running run directly,
+never a scheduled/delivering row or app.task.due event. An owner-scoped unique intent_key deduplicates
+retries across tool invocations; it never reopens completed work. Distinct requested outcomes need
+separate keys. Greetings and tentative ideas are not commitments. A quick result can be captured as
+succeeded atomically, without an extra start/complete cycle. Only the agent's internal API accepts capture.
+
+Task source is conversation/manual/scheduled. Runs separate phase, latest progress, next_step and final
+result. Timeline updates carry their resulting status and phase; blockers remain visible until progress
+resumes that same run. Changes are transactional; schema additions preserve existing records.
+Lists return the latest 100 unarchived tasks; older records remain addressable by ID. The limit on
+unfinished tasks is separate: completed records do not prevent accepting new work.
+Recording an intention grants no extra execution or approval authority. Extraction is model-driven,
+not guaranteed NLP classification; no hidden second model or extra per-message extraction request runs.
+
 ## Scheduling
 
 An indexed due_at column is the persistent timer. A bounded service loop claims due runs with a lease,
@@ -55,7 +73,7 @@ Children cannot create tasks or other children. A blocked attempt ends clearly r
 ## Clients
 
 A task sheet sits alongside the single conversation: active work, upcoming dates, completed results.
-Details emphasize the objective, latest finding, final result and chronological updates. Users can
+Details emphasize the objective, current phase, next action, final result and chronological updates. Users can
 create, edit, pause, cancel and inspect tasks. Web/Desktop and native iOS use the same authenticated API.
 Task data refreshes while the panel is visible; no permanent chat reconnect is required.
 
@@ -68,7 +86,7 @@ Temporary service errors retain pending work and retry with delay. All network o
 
 ## API and deployment
 
-`GET /tasks` lists the owner's tasks. `POST /tasks` accepts action=list/get/create/edit/delete/
+`GET /tasks` lists the owner's tasks. `POST /tasks` accepts action=list/get/capture/create/edit/delete/
 pause/resume/cancel/start/progress/complete/fail/block/delegate. Target task_id or run_id is mandatory
 for its corresponding action; notes use note_id for retry identity. The Agent's `tasks` extension
 uses the same operations through `/internal/tasks`, authenticated with the existing Backend service key.
@@ -78,3 +96,10 @@ The scheduler starts in Backend's lifespan and shares its SQLite owner. No cron 
 or new deployment credential is needed. The existing Oath remote-auth setup verifies short-lived
 Backend service deliveries; the same user_id owns the resulting system event. Use Oath with the
 matching delegation/application-event contract. Old runtime binaries cannot serve this feature.
+
+## Presentation
+
+Chat work disclosures use a compact, bordered process region with distinct summary/body styles.
+Assistant answers sit on a subtle adaptive surface; process rows avoid repeated nested answer cards.
+Web Trace fills the available content width; JSON branches distinguish container depth and literal
+value types without relying only on color. Reduced motion and native Dynamic Type remain supported.

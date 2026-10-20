@@ -36,8 +36,15 @@ def task_routes(settings, sessions, service, bearer, body):
                 result = await asyncio.to_thread(store.list, uid)
             elif action == "get":
                 result = await asyncio.to_thread(store.get, uid, data["task_id"])
-            elif action == "create":
-                result = await asyncio.to_thread(store.create, uid, data, data.get("request_id"))
+            elif action in {"create", "capture"}:
+                if action == "capture" and not internal:
+                    raise ValueError("Only the agent can capture work already in progress")
+                result = await asyncio.to_thread(
+                    store.capture if action == "capture" else store.create,
+                    uid,
+                    data,
+                    data.get("request_id"),
+                )
             elif action == "edit":
                 result = await asyncio.to_thread(store.edit, uid, data["task_id"], data)
             elif action in {"pause", "resume", "cancel", "delete"}:
@@ -60,6 +67,8 @@ def task_routes(settings, sessions, service, bearer, body):
                     status,
                     data["content"],
                     data.get("note_id") or uuid.uuid4().hex,
+                    phase=data.get("phase"),
+                    next_step=data.get("next_step"),
                 )
             else:
                 raise ValueError("Unknown action")
