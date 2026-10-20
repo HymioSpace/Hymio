@@ -69,3 +69,7 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 下一步：完善产品身份和 Oath 用户凭据接入 → 实现产品后端 → 引入 Context 导入与第一个 Kit。Nostalgia 的实现和协议仍是后续依赖。
 
 客户端单入口与局域网启动见 [feature16](feature16-lan-entry.md)：HTTP、WS、业务查询统一访问 Hymio Backend，Oath 地址仅作为内部 upstream。
+
+客户端响应与思考展示见 [App 响应与状态反馈](feature17-app-responsiveness.md)。
+
+渠道唯一连接、云电脑恢复与 Trace 阅读见 [Trace 与设备可用性](feature18-trace-devices.md)。

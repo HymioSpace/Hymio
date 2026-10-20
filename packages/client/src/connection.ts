@@ -56,8 +56,10 @@ export class OathClient {
   private sent = new Set<string>();
   private saving = new Set<string>();
   private ready = false;
+  private replaced = false;
   private pingAt = 0;
   private clientId = `hymio-${createIdentity()}`;
+  channelKind: 'web' | 'ios' | 'mac' = 'web';
   private sourceDeviceId = '';
   private cursor = 0;
   private statusRequest?: { id: string; through: number };
@@ -76,7 +78,20 @@ export class OathClient {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach((fn) => fn());
   }
-  connect(config: Connection) {
+  allowTakeover() {
+    this.replaced = false;
+  }
+  connect(config: Connection, takeover = false) {
+    if (
+      this.replaced &&
+      !takeover &&
+      this.config?.userId === config.userId &&
+      this.config?.wsUrl === config.wsUrl
+    ) {
+      this.config = { ...config };
+      return;
+    }
+    this.replaced = false;
     const url = new URL(config.wsUrl);
     if (
       !['ws:', 'wss:'].includes(url.protocol) ||
@@ -115,6 +130,7 @@ export class OathClient {
     this.update({ phase: 'disconnected', runtime: undefined, runtimeThrough: undefined });
   }
   signOut() {
+    this.replaced = false;
     this.disconnect();
     this.account = '';
     this.seen.clear();
@@ -147,6 +163,7 @@ export class OathClient {
           user_id: config.userId,
           client_id: clientId!,
           history_limit: 10,
+          channel_kind: this.channelKind,
         },
       });
     socket.onmessage = (event) => {
@@ -311,6 +328,17 @@ export class OathClient {
       clearInterval(this.heartbeat);
       clearTimeout(this.watchdog);
       if (!this.config) return;
+      if (event.code === 4009 || event.code === 1008) {
+        this.replaced = event.code === 4009;
+        this.update({
+          phase: 'error',
+          error:
+            event.code === 4009
+              ? '已在另一个设备或窗口打开此渠道。点击重新连接可接管。'
+              : '登录凭证已失效，请重新登录。',
+        });
+        return;
+      }
       if (event.code === 1009) {
         this.update({
           phase: 'error',

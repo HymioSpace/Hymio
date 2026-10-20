@@ -35,16 +35,22 @@ struct ChatScreen: View {
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
             ForEach(client.model.messages) { message in
-              MessageRow(message: message, tools: client.model.terminals, approvals: client.model.approvals, account: account).id(
+              MessageRow(
+                message: message, tools: client.model.terminals, approvals: client.model.approvals,
+                account: account
+              ).id(
                 message.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
               ApprovalCard(approval: approval, client: client)
             }
-            if client.model.working && !client.model.messages.contains(where: \.streaming) {
+            if (client.model.working || client.model.awaitingReply)
+              && !client.model.messages.contains(where: \.streaming)
+            {
               HStack(spacing: 10) {
-                Companion(size: 30, animated: true, mood: .working)
-                Text("正在继续处理…").font(.caption).foregroundStyle(.secondary)
+                ProgressView().controlSize(.small)
+                Text(client.model.awaitingReply ? "正在等候回复…" : "正在继续处理…").font(.caption)
+                  .foregroundStyle(.secondary)
               }.accessibilityIdentifier("chat.working")
             }
             if !client.model.failure.isEmpty {
@@ -61,6 +67,9 @@ struct ChatScreen: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .onChange(of: client.model.messages.count) { _, _ in
+          if atBottom && !client.loadingHistory { proxy.scrollTo("bottom", anchor: .bottom) }
+        }
         .onChange(of: client.state.cursor) { _, _ in
           if atBottom && !client.loadingHistory { proxy.scrollTo("bottom", anchor: .bottom) }
         }
@@ -82,7 +91,17 @@ struct ChatScreen: View {
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
-            ConnectionStatus(text: client.phase, connected: client.connected)
+            HStack(spacing: 5) {
+              if client.connected
+                && (client.model.working || client.model.awaitingReply
+                  || client.model.messages.contains(where: \.streaming))
+              {
+                Companion(size: 24, animated: true, mood: .working)
+              }
+              ConnectionStatus(
+                text: client.connected && (client.model.working || client.model.awaitingReply)
+                  ? "正在处理" : client.phase, connected: client.connected)
+            }
           }.accessibilityElement(children: .combine)
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -90,8 +109,9 @@ struct ChatScreen: View {
             typing = false
             profile = true
           } label: {
-            Image(systemName: "person.crop.circle").font(.title3).foregroundStyle(Brand.ink)
-          }.accessibilityLabel("我的账号")
+            Image(systemName: "ellipsis").font(.title3).frame(width: 44, height: 44).contentShape(
+              Rectangle())
+          }.buttonStyle(.plain).accessibilityLabel("我的账号")
             .matchedTransitionSource(id: "account", in: transitions)
         }
       }
@@ -127,7 +147,7 @@ struct ChatScreen: View {
                 await account.logout()
               }
             } else {
-              client.reconnect()
+              client.retryDelivery()
             }
           }.font(.caption)
         }.padding(.horizontal, 8)
@@ -160,12 +180,17 @@ struct ChatScreen: View {
     let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
     guard canSend else { return }
     sendBusy = true
+    draft = ""
+    atBottom = true
     Task {
       do {
         try await client.message(text)
         sentCount += 1
-        if draft.trimmingCharacters(in: .whitespacesAndNewlines) == text { draft = "" }
-      } catch { client.error = error.localizedDescription }
+
+      } catch {
+        if draft.isEmpty { draft = text }
+        client.error = error.localizedDescription
+      }
       sendBusy = false
     }
   }

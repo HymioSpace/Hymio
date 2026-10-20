@@ -52,7 +52,9 @@ struct AccountScreen: View {
             Text(client.devicesError).font(.footnote).foregroundStyle(Brand.muted)
             Button("重新读取") { Task { await client.loadDevices() } }
           }
-          if !client.devices.contains(where: { $0["kind"].text == "cloud_desktop" && $0["online"].flag }) {
+          if !client.devices.contains(where: {
+            $0["kind"].text == "cloud_desktop" && $0["online"].flag
+          }) {
             Button {
               deviceBusy = true
               deviceError = ""
@@ -92,7 +94,12 @@ struct AccountScreen: View {
       }
       .navigationTitle("我的账号").navigationBarTitleDisplayMode(.inline)
       .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-      .task { await client.loadDevices() }
+      .task {
+        while !Task.isCancelled {
+          await client.loadDevices()
+          try? await Task.sleep(for: .seconds(15))
+        }
+      }
       .refreshable { await client.loadDevices() }
       .confirmationDialog(
         "退出后会清除本机缓存，云端工作仍会继续。", isPresented: $loggingOut, titleVisibility: .visible

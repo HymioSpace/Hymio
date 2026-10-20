@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -5,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from hymio_backend.devices.providers import E2BComputer
+from hymio_backend.devices.providers import E2BComputer, controller_program
 from hymio_backend.devices.store import DeviceConflict, DeviceStore
 from hymio_backend.session_store import SessionStore
 
@@ -24,6 +27,51 @@ class DeviceTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_one_binding_per_channel_and_fenced_connection_release(self):
+        first = self.store.bind("alice", "browser-a", "web")
+        second = self.store.bind("alice", "browser-b", "web")
+        self.assertEqual(first["id"], second["id"])
+        self.store.bind("alice", "phone-a", "ios")
+        self.store.bind("alice", "phone-b", "ios")
+        self.assertEqual(
+            len([d for d in self.store.list("alice") if d["provider"] == "channel"]), 2
+        )
+        self.store.connection_claim("alice", "web", "old")
+        self.store.connection_claim("alice", "web", "new")
+        self.assertFalse(self.store.connection_renew("alice", "web", "old"))
+        self.store.connection_release("alice", "web", "old")
+        self.assertTrue(self.store.connection_renew("alice", "web", "new"))
+        self.store.connection_claim("alice", "ios", "phone")
+        self.assertTrue(self.store.connection_renew("alice", "web", "new"))
+
+    def test_late_cloud_dispatch_is_rejected_before_execution(self):
+        program = controller_program(
+            {"capability": "bash", "arguments": {"command": "echo should-not-run"}, "timeout": 10},
+            expires_at=0,
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", program], capture_output=True, text=True, check=True
+        )
+        self.assertEqual(
+            json.loads(result.stdout), {"operation_rejected": "Dispatch deadline expired"}
+        )
+
+    def test_existing_duplicate_bindings_are_consolidated(self):
+        old = self.store.bind("alice", "old-browser", "web")
+        with self.store.transaction() as db:
+            db.execute("DROP INDEX one_channel_kind")
+            db.execute(
+                "INSERT INTO devices(id,user_id,name,kind,provider,provider_ref,"
+                "created_at,last_seen) "
+                "VALUES('latest','alice','Web','web','channel','latest-browser',1,99999999999)"
+            )
+        migrated = DeviceStore(SimpleNamespace(transaction=self.store.transaction))
+        self.assertEqual(
+            [d["id"] for d in migrated.list("alice") if d["kind"] == "web"], ["latest"]
+        )
+        with self.assertRaises(KeyError):
+            migrated.get("alice", old["id"])
 
     def test_ownership(self):
         with self.assertRaises(KeyError):

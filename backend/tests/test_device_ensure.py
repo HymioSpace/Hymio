@@ -31,6 +31,9 @@ class Cloud:
     def state(self, device):
         return self.states[device["provider_ref"]]
 
+    def execution_idle(self, device):
+        return True
+
     def pause(self, device):
         self.states[device["provider_ref"]] = "paused"
 
@@ -99,6 +102,31 @@ class EnsureTests(unittest.TestCase):
         with self.assertRaises(TimeoutError):
             self.service.ensure_available("alice")
         self.assertEqual(self.service.ensure_available("alice")["action"], "recovery_required")
+        self.assertEqual(self.cloud.created, 1)
+
+    def test_expired_execution_is_released_only_after_remote_idle_check(self):
+        device = self.service.ensure_available("alice")["device"]
+        self.service.store.claim("alice", device["device_id"], "old", {}, 10)
+        with self.sessions.transaction() as db:
+            db.execute("UPDATE device_locks SET deadline=0")
+        self.cloud.execution_idle = lambda device: False
+        self.service.ensure_available("alice")
+        with self.sessions.transaction() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM device_locks").fetchone()[0], 1)
+        self.cloud.execution_idle = lambda device: True
+        self.service.ensure_available("alice")
+        result = self.service.store.commands("alice", device["device_id"], "old")
+        self.assertEqual(result["status"], "outcome_unknown")
+        self.service.store.claim("alice", device["device_id"], "new", {}, 10)
+        self.assertEqual(self.cloud.created, 1)
+
+    def test_automatic_pause_resumes_without_replacing_computer(self):
+        device = self.service.ensure_available("alice")["device"]
+        ref = self.service.store.get("alice", device["device_id"])["provider_ref"]
+        self.cloud.states[ref] = "paused"
+        resumed = self.service.ensure_available("alice")
+        self.assertEqual(resumed["action"], "resumed")
+        self.assertEqual(resumed["device"]["device_id"], device["device_id"])
         self.assertEqual(self.cloud.created, 1)
 
     def test_expired_ensure_owner_cannot_release_new_owner(self):

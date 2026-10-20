@@ -42,6 +42,9 @@ final class HymioUITests: XCTestCase {
     editor.typeText("Remember this code: \(code). Reply only with the code. Do not use tools.")
     XCTAssertTrue(send.waitForExistence(timeout: 5))
     send.tap()
+    XCTAssertTrue(
+      app.descendants(matching: .any).matching(identifier: "message.user").firstMatch
+        .waitForExistence(timeout: 2))
     let reply = app.staticTexts.matching(NSPredicate(format: "label == %@", String(code)))
       .firstMatch
     XCTAssertTrue(reply.waitForExistence(timeout: 90), app.debugDescription)

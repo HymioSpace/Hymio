@@ -14,11 +14,13 @@ import UIKit
   @Published private(set) var model = Conversation(events: [])
   private var cache: ConversationCache?
   private var loop: Task<Void, Never>?
+  private var persistence: Task<Void, Never>?
   private var socket: URLSessionWebSocketTask?
   private var sent: Set<String> = []
   private var generation = UUID()
   private var owner = ""
   private var sourceDevice = ""
+  private var replaced = false
   private var ready = false
   private let account: AccountService
   init(account: AccountService) { self.account = account }
@@ -32,12 +34,15 @@ import UIKit
     return value
   }
   func activate() {
-    guard account.session != nil, loop == nil else { return }
+    guard account.session != nil, loop == nil, !replaced else { return }
     let token = UUID()
     generation = token
     loop = Task { [weak self] in await self?.run(token) }
   }
   func suspend() {
+    persistence?.cancel()
+    persistence = nil
+    try? cache?.save(state)
     generation = UUID()
     loop?.cancel()
     loop = nil
@@ -47,6 +52,7 @@ import UIKit
     phase = "已暂停连接"
   }
   func reset() {
+    replaced = false
     suspend()
     try? cache?.clear()
     cache = nil
@@ -61,6 +67,7 @@ import UIKit
     error = ""
   }
   func reconnect() {
+    replaced = false
     suspend()
     activate()
   }
@@ -68,7 +75,9 @@ import UIKit
     guard let cache else { throw ServiceError.message("消息存储未准备好") }
     try cache.save(next)
     state = next
-    model = Conversation(events: next.events)
+    model = Conversation(
+      events: next.events, pending: next.pending, accepted: next.accepted ?? [],
+      rejected: next.rejected ?? [])
   }
   private func run(_ token: UUID) async {
     var attempts = 0
@@ -81,15 +90,19 @@ import UIKit
         if owner != key {
           let disk = try ConversationCache(backend: account.backend.absoluteString, user: s.user_id)
           cache = disk
-          let restored = try disk.load()
+          let restored = try await Task.detached(priority: .userInitiated) { try disk.load() }.value
+          guard token == generation else { return }
           owner = key
           state = restored
-          model = Conversation(events: restored.events)
+          model = Conversation(
+            events: restored.events, pending: restored.pending, accepted: restored.accepted ?? [],
+            rejected: restored.rejected ?? [])
         }
         phase = attempts == 0 ? "正在连接" : "重新连接中"
         guard let endpoint = URL(string: s.oath_ws) else { throw ServiceError.message("聊天地址无效") }
         try account.validated(endpoint, socket: true)
         let ws = URLSession.shared.webSocketTask(with: endpoint)
+        ws.maximumMessageSize = 32 * 1024 * 1024
         socket = ws
         sent = []
         ready = false
@@ -99,6 +112,7 @@ import UIKit
             type: "agent.attach",
             payload: .object([
               "credential": .string(s.access_token), "user_id": .string(s.user_id),
+              "channel_kind": .string("ios"),
               "client_id": .string(state.clientID), "history_limit": .number(10),
             ])), socket: ws)
         heartbeat = Task { [weak self, weak ws] in
@@ -112,7 +126,7 @@ import UIKit
             ws.sendPing { failure in if failure != nil { ws.cancel(with: .goingAway, reason: nil) }
             }
             if self.ready {
-              try? await self.send(Command(type: "agent.status", payload: .object([:])), socket: ws)
+              try? await self.send(Command(type: "ping", payload: .object([:])), socket: ws)
               guard token == self.generation, !self.sourceDevice.isEmpty else { continue }
               _ = try? await self.account.request(
                 "devices/\(self.sourceDevice)/heartbeat", body: .object([:]))
@@ -141,10 +155,29 @@ import UIKit
           heartbeat?.cancel()
           return
         }
+        persistence?.cancel()
+        persistence = nil
         self.error = error.localizedDescription
         phase = "重新连接中"
         ready = false
+        if socket?.closeCode.rawValue == 4009 {
+          replaced = true
+          self.error = "已在另一台 iPhone 打开。点击重连可接管。"
+          phase = "已在其他设备连接"
+          heartbeat?.cancel()
+          break
+        }
+        let oversized =
+          socket?.closeCode.rawValue == 1009
+          || ((error as NSError).domain == NSPOSIXErrorDomain
+            && (error as NSError).code == Int(EMSGSIZE))
         socket?.cancel(with: .goingAway, reason: nil)
+        if oversized {
+          self.error = "单条消息过大，已暂停自动重连。历史记录仍保留。"
+          phase = "消息大小超限"
+          heartbeat?.cancel()
+          break
+        }
         if case ServiceError.unauthorized = error {
           phase = "需要登录"
           heartbeat?.cancel()
@@ -172,7 +205,11 @@ import UIKit
     }
   }
   private func send(_ command: Command, socket: URLSessionWebSocketTask) async throws {
-    try await socket.send(.string(String(decoding: JSONEncoder().encode(command), as: UTF8.self)))
+    let frame: JSON = .object([
+      "v": .number(2), "id": .string(command.id), "type": .string(command.type),
+      "payload": command.payload,
+    ])
+    try await socket.send(.string(String(decoding: JSONEncoder().encode(frame), as: UTF8.self)))
   }
   private func consume(_ f: JSON, raw: Data, socket ws: URLSessionWebSocketTask) async throws {
     guard f["v"].int == 2 else { throw ServiceError.message("聊天协议版本不匹配") }
@@ -180,7 +217,13 @@ import UIKit
     case "ack":
       if !f["user_id"].text.isEmpty && f["user_id"].text != user { throw ProtocolFailure.identity }
       var next = state
-      next.pending.removeAll { $0.id == f["id"].text }
+      let id = f["id"].text
+      guard let command = next.pending.first(where: { $0.id == id }) else { return }
+      if command.type == "user.message" {
+        next.accepted = (next.accepted ?? []).union([id])
+      } else {
+        next.pending.removeAll { $0.id == id }
+      }
       try commit(next)
     case "conversation.snapshot":
       let events = try JSONDecoder().decode([Event].self, from: JSONEncoder().encode(f["events"]))
@@ -195,15 +238,19 @@ import UIKit
       let event = try JSONDecoder().decode(Event.self, from: raw)
       do {
         var next = state
+        let previous = next.cursor
         try next.append(event, user: user)
-        try commit(next)
+        if event.event_seq > previous {
+          state = next
+          model.apply(event)
+        }
+        schedulePersistence(ws)
       } catch ProtocolFailure.gap {
         var next = state
         next.clientID = "hymio-ios-" + UUID().uuidString
         try commit(next)
         throw ProtocolFailure.gap
       }
-      try await ack(ws)
     case "offline.start":
       guard f["after_cursor"].int <= state.cursor else {
         var next = state
@@ -216,6 +263,7 @@ import UIKit
       ready = true
       phase = "随时在这里"
       error = ""
+      try cache?.save(state)
       try await ack(ws)
       try await flush(ws)
       Task { await register() }
@@ -225,11 +273,41 @@ import UIKit
       }
       if state.pending.contains(where: { $0.id == f["id"].text }) {
         error = f["message"].text
+        var next = state
+        next.rejected = (next.rejected ?? []).union([f["id"].text])
+        try commit(next)
         return
       }
       throw ServiceError.message(f["message"].text.isEmpty ? "聊天服务暂不可用" : f["message"].text)
     default: break
     }
+  }
+  private func schedulePersistence(_ ws: URLSessionWebSocketTask) {
+    guard persistence == nil else { return }
+    let token = generation
+    persistence = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .milliseconds(150))
+        guard let self, token == self.generation, self.socket === ws else { return }
+        self.persistence = nil
+        guard let cache = self.cache else { return }
+        try cache.save(self.state)
+        try await self.ack(ws)
+      } catch is CancellationError { return } catch {
+        guard let self, token == self.generation else { return }
+        self.persistence = nil
+        self.error = "无法保存消息，正在恢复连接。"
+        ws.cancel(with: .goingAway, reason: nil)
+      }
+    }
+  }
+  func retryDelivery() {
+    var next = state
+    next.rejected = []
+    do {
+      try commit(next)
+      reconnect()
+    } catch { self.error = error.localizedDescription }
   }
   private func ack(_ ws: URLSessionWebSocketTask) async throws {
     try await send(
@@ -237,7 +315,10 @@ import UIKit
       socket: ws)
   }
   private func flush(_ ws: URLSessionWebSocketTask) async throws {
-    for cmd in state.pending where !sent.contains(cmd.id) {
+    for cmd in state.pending
+    where !sent.contains(cmd.id) && !(state.accepted ?? []).contains(cmd.id)
+      && !(state.rejected ?? []).contains(cmd.id)
+    {
       try await send(cmd, socket: ws)
       sent.insert(cmd.id)
     }
@@ -245,8 +326,33 @@ import UIKit
   func command(_ type: String, _ payload: [String: JSON]) async throws {
     guard ready, let socket else { throw ServiceError.message("连接恢复后再发送，草稿会保留。") }
     var next = state
-    next.pending.append(Command(type: type, payload: .object(payload)))
-    try commit(next)
+    var command = Command(type: type, payload: .object(payload))
+    if type == "user.message" {
+      var context: [String: JSON] = [:]
+      if case .object(let values) = payload["user_context"] { context = values }
+      context["hymio_message_id"] = .string(command.id)
+      var body = payload
+      body["user_context"] = .object(context)
+      command.payload = .object(body)
+    }
+    next.pending.append(command)
+    let token = generation
+    state = next
+    model = Conversation(
+      events: next.events, pending: next.pending, accepted: next.accepted ?? [],
+      rejected: next.rejected ?? [])
+    await Task.yield()
+    guard token == generation else { throw CancellationError() }
+    do {
+      guard let cache else { throw ServiceError.message("消息存储未准备好") }
+      try cache.save(state)
+    } catch {
+      state.pending.removeAll { $0.id == command.id }
+      model = Conversation(
+        events: state.events, pending: state.pending, accepted: state.accepted ?? [],
+        rejected: state.rejected ?? [])
+      throw error
+    }
     do { try await flush(socket) } catch {
       // Once persisted, reconnect owns delivery of this command ID.
       self.error = "消息已保存，正在恢复连接。"

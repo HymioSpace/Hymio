@@ -74,4 +74,42 @@ final class ConversationTests: XCTestCase {
     XCTAssertEqual(model.approvals[0].status, "denied")
     XCTAssertEqual(model.terminals["b"]?["outcome"].text, "succeeded")
   }
+  func testOptimisticOutboxAndReasoning() throws {
+    let command = Command(type: "user.message", payload: .object(["content": .string("hello")]))
+    let pending = Conversation(events: [], pending: [command], accepted: [command.id])
+    XCTAssertEqual(pending.messages.first?.delivery, "accepted")
+    XCTAssertTrue(pending.awaitingReply)
+    let delta = event(
+      1, "assistant.delta",
+      ["step_id": .string("s"), "channel": .string("reasoning"), "text": .string("checking")])
+    var model = Conversation(events: [delta])
+    XCTAssertEqual(model.messages.first?.reasoning, "checking")
+    XCTAssertTrue(model.messages.first?.thinking == true)
+    model.apply(
+      event(
+        2, "assistant.message",
+        ["step_id": .string("s"), "content": .string("done"), "reasoning": .string("checked")]))
+    XCTAssertFalse(model.messages.first?.thinking == true)
+    XCTAssertEqual(model.messages.first?.reasoning, "checked")
+  }
+  func testInternalEventsAdvanceCursorWithoutCachingPayload() throws {
+    var state = ConversationState()
+    try state.append(event(1, "runtime.commit", ["private": .string("large state")]), user: "alice")
+    XCTAssertEqual(state.cursor, 1)
+    XCTAssertTrue(state.events.isEmpty)
+    try state.append(
+      event(
+        2, "assistant.delta",
+        ["step_id": .string("s"), "channel": .string("content"), "text": .string("one")]),
+      user: "alice")
+    try state.append(
+      event(
+        3, "assistant.delta",
+        ["step_id": .string("s"), "channel": .string("content"), "text": .string("two")]),
+      user: "alice")
+    XCTAssertEqual(state.events.count, 1)
+    XCTAssertEqual(Conversation(events: state.events).messages.first?.content, "onetwo")
+    XCTAssertThrowsError(try state.append(event(5, "user.message", [:]), user: "alice"))
+  }
+
 }
