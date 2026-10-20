@@ -95,3 +95,7 @@ Shared development conventions live in `spec/README.md`. Local `AGENTS.md`, cred
 ## Cloud hosting
 
 Use the [cloud deployment guide](deploy/cloud/README.md) for static Web, containerized Backend and automatic HTTPS. E2B hosts user computers; Oath and OIDC remain independent services. The first deployment uses one Backend instance with persistent SQLite storage.
+
+### Progressive interaction surfaces
+
+Web/Desk and native iOS render the same limited Hymio UI catalog: cards, metrics, text, choices, inputs and explicit message buttons. Streamed prose is buffered independently of durable events; UI records reveal as valid nodes arrive. See [the contract](spec/feature20-progressive-ui.md) and [model skill](extensions/skills/hymio-ui/SKILL.md). This is a focused native subset inspired by json-render, not arbitrary generated React execution or full Google A2UI compatibility.

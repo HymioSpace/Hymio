@@ -2455,3 +2455,332 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* Progressive presentation: animate the new edge, never the settled transcript. */
+.prose-release {
+  position: relative;
+}
+.prose-release::after {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 1em;
+  vertical-align: bottom;
+  background: linear-gradient(90deg, transparent, var(--surface, #fff));
+  animation: release-edge 0.8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes release-edge {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.8;
+  }
+}
+.reasoning-panel summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.agent-surface {
+  margin: 14px 0 8px;
+  max-width: 680px;
+  font-size: 14px;
+}
+.surface-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted, #7d879c);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+}
+.surface-card {
+  border: 1px solid #e4e8f1;
+  border-radius: 22px;
+  padding: 24px;
+  background: linear-gradient(135deg, #fff, #f9faff);
+  box-shadow: 0 8px 30px #263d6a05;
+}
+.surface-card h3 {
+  font-size: 20px;
+  letter-spacing: -0.5px;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.surface-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.surface-card > .surface-column {
+  margin-top: 20px;
+}
+.surface-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.surface-row > .surface-node {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+.surface-node {
+  min-width: 0;
+}
+.surface-live .surface-node {
+  animation: surface-arrive 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes surface-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.surface-card p {
+  margin: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.surface-muted {
+  color: #788396;
+}
+.surface-metric {
+  padding: 16px;
+  background: #f1f4fc;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.surface-metric span,
+.surface-metric small {
+  font-size: 12px;
+  color: #778197;
+}
+.surface-metric strong {
+  font-size: 27px;
+  letter-spacing: -1px;
+  font-weight: 550;
+}
+.surface-badge {
+  display: inline-flex;
+  border-radius: 7px;
+  padding: 5px 8px;
+  background: #eaf0ff;
+  color: #4d68b5;
+  font-size: 11px;
+}
+.surface-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: #748097;
+}
+.surface-field input {
+  border: 1px solid #dfe5f0;
+  border-radius: 11px;
+  padding: 12px 13px;
+  background: white;
+  color: #252b3b;
+  font: inherit;
+  font-size: 14px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.surface-choice {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.surface-choice legend {
+  font-size: 12px;
+  color: #748097;
+  margin-bottom: 8px;
+}
+.surface-choice button {
+  border: 1px solid #e1e6f1;
+  border-radius: 11px;
+  background: white;
+  padding: 10px 14px;
+  color: #5d687d;
+  font: inherit;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+  cursor: pointer;
+}
+.surface-choice button[aria-pressed='true'] {
+  background: #edf1ff;
+  color: #4664da;
+  border-color: #8094eb;
+}
+.surface-action {
+  border: 0;
+  border-radius: 12px;
+  padding: 13px 17px;
+  background: #5269df;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  align-self: flex-start;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+.surface-action:hover {
+  transform: translateY(-1px);
+}
+.surface-action:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.surface-slot {
+  height: 45px;
+  background: linear-gradient(90deg, #f1f3f8, #f8f9fc, #f1f3f8);
+  border-radius: 12px;
+  animation: release-edge 0.8s infinite alternate;
+}
+.surface-pulse {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6d82dd;
+  animation: release-edge 0.8s infinite alternate;
+}
+.surface-error {
+  font-size: 12px;
+  color: #7f6b60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0;
+}
+.trace-page-open .debug-panel {
+  position: relative;
+  inset: auto;
+  grid-column: 2;
+  grid-row: 1;
+  width: auto;
+  min-width: 0;
+  height: 100dvh;
+  max-height: none;
+  border-left: none;
+  box-shadow: none;
+}
+.trace-page-open .debug-panel .panel-content {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.trace-page-open .execution-flow {
+  max-width: 1000px;
+}
+.trace-page-open .panel-head {
+  padding: 30px 32px 16px;
+}
+@media (max-width: 760px) {
+  .surface-card {
+    padding: 18px;
+    border-radius: 18px;
+  }
+  .trace-page-open .debug-panel {
+    grid-column: 1/-1;
+  }
+  .trace-page-open .rail {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface-node,
+  .surface-slot,
+  .surface-pulse,
+  .prose-release::after {
+    animation: none !important;
+    filter: none !important;
+    transform: none !important;
+  }
+  .surface-action {
+    transition: none;
+  }
+}
+
+.main[hidden] {
+  display: none !important;
+}
+.trace-page-open .debug-panel {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+}
+
+.prose-release::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.text-resolve {
+  animation: text-resolve 0.22s ease-out both;
+}
+@keyframes text-resolve {
+  from {
+    opacity: 0.2;
+    filter: blur(1.6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-resolve {
+    animation: none !important;
+    filter: none !important;
+  }
+}
+
+.surface-frame {
+  transition: height 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: clip;
+}
+.trace-back {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.trace-card,
+.event-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 70px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .surface-frame {
+    transition: none;
+  }
+}

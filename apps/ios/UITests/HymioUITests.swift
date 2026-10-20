@@ -1,6 +1,60 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testNativeSurfaceInteraction() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
+    app.launch()
+    if app.buttons["我的账号"].waitForExistence(timeout: 3) {
+      app.buttons["我的账号"].tap()
+      app.buttons["account.logout"].tap()
+      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
+      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+      confirm.tap()
+    }
+    let username = "surface_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
+    let password = "Test-" + UUID().uuidString
+    defer { cleanupAccount(username: String(username), password: password) }
+    XCTAssertTrue(app.buttons["login.toggle"].waitForExistence(timeout: 15))
+    app.buttons["login.toggle"].tap()
+    app.textFields["login.username"].tap()
+    app.textFields["login.username"].typeText(username)
+    app.secureTextFields["login.password"].tap()
+    app.secureTextFields["login.password"].typeText(password)
+    app.buttons["login.submit"].tap()
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 40))
+    editor.tap()
+    editor.typeText(
+      """
+      Do not call tools. Reply ONLY with a fenced hymio-ui block. Inside write exactly this JSON on a single line:
+      {"root":"card","elements":{"card":{"type":"Card","props":{"title":"A little room for you","subtitle":"Choose your pace."},"children":["metric","duration","go"]},"metric":{"type":"Metric","props":{"label":"Your time","value":"30 min","detail":"One small thing, just for you."}},"duration":{"type":"Choice","props":{"label":"Time","options":["15 min","30 min"],"value":"30 min"}},"go":{"type":"Button","props":{"label":"Plan together","prompt":"Help me plan {{duration}} of reading. Do not call tools."}}}}
+      """)
+    app.buttons["chat.send"].tap()
+    let title = app.staticTexts["A little room for you"]
+    XCTAssertTrue(title.waitForExistence(timeout: 120), app.debugDescription)
+    let choice = app.buttons["surface.choice.duration.15 min"]
+    XCTAssertTrue(choice.waitForExistence(timeout: 15), app.debugDescription)
+    choice.tap()
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "native-agent-surface"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    let action = app.buttons["surface.action.go"]
+    XCTAssertTrue(action.exists)
+    action.tap()
+    XCTAssertTrue(
+      app.staticTexts["Help me plan 15 min of reading. Do not call tools."].waitForExistence(
+        timeout: 10))
+    app.buttons["工作观察"].tap()
+    XCTAssertTrue(app.navigationBars["工作观察"].waitForExistence(timeout: 10))
+    let traceScreenshot = XCTAttachment(screenshot: app.screenshot())
+    traceScreenshot.name = "native-trace-page"
+    traceScreenshot.lifetime = .keepAlways
+    add(traceScreenshot)
+  }
+
   @MainActor func testRealAccountChatAndReconnect() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

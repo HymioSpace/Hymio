@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  X,
+  ArrowLeft,
   RefreshCw,
   CircleCheck,
   TriangleAlert,
@@ -12,13 +12,12 @@ import {
 import { type ClientState } from '@hymio/client';
 import { obj, str, type Connection, type Trace, type TraceSummary } from '@hymio/protocol';
 import { conversation } from '@hymio/client';
-import { Button, IconButton, StatusBadge } from '@hymio/ui';
+import { Button, StatusBadge } from '@hymio/ui';
 import { TraceDetails, duration as ms } from './TraceDetails';
 import { bizGet } from './platform';
 import { JsonView as Json } from './JsonView';
-export function DebugPanel({
+export function TracePage({
   state,
-  modal,
   connection,
   onClose,
   onStatus,
@@ -26,7 +25,6 @@ export function DebugPanel({
   onRetry,
 }: {
   state: ClientState;
-  modal: boolean;
   connection: Connection;
   onClose: () => void;
   onStatus: () => void;
@@ -51,6 +49,32 @@ export function DebugPanel({
   const generation = useRef(0);
   const projection = useMemo(() => conversation(state.events), [state.events]);
   const [updated, setUpdated] = useState('');
+  async function allTraces(current: number) {
+    const trace_ids: TraceSummary[] = [];
+    let offset = 0;
+    while (current === generation.current) {
+      const page = await bizGet<{ trace_ids: TraceSummary[]; total?: number }>(
+        connection.bizUrl,
+        `/list_traces?limit=100&offset=${offset}`,
+        connection.credential,
+        connection.userId,
+      );
+      if (!Array.isArray(page.trace_ids)) throw new Error('执行记录格式不兼容');
+      const before = trace_ids.length;
+      for (const trace of page.trace_ids)
+        if (!trace_ids.some((t) => t.trace_id === trace.trace_id)) trace_ids.push(trace);
+      if (current !== generation.current) break;
+      setTraces([...trace_ids]);
+      offset += page.trace_ids.length;
+      if (
+        !page.trace_ids.length ||
+        trace_ids.length === before ||
+        (page.total !== undefined ? offset >= page.total : page.trace_ids.length < 100)
+      )
+        break;
+    }
+    return { trace_ids };
+  }
   async function refresh() {
     const current = ++generation.current;
     setLoading(true);
@@ -58,14 +82,7 @@ export function DebugPanel({
     onStatus();
     const [health, records] = await Promise.allSettled([
       bizGet(connection.bizUrl, '/heartbeat', connection.credential, connection.userId),
-      tab === 'traces'
-        ? bizGet<{ trace_ids: TraceSummary[] }>(
-            connection.bizUrl,
-            '/list_traces?limit=30',
-            connection.credential,
-            connection.userId,
-          )
-        : Promise.resolve(undefined),
+      tab === 'traces' ? allTraces(current) : Promise.resolve(undefined),
     ]);
     if (current !== generation.current) return;
     setBiz(health.status === 'fulfilled' ? 'alive' : 'failed');
@@ -125,39 +142,16 @@ export function DebugPanel({
   const steps = obj(state.runtime?.steps),
     calls = obj(state.runtime?.calls);
   return (
-    <aside
-      ref={panel}
-      id="work-observer"
-      className="debug-panel"
-      aria-label="工作观察"
-      role={modal ? 'dialog' : undefined}
-      aria-modal={modal || undefined}
-      onKeyDown={(e) => {
-        if (!modal || e.key !== 'Tab') return;
-        const items = Array.from(
-          panel.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input, summary, a[href], [tabindex="0"]',
-          ) ?? [],
-        ).filter((el) => el.getClientRects().length);
-        const first = items[0],
-          last = items.at(-1);
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last?.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first?.focus();
-        }
-      }}
-    >
+    <main ref={panel} id="work-observer" className="debug-panel" aria-label="工作观察">
       <div className="panel-head">
         <div>
           <span className="eyebrow">BEHIND THE SCENES</span>
           <h2>工作观察</h2>
         </div>
-        <IconButton label="关闭工作观察" onClick={onClose}>
-          <X size={19} />
-        </IconButton>
+        <button className="trace-back" aria-label="返回对话" onClick={onClose}>
+          <ArrowLeft size={16} />
+          <span>返回对话</span>
+        </button>
       </div>
       <div className="execution-flow" aria-label="可观测链路">
         <div>
@@ -244,12 +238,11 @@ export function DebugPanel({
                 <Download size={16} />
               </button>
             </div>
-            <p className="panel-caption">最近事件 · 按序号倒序 · 最多显示 200 条</p>
+            <p className="panel-caption">已同步事件 · 按序号倒序</p>
             <div className="event-list">
               {[...state.events]
                 .reverse()
                 .filter((e) => e.event_type.includes(filter))
-                .slice(0, 200)
                 .map((e) => (
                   <details key={e.event_seq} className="event-row">
                     <summary>
@@ -384,6 +377,6 @@ export function DebugPanel({
           </>
         )}
       </div>
-    </aside>
+    </main>
   );
 }

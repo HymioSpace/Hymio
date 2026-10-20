@@ -3,6 +3,8 @@
 A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, built with Xcode 26.2.
 
 - Account login and registration using the same Hymio backend as Web/Desktop.
+- Native interaction cards from the shared Hymio UI catalog, with explicit chat actions and presentation-only streaming buffers.
+- Standalone Trace navigation with expandable JSON and continuously loaded records.
 - Streaming Markdown replies (headings, emphasis, lists, task lists, quotes, tables, links and fenced code with copy), compact tool details and independent approval cards.
 - Authenticated screenshots, image expansion, older-history pagination.
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
@@ -102,3 +104,5 @@ shows retry; invitation registration appears when Backend advertises it.
 
 See [Apple's upload guide](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
 and [internal tester guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/).
+
+UI catalog, progressive rendering and model skill integration: [feature20](../../spec/feature20-progressive-ui.md). Run `testNativeSurfaceInteraction` only against a development Backend with open registration; it uses real model calls and may provision an E2B computer before cleanup.

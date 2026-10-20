@@ -8,13 +8,14 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, BrainCircuit } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { ToolCalls } from './ToolActivityGroup';
 import { IconButton } from '@hymio/ui';
 import { MessageImage } from './MessageImage';
+import { ProgressiveContent, useBufferedText, MotionText } from './ProgressiveContent';
 import type { LoginState } from './useLogin';
 
 const ImageLogin = createContext<LoginState | null>(null);
@@ -64,6 +65,31 @@ function MessageCode({ children }: { children?: ReactNode }) {
   );
 }
 const markdownComponents = {
+  p: ({ children }: { children?: ReactNode }) => (
+    <p>
+      <MotionText>{children}</MotionText>
+    </p>
+  ),
+  li: ({ children }: { children?: ReactNode }) => (
+    <li>
+      <MotionText>{children}</MotionText>
+    </li>
+  ),
+  h1: ({ children }: { children?: ReactNode }) => (
+    <h1>
+      <MotionText>{children}</MotionText>
+    </h1>
+  ),
+  h2: ({ children }: { children?: ReactNode }) => (
+    <h2>
+      <MotionText>{children}</MotionText>
+    </h2>
+  ),
+  h3: ({ children }: { children?: ReactNode }) => (
+    <h3>
+      <MotionText>{children}</MotionText>
+    </h3>
+  ),
   img: MarkdownImage,
   pre: MessageCode,
   a: ({ children, ...props }: React.ComponentProps<'a'>) => (
@@ -78,20 +104,26 @@ export function MessageView({
   tools,
   login,
   approvals,
+  onAction,
 }: {
   message: Message;
   tools: ToolActivity[];
   login: LoginState;
   approvals?: Approval[];
+  onAction: (text: string) => Promise<void>;
 }) {
   const { state: copied, copy } = useCopy(message.content);
+  const reasoning = useBufferedText(message.reasoning || '', !!message.streaming);
   return (
     <article className={`message message-${message.role}`} data-testid={`message-${message.role}`}>
       <div className="message-body">
         {message.reasoning && (
           <details className="reasoning-panel">
-            <summary>{message.thinking ? '正在思考…' : '思考过程'}</summary>
-            <div>{message.reasoning}</div>
+            <summary>
+              <BrainCircuit size={13} />
+              {message.thinking ? '正在思考…' : '思考过程'}
+            </summary>
+            <div>{reasoning.text}</div>
           </details>
         )}
         <div className={`message-bubble ${message.streaming ? 'streaming' : ''}`}>
@@ -99,9 +131,17 @@ export function MessageView({
             <p>{message.content}</p>
           ) : (
             <ImageLogin.Provider value={login}>
-              <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {message.content || (message.streaming && !message.reasoning ? '…' : '')}
-              </Markdown>
+              <ProgressiveContent
+                key={message.attempt ?? 0}
+                content={message.content}
+                streaming={!!message.streaming}
+                onAction={onAction}
+                render={(text) => (
+                  <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {text}
+                  </Markdown>
+                )}
+              />
             </ImageLogin.Provider>
           )}
           {!!message.calls?.length && (

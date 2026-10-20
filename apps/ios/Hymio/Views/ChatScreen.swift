@@ -5,6 +5,7 @@ struct ChatScreen: View {
   @ObservedObject var client: AgentClient
   @State private var draft = ""
   @State private var profile = false
+  @State private var tracePage = false
   @State private var atBottom = true
   @State private var sendBusy = false
   @FocusState private var typing: Bool
@@ -37,9 +38,11 @@ struct ChatScreen: View {
             ForEach(client.model.messages) { message in
               MessageRow(
                 message: message, tools: client.model.terminals, approvals: client.model.approvals,
-                account: account
-              ).id(
-                message.id)
+                onAction: {
+                  try await client.message($0)
+                }, account: account
+              ).id(message.id)
+
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
               ApprovalCard(approval: approval, client: client)
@@ -66,12 +69,9 @@ struct ChatScreen: View {
               value: client.model.messages.count)
         }
         .scrollDismissesKeyboard(.interactively)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom)
         .onChange(of: client.model.messages.count) { _, _ in
-          if atBottom && !client.loadingHistory { proxy.scrollTo("bottom", anchor: .bottom) }
-        }
-        .onChange(of: client.state.cursor) { _, _ in
-          if atBottom && !client.loadingHistory { proxy.scrollTo("bottom", anchor: .bottom) }
+          if client.model.messages.last?.role == "assistant" && typing { typing = false }
         }
         .overlay(alignment: .bottomTrailing) {
           if !atBottom && !client.model.messages.isEmpty {
@@ -87,7 +87,19 @@ struct ChatScreen: View {
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
+      .navigationDestination(isPresented: $tracePage) {
+        TraceScreen(account: account, client: client)
+      }
       .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          Button {
+            typing = false
+            tracePage = true
+          } label: {
+            Image(systemName: "waveform.path.ecg").font(.body)
+          }
+          .accessibilityLabel("工作观察")
+        }
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
@@ -109,7 +121,7 @@ struct ChatScreen: View {
             typing = false
             profile = true
           } label: {
-            Image(systemName: "ellipsis").font(.title3).frame(width: 44, height: 44).contentShape(
+            Image(systemName: "ellipsis").font(.body).frame(width: 30, height: 30).contentShape(
               Rectangle())
           }.buttonStyle(.plain).accessibilityLabel("我的账号")
             .matchedTransitionSource(id: "account", in: transitions)

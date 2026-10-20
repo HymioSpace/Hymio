@@ -75,3 +75,5 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 渠道唯一连接、云电脑恢复与 Trace 阅读见 [Trace 与设备可用性](feature18-trace-devices.md)。
 
 单域名云部署、私有配置、邀请码注册与 iOS 分发见 [feature19](feature19-cloud-single-entry.md) 和 [部署手册](../deploy/cloud/README.md)。
+
+原生双端交互卡片、流式展示缓冲与独立 Trace 页面见 [feature20](feature20-progressive-ui.md)。
