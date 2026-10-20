@@ -4,6 +4,8 @@ import SwiftUI
 struct MessageContent: View {
   let content: String
   @ObservedObject var account: AccountService
+  @State private var sharedFile: SharedAttachment?
+  @State private var attachmentError = ""
 
   var body: some View {
     Markdown(content.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: account.backend)
@@ -15,11 +17,26 @@ struct MessageContent: View {
       .environment(
         \.openURL,
         OpenURLAction { url in
-          ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "")
+          if url.path.range(of: "^/attachments/[a-f0-9]{32}$", options: .regularExpression) != nil {
+            Task {
+              do {
+                let target = try await account.downloadAttachment(url.path)
+                sharedFile = SharedAttachment(url: target)
+              } catch { attachmentError = "文件暂时无法打开，请重试。" }
+            }
+            return .handled
+          }
+          return ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "")
             ? .systemAction : .discarded
         }
       )
       .frame(maxWidth: .infinity, alignment: .leading)
+      .sheet(item: $sharedFile) { file in
+        AttachmentShare(url: file.url).onDisappear { try? FileManager.default.removeItem(at: file.url.deletingLastPathComponent()) }
+      }
+      .alert("文件暂不可用", isPresented: Binding(get: { !attachmentError.isEmpty }, set: { if !$0 { attachmentError = "" } })) {
+        Button("关闭", role: .cancel) { attachmentError = "" }
+      } message: { Text(attachmentError) }
   }
 }
 
@@ -103,4 +120,16 @@ extension Theme {
       ScrollView(.horizontal) { configuration.label.fixedSize(horizontal: true, vertical: false) }
         .markdownMargin(top: 6, bottom: 12)
     }
+}
+
+private struct SharedAttachment: Identifiable {
+  let id = UUID()
+  let url: URL
+}
+private struct AttachmentShare: UIViewControllerRepresentable {
+  let url: URL
+  func makeUIViewController(context: Context) -> UIActivityViewController {
+    UIActivityViewController(activityItems: [url], applicationActivities: nil)
+  }
+  func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

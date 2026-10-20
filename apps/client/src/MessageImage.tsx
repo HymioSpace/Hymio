@@ -27,7 +27,7 @@ export function MessageImage({
       if (!src?.trim()) return;
       const base = session?.backend || login.backend;
       const url = new URL(src, base + '/');
-      const media = /^\/devices\/media\/[a-f0-9]{32}$/.test(url.pathname);
+      const media = /^\/(?:devices\/media|attachments)\/[a-f0-9]{32}$/.test(url.pathname);
       if (media) {
         objectUrl = URL.createObjectURL(await deviceImage(login, src, controller.signal));
         if (controller.signal.aborted) {

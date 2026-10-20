@@ -1,9 +1,17 @@
+import PhotosUI
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 struct ChatScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
   @State private var draft = ""
+  @State private var attachments: [JSON] = []
+  @State private var selectedPhotos: [PhotosPickerItem] = []
+  @State private var uploading = false
+  @State private var filesOpen = false
+  @State private var cameraOpen = false
   @State private var profile = false
   @State private var tracePage = false
   @State private var atBottom = true
@@ -72,6 +80,8 @@ struct ChatScreen: View {
               reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
               value: client.model.messages.count)
         }
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded { typing = false })
         .scrollDismissesKeyboard(.interactively)
         .defaultScrollAnchor(.bottom)
         .onChange(of: client.model.messages.count) { _, _ in
@@ -131,6 +141,67 @@ struct ChatScreen: View {
             .matchedTransitionSource(id: "account", in: transitions)
         }
       }
+      .onChange(of: selectedPhotos) { _, photos in
+        guard !photos.isEmpty else { return }
+        uploading = true
+        Task {
+          defer {
+            uploading = false
+            selectedPhotos = []
+          }
+          do {
+            for photo in photos {
+              if let data = try await photo.loadTransferable(type: Data.self) {
+                guard let image = UIImage(data: data),
+                  let jpeg = image.jpegData(compressionQuality: 0.9)
+                else {
+                  throw ServiceError.message("照片格式无法读取")
+                }
+                let value = try await account.upload(jpeg, name: "photo.jpg")
+                attachments.append(value)
+              }
+            }
+          } catch { client.error = error.localizedDescription }
+        }
+      }
+      .fileImporter(
+        isPresented: $filesOpen, allowedContentTypes: [.item], allowsMultipleSelection: true
+      ) { result in
+        uploading = true
+        Task {
+          defer { uploading = false }
+          do {
+            let urls = try result.get()
+            guard urls.count + attachments.count <= 8 else {
+              throw ServiceError.message("每条消息最多添加 8 个附件")
+            }
+            for url in urls {
+              let access = url.startAccessingSecurityScopedResource()
+              defer { if access { url.stopAccessingSecurityScopedResource() } }
+              let data = try await Task.detached {
+                try Data(contentsOf: url, options: .mappedIfSafe)
+              }.value
+              let value = try await account.upload(data, name: url.lastPathComponent)
+              attachments.append(value)
+            }
+          } catch { client.error = error.localizedDescription }
+        }
+      }
+      .sheet(isPresented: $cameraOpen) {
+        CameraCapture { image in
+          cameraOpen = false
+          guard let image else { return }
+          uploading = true
+          Task {
+            defer { uploading = false }
+            do {
+              guard let data = image.jpegData(compressionQuality: 0.9) else { return }
+              let value = try await account.upload(data, name: "camera.jpg")
+              attachments.append(value)
+            } catch { client.error = error.localizedDescription }
+          }
+        }.ignoresSafeArea()
+      }
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
       .sheet(isPresented: $profile) {
         if reduceMotion {
@@ -168,43 +239,141 @@ struct ChatScreen: View {
           }.font(.caption)
         }.padding(.horizontal, 8)
       }
-      HStack(alignment: .bottom, spacing: 12) {
-        TextField("接着说，我在听…", text: $draft, axis: .vertical)
-          .lineLimit(1...6).padding(.vertical, 9).focused($typing).accessibilityIdentifier(
-            "chat.input")
-        Button {
-          send()
-        } label: {
-          Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold)).foregroundStyle(
-            Brand.onAccent
-          ).symbolEffect(.bounce, value: reduceMotion ? 0 : sentCount)
-            .frame(width: 36, height: 36).background(
-              canSend ? Brand.blue : Color.secondary.opacity(0.18), in: Circle()
-            )
-            .frame(width: 44, height: 44)
-        }.buttonStyle(GentlePress()).disabled(!canSend).accessibilityLabel("发送消息")
-          .accessibilityIdentifier("chat.send")
+      VStack(alignment: .leading, spacing: 8) {
+        if !attachments.isEmpty || uploading {
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+              ForEach(attachments.indices, id: \.self) { index in
+                ComposerAttachment(file: attachments[index], account: account, disabled: uploading)
+                {
+                  attachments.remove(at: index)
+                }
+              }
+              if uploading {
+                HStack(spacing: 8) {
+                  ProgressView().controlSize(.small)
+                  Text("正在添加…").font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12).frame(height: 64)
+              }
+            }.padding(.horizontal, 4).padding(.top, 4)
+          }
+        }
+        HStack(alignment: .bottom, spacing: 8) {
+          Menu {
+            PhotosPicker(
+              selection: $selectedPhotos, maxSelectionCount: max(1, 8 - attachments.count),
+              matching: .images
+            ) {
+              Label("照片图库", systemImage: "photo.on.rectangle")
+            }
+            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+              Button {
+                cameraOpen = true
+              } label: {
+                Label("拍照", systemImage: "camera")
+              }
+            }
+            Button {
+              filesOpen = true
+            } label: {
+              Label("选择文件", systemImage: "doc")
+            }
+            PasteButton(supportedContentTypes: [.image]) { providers in pasteImages(providers) }
+          } label: {
+            Image(systemName: "plus").font(.system(size: 19, weight: .regular)).foregroundStyle(
+              Brand.muted
+            ).frame(width: 44, height: 44)
+          }.disabled(uploading || attachments.count >= 8).accessibilityLabel("添加附件")
+          TextField("接着说，我在听…", text: $draft, axis: .vertical)
+            .lineLimit(1...6).padding(.vertical, 9).focused($typing).accessibilityIdentifier(
+              "chat.input")
+          Button {
+            send()
+          } label: {
+            Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(
+                Brand.onAccent
+              ).symbolEffect(.bounce, value: reduceMotion ? 0 : sentCount)
+              .frame(width: 36, height: 36).background(
+                canSend ? Brand.blue : Color.secondary.opacity(0.18), in: Circle()
+              )
+              .frame(width: 44, height: 44)
+          }.buttonStyle(GentlePress()).disabled(!canSend).accessibilityLabel("发送消息")
+            .accessibilityIdentifier("chat.send")
+        }
       }
-      .padding(7).padding(.leading, 12)
+      .padding(8)
       .modifier(ComposerSurface())
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }
+  private func pasteImages(_ providers: [NSItemProvider]) {
+    let images = providers.filter { $0.canLoadObject(ofClass: UIImage.self) }
+    guard !images.isEmpty else { return }
+    guard !uploading else {
+      client.error = "附件正在上传，完成后可继续粘贴。"
+      return
+    }
+    guard images.count + attachments.count <= 8 else {
+      client.error = "每条消息最多添加 8 个附件"
+      return
+    }
+    uploading = true
+    Task {
+      defer { uploading = false }
+      do {
+        for provider in images {
+          let image: UIImage = try await withCheckedThrowingContinuation { continuation in
+            _ = provider.loadObject(ofClass: UIImage.self) { object, error in
+              if let error {
+                continuation.resume(throwing: error)
+              } else if let image = object as? UIImage {
+                continuation.resume(returning: image)
+              } else {
+                continuation.resume(throwing: ServiceError.message("无法读取剪贴板图片"))
+              }
+            }
+          }
+          guard let data = image.jpegData(compressionQuality: 0.9) else {
+            throw ServiceError.message("无法读取剪贴板图片")
+          }
+          let value = try await account.upload(data, name: "screenshot.jpg")
+          attachments.append(value)
+        }
+      } catch { client.error = error.localizedDescription }
+    }
+  }
   private var canSend: Bool {
-    client.connected && !sendBusy && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    client.connected && !sendBusy && !uploading
+      && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
   }
   private func send() {
-    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    let originalDraft = draft
+    let sentAttachments = attachments
+    let links = sentAttachments.map { file in
+      let name = file["name"].text.replacingOccurrences(of: "[", with: "").replacingOccurrences(
+        of: "]", with: "")
+      return (file["mime"].text.hasPrefix("image/") ? "!" : "") + "[" + name + "]("
+        + file["url"].text + ")"
+    }.joined(separator: "\n")
+    let text = [draft.trimmingCharacters(in: .whitespacesAndNewlines), links].filter { !$0.isEmpty }
+      .joined(separator: "\n\n")
     guard canSend else { return }
     sendBusy = true
     draft = ""
+    attachments = []
     atBottom = true
     Task {
       do {
-        try await client.message(text)
+        try await client.message(
+          text, attachmentIds: sentAttachments.map { $0["attachment_id"].text })
         sentCount += 1
 
       } catch {
-        if draft.isEmpty { draft = text }
+        if draft.isEmpty {
+          draft = originalDraft
+          attachments = sentAttachments
+        }
         client.error = error.localizedDescription
       }
       sendBusy = false
@@ -239,5 +408,76 @@ struct ApprovalCard: View {
       }.padding(18).background(Brand.mist, in: RoundedRectangle(cornerRadius: 20)).padding(
         .leading, 39)
     }
+  }
+}
+
+private struct CameraCapture: UIViewControllerRepresentable {
+  let completion: (UIImage?) -> Void
+  func makeCoordinator() -> Coordinator { Coordinator(completion) }
+  func makeUIViewController(context: Context) -> UIImagePickerController {
+    let picker = UIImagePickerController()
+    picker.sourceType = .camera
+    picker.delegate = context.coordinator
+    return picker
+  }
+  func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+  final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate
+  {
+    let completion: (UIImage?) -> Void
+    init(_ completion: @escaping (UIImage?) -> Void) { self.completion = completion }
+    func imagePickerController(
+      _ picker: UIImagePickerController,
+      didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) { completion(info[.originalImage] as? UIImage) }
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { completion(nil) }
+  }
+}
+
+private struct ComposerAttachment: View {
+  let file: JSON
+  @ObservedObject var account: AccountService
+  let disabled: Bool
+  let remove: () -> Void
+  @State private var image: UIImage?
+  private var isImage: Bool { file["mime"].text.hasPrefix("image/") }
+  var body: some View {
+    HStack(spacing: 10) {
+      Group {
+        if let image {
+          Image(uiImage: image).resizable().scaledToFill()
+        } else {
+          Image(
+            systemName: isImage
+              ? "photo" : file["mime"].text.hasPrefix("audio/") ? "waveform" : "doc.text"
+          )
+          .font(.system(size: 20, weight: .light)).foregroundStyle(Brand.muted)
+        }
+      }.frame(width: 48, height: 48).background(Brand.mist).clipShape(
+        RoundedRectangle(cornerRadius: 9))
+      if !isImage {
+        VStack(alignment: .leading, spacing: 5) {
+          Text(file["name"].text).font(.caption.weight(.medium)).lineLimit(1)
+          Text(ByteCountFormatter.string(fromByteCount: Int64(file["size"].int), countStyle: .file))
+            .font(.caption2).foregroundStyle(.secondary)
+        }.frame(width: 104, alignment: .leading).padding(.trailing, 12)
+      }
+    }.padding(8)
+      .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14))
+      .overlay {
+        RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.muted.opacity(0.16), lineWidth: 0.5)
+      }
+      .overlay(alignment: .topTrailing) {
+        Button(action: remove) {
+          Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+            .foregroundStyle(Brand.ink).frame(width: 20, height: 20)
+            .background(Brand.surface, in: Circle())
+            .overlay { Circle().strokeBorder(Brand.muted.opacity(0.15), lineWidth: 0.5) }
+            .frame(width: 44, height: 44)
+        }.buttonStyle(.plain).disabled(disabled).accessibilityLabel("移除 " + file["name"].text)
+      }
+      .task(id: file["attachment_id"].text) {
+        guard isImage else { return }
+        if let data = try? await account.image(file["url"].text) { image = UIImage(data: data) }
+      }
   }
 }

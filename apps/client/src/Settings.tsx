@@ -1,3 +1,4 @@
+import { ModelSettings } from './ModelSettings';
 import { X } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import { DeviceManager } from './DeviceManager';
@@ -14,6 +15,7 @@ export function Settings({ login, onClose }: { login: LoginState; onClose: () =>
       <h2 id="settings-title">我的账号</h2>
       <p className="dialog-intro">{login.session?.name}</p>
       <p className="dialog-note">在不同设备上，继续同一段对话。</p>
+      <ModelSettings login={login} />
       <DeviceManager login={login} />
       {login.error && (
         <p role="alert" className="form-error">

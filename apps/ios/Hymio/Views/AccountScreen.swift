@@ -8,6 +8,41 @@ struct AccountScreen: View {
   @State private var diagnostics = false
   @State private var deviceBusy = false
   @State private var deviceError = ""
+  @State private var modelOptions: [String] = []
+  @State private var selectedModel = ""
+  @State private var modelBusy = false
+  @State private var modelError = ""
+  private var modelSection: some View {
+    Section {
+      Picker(selection: Binding(get: { selectedModel }, set: { saveModel($0) })) {
+        if modelOptions.isEmpty { Text("正在读取…").tag("") }
+        ForEach(modelOptions, id: \.self) { model in Text(model).tag(model) }
+      } label: {
+        Label("对话模型", systemImage: "slider.horizontal.3")
+      }.pickerStyle(.menu).disabled(modelBusy || modelOptions.isEmpty)
+      if !modelError.isEmpty { Text(modelError).font(.caption).foregroundStyle(.secondary) }
+    } footer: { Text("保留对话，下次发送时生效。") }
+    .task { await loadModels() }
+  }
+  private func loadModels() async {
+    do {
+      let value = try await account.request("settings/models")
+      modelOptions = value["models"].items.map { $0.text }
+      selectedModel = value["selected"].text
+    } catch { modelError = "暂时无法读取模型设置" }
+  }
+  private func saveModel(_ model: String) {
+    guard !modelBusy, model != selectedModel else { return }
+    modelBusy = true
+    Task {
+      defer { modelBusy = false }
+      do {
+        _ = try await account.request("settings/models", body: .object(["model": .string(model)]))
+        selectedModel = model
+        modelError = ""
+      } catch { modelError = "模型未更换，请稍后重试。" }
+    }
+  }
   var body: some View {
     NavigationStack {
       List {
@@ -18,8 +53,9 @@ struct AccountScreen: View {
               Text(account.session?.name ?? "Hymio").font(.headline)
               Text("在不同设备上，继续同一段对话。").font(.caption).foregroundStyle(.secondary)
             }
-          }.padding(.vertical, 12)
+          }.padding(.vertical, 6)
         }
+        modelSection
         Section {
           ForEach(client.devices, id: \.self) { device in
             HStack(alignment: .top, spacing: 12) {

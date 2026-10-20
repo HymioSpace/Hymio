@@ -72,6 +72,13 @@ def prepare_devices(config, config_path, oath_config):
             file,
         )
     source = oath_config.read_text()
+    choices = config.get("model_options", ["MiniMax-M2.7", "MiniMax-M3"])
+    source = re.sub(r"^selectable_models\s*=.*$", "", source, flags=re.MULTILINE)
+    source = source.replace(
+        "[agent]", "[agent]\nselectable_models = " + json.dumps(choices), 1
+    )
+    source = re.sub(r"^tool_timeout_seconds\s*=.*$", "", source, flags=re.MULTILINE)
+    source = source.replace("[agent]", "[agent]\ntool_timeout_seconds = 150", 1)
     if not re.search(r"^\[agent\]\s*$", source, re.MULTILINE):
         raise RuntimeError("Oath config must contain [agent]")
     if re.search(r"^builtin_bash\s*=", source, re.MULTILINE):
@@ -177,6 +184,57 @@ def main():
         address = lan_address(load_network(args.deploy_config.expanduser().resolve()))
         if address:
             config, config_path = prepare_lan(ROOT, config, config_path, address)
+        model_config = tomllib.loads(oath_config.read_text())
+        provider = model_config.get("agent", {}).get("provider", {})
+        secrets = model_config.get("secrets", {})
+        overlay = dict(config)
+        overlay.setdefault(
+            "media_api_base",
+            provider.get("api_base", "https://api.minimax.cn/v1").removesuffix(
+                "/chat/completions"
+            ),
+        )
+        overlay.setdefault("media_credential", provider.get("credential", ""))
+        overlay.setdefault(
+            "vault_url", secrets.get("vault_url", "http://127.0.0.1:8200")
+        )
+        for key, default in (
+            ("role_id_file", "./data/private/vault-role-id"),
+            ("secret_id_file", "./data/private/vault-secret-id"),
+        ):
+            overlay.setdefault(
+                "vault_" + key,
+                str(
+                    (
+                        oath_config.parent
+                        / Path(secrets.get(key, default)).expanduser()
+                    ).resolve()
+                ),
+            )
+        # Resolve existing private paths before writing an overlay in the same directory.
+        for key in (
+            "database",
+            "client_secret_file",
+            "service_token_file",
+            "e2b_key_file",
+            "invitation_codes_file",
+        ):
+            if overlay.get(key):
+                overlay[key] = str(
+                    (config_path.parent / Path(overlay[key]).expanduser()).resolve()
+                )
+        config_path = config_path.with_name("hymio-media.local.toml")
+        from local_network import private_write
+
+        private_write(
+            config_path,
+            "\n".join(
+                f"{key} = {json.dumps(value, ensure_ascii=False)}"
+                for key, value in overlay.items()
+            )
+            + "\n",
+        )
+        config = overlay
         write_ios_network(ROOT, config["public_url"])
         free_port(8080)
         if args.client != "none":

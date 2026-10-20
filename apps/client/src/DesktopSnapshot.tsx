@@ -10,7 +10,7 @@ export function DesktopSnapshot({ src, onClose }: { src: string; onClose: () => 
     <dialog
       className="desktop-view"
       ref={dialog}
-      aria-label="桌面快照"
+      aria-label="图片预览"
       onCancel={(event) => {
         event.stopPropagation();
         onClose();
@@ -20,10 +20,10 @@ export function DesktopSnapshot({ src, onClose }: { src: string; onClose: () => 
       }}
     >
       <header>
-        <strong>桌面快照</strong>
+        <strong>图片预览</strong>
         <button onClick={onClose}>关闭</button>
       </header>
-      <img src={src} alt="放大的云电脑桌面快照" />
+      <img src={src} alt="完整图片" />
     </dialog>,
     document.body,
   );

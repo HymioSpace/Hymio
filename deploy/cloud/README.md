@@ -184,3 +184,11 @@ accordingly. Optional legacy `agent_domain` exposes a separate Oath entry and mu
 from Web/API names. The recommended shared-network layout needs no direct public Oath entry.
 
 For iPhone distribution, follow the [iOS/TestFlight guide](../../apps/ios/README.md#testflight-distribution).
+
+### Media model access
+
+Deploy the model-selection Oath release before enabling model settings. Set the same IDs in Backend `model_options` and Oath `agent.selectable_models`; all choices currently share the same provider endpoint/credential. Set Oath `tool_timeout_seconds = 150` for media operations.
+
+Backend media calls reuse the main provider's Vault alias. Set `media_api_base`, `media_credential`, `vision_model`, `vault_url`, `vault_role_id_file` and `vault_secret_id_file` in the private Backend configuration. Place AppRole identity files under the private configuration directory already mounted at `/config`; use container paths in TOML. Do not publish them in the image or repository, and do not put the model key in an environment variable.
+
+Use `runtime_network` to join Oath's existing private Docker network and reach Vault by its internal service name. Never publish Vault publicly. Preserve the installed dependency license notices when distributing the image. Attachments and generated images use the persistent Backend SQLite volume and require its normal backup policy.

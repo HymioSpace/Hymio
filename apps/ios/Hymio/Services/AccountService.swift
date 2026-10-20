@@ -170,15 +170,55 @@ struct SecureSession {
     SecureSession.clear()
     if let old { _ = try? await raw("auth/logout", body: .object([:]), token: old.access_token) }
   }
+  func upload(_ data: Data, name: String) async throws -> JSON {
+    guard data.count <= 20 * 1024 * 1024 else { throw ServiceError.message("单个文件不能超过 20 MB") }
+    let session = try await credential()
+    let url = backend.appendingPathComponent("attachments")
+    try validated(url)
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.httpBody = data
+    request.timeoutInterval = 60
+    request.setValue("Bearer " + session.access_token, forHTTPHeaderField: "Authorization")
+    request.setValue(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed), forHTTPHeaderField: "X-File-Name")
+    let (result, response) = try await NoRedirects.session.data(for: request)
+    guard let response = response as? HTTPURLResponse, response.statusCode == 201 else {
+      throw ServiceError.message("附件上传失败，请检查文件格式后重试。")
+    }
+    return try JSON.decode(result)
+  }
+  func downloadAttachment(_ path: String) async throws -> URL {
+    guard path.range(of: "^/attachments/[a-f0-9]{32}$", options: .regularExpression) != nil else {
+      throw ServiceError.message("文件地址无效")
+    }
+    let session = try await credential()
+    let url = backend.appendingPathComponent(String(path.dropFirst()))
+    try validated(url)
+    var request = URLRequest(url: url)
+    request.setValue("Bearer " + session.access_token, forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 30
+    let (data, response) = try await NoRedirects.session.data(for: request)
+    guard let response = response as? HTTPURLResponse, response.statusCode == 200 else {
+      throw ServiceError.message("文件暂不可用")
+    }
+    let header = response.value(forHTTPHeaderField: "Content-Disposition") ?? ""
+    let encoded = header.components(separatedBy: "filename*=UTF-8''").last ?? "attachment"
+    let name = URL(fileURLWithPath: encoded.removingPercentEncoding ?? "attachment").lastPathComponent
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let target = folder.appendingPathComponent(name.isEmpty ? "attachment" : name)
+    try data.write(to: target, options: .atomic)
+    return target
+  }
   func image(_ source: String) async throws -> Data {
     guard let url = URL(string: source, relativeTo: backend)?.absoluteURL else {
       throw ServiceError.message("图片地址无效")
     }
-    let protected = url.path.hasPrefix("/devices/media/")
+    let protected = url.path.hasPrefix("/devices/media/") || url.path.hasPrefix("/attachments/")
     if protected {
       // Only the configured backend receives authentication, even if a model invents a host.
       let path = url.path
-      guard path.range(of: "^/devices/media/[a-f0-9]{32}$", options: .regularExpression) != nil
+      guard path.range(of: "^/(?:devices/media|attachments)/[a-f0-9]{32}$", options: .regularExpression) != nil
       else { throw ServiceError.message("图片地址无效") }
       let s = try await credential()
       return try await raw(String(path.dropFirst()), token: s.access_token)

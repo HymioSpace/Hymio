@@ -1,3 +1,4 @@
+import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ArrowUp,
@@ -281,20 +282,27 @@ export default function App() {
     client.allowTakeover();
     login.reconnect();
   }
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
   async function send() {
-    if (!draft.trim() || sending) return;
+    if ((!draft.trim() && !attachments.length) || sending || uploading) return;
     if (!connected) {
       reconnect();
       setNotice('正在重新连接，草稿已保留，连接后可发送。');
       return;
     }
-    const content = draft.trim();
+    const sentAttachments = [...attachments];
+    const content = [draft.trim(), attachmentText(sentAttachments)].filter(Boolean).join('\n\n');
     setSending(true);
     setDraft('');
+    setAttachments([]);
     following.current = true;
     setNearBottom(true);
     try {
-      await client.message(content);
+      await client.message(
+        content,
+        sentAttachments.map((file) => file.attachment_id),
+      );
       following.current = true;
       setNearBottom(true);
       requestAnimationFrame(() =>
@@ -388,6 +396,7 @@ export default function App() {
             following.current = false;
           }}
           onPointerDown={() => {
+            input.current?.blur();
             following.current = false;
           }}
           onScroll={() => {
@@ -653,6 +662,14 @@ export default function App() {
             </div>
           )}
           <div className="composer" onClick={() => input.current?.focus()}>
+            <Attachments
+              login={login}
+              files={attachments}
+              onChange={setAttachments}
+              onBusy={setUploading}
+              onError={setNotice}
+              pasteTarget={input}
+            />
             <textarea
               aria-label="给 Hymio 发消息"
               ref={input}
@@ -688,9 +705,9 @@ export default function App() {
                 </button>
               )}
               <button
-                className={`send-button ${draft.trim() ? 'has-text' : ''}`}
+                className={`send-button ${draft.trim() || attachments.length ? 'has-text' : ''}`}
                 aria-label={connected ? '发送消息' : '重新连接'}
-                disabled={sending || !draft.trim()}
+                disabled={sending || uploading || (!draft.trim() && !attachments.length)}
                 onClick={(e) => {
                   e.stopPropagation();
                   void send();

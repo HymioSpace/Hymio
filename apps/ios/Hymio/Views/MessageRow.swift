@@ -13,8 +13,8 @@ struct MessageRow: View {
       HStack {
         Spacer(minLength: 45)
         VStack(alignment: .trailing, spacing: 5) {
-          Text(message.content).font(.body).lineSpacing(4).textSelection(.enabled)
-            .padding(.horizontal, 16).padding(.vertical, 12)
+          UserMessageContent(content: message.content, account: account)
+            .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
           if let delivery = message.delivery {
             Text(["queued": "正在发送…", "accepted": "已送达", "failed": "发送失败，可重试"][delivery] ?? "")
@@ -30,6 +30,8 @@ struct MessageRow: View {
               BufferedProse(
                 source: message.reasoning, streaming: message.streaming, account: account,
                 plain: true)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             } label: {
               HStack(spacing: 7) {
                 Image(systemName: "brain").symbolEffect(
@@ -118,6 +120,7 @@ struct MessageRow: View {
 }
 struct ProtectedImage: View {
   let source: String
+  var thumbnail = false
   @ObservedObject var account: AccountService
   @State private var image: UIImage?
   @State private var failed = false
@@ -129,9 +132,14 @@ struct ProtectedImage: View {
         Button {
           show = true
         } label: {
-          Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240).clipShape(
-            RoundedRectangle(cornerRadius: 14))
-        }.buttonStyle(.plain).accessibilityLabel("放大截图")
+          Group {
+            if thumbnail {
+              Image(uiImage: image).resizable().scaledToFill().frame(width: 80, height: 80)
+            } else {
+              Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240)
+            }
+          }.clipShape(RoundedRectangle(cornerRadius: thumbnail ? 12 : 14))
+        }.buttonStyle(.plain).accessibilityLabel("查看完整图片")
       } else if failed {
         Button {
           retry += 1
@@ -139,7 +147,7 @@ struct ProtectedImage: View {
           Label("图片未能加载，重试", systemImage: "arrow.clockwise").font(.caption)
         }
       } else {
-        ProgressView().frame(height: 70).frame(maxWidth: .infinity)
+        ProgressView().frame(width: thumbnail ? 80 : nil, height: 80)
       }
     }
     .task(id: source + "\(retry)") {
@@ -152,14 +160,53 @@ struct ProtectedImage: View {
     }
     .sheet(isPresented: $show) {
       NavigationStack {
-        ScrollView([.horizontal, .vertical]) {
-          if let image {
-            Image(uiImage: image).resizable().scaledToFit().frame(width: max(350, image.size.width))
+        GeometryReader { geometry in
+          ScrollView {
+            if let image {
+              Image(uiImage: image).resizable().scaledToFit()
+                .frame(width: geometry.size.width)
+                .frame(minHeight: geometry.size.height)
+            }
           }
         }
-        .background(Brand.mist).navigationTitle("截图").navigationBarTitleDisplayMode(.inline)
+        .background(Brand.surface).navigationTitle("图片预览").navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { show = false } } }
       }
     }
+  }
+}
+
+private struct UserMessageContent: View {
+  let content: String
+  @ObservedObject var account: AccountService
+  private var extracted: (text: String, images: [String]) {
+    let pattern = #"!\[[^\]]*\]\((/attachments/[a-f0-9]{32})\)"#
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return (content, []) }
+    let range = NSRange(content.startIndex..., in: content)
+    let matches = regex.matches(in: content, range: range)
+    let images = matches.compactMap { match in
+      Range(match.range(at: 1), in: content).map { String(content[$0]) }
+    }
+    let text = regex.stringByReplacingMatches(in: content, range: range, withTemplate: "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    return (text, images)
+  }
+  var body: some View {
+    let parts = extracted
+    VStack(alignment: .leading, spacing: 10) {
+      if !parts.images.isEmpty {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 8) {
+            ForEach(Array(parts.images.enumerated()), id: \.offset) { _, source in
+              ProtectedImage(source: source, thumbnail: true, account: account)
+            }
+          }
+        }.frame(height: 80)
+      }
+      if !parts.text.isEmpty {
+        MessageContent(content: parts.text, account: account)
+          .multilineTextAlignment(.leading)
+      }
+    }.frame(maxWidth: .infinity, alignment: .leading)
   }
 }

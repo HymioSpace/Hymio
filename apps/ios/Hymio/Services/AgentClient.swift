@@ -361,12 +361,13 @@ import UIKit
       socket.cancel(with: .goingAway, reason: nil)
     }
   }
-  func message(_ text: String) async throws {
+  func message(_ text: String, attachmentIds: [String] = []) async throws {
     try await command(
       "user.message",
       [
         "content": .string(text),
         "user_context": .object([
+          "attachment_ids": .array(attachmentIds.map { .string($0) }),
           "locale": .string(Locale.current.identifier),
           "time_zone": .string(TimeZone.current.identifier),
           "source_device_id": .string(sourceDevice), "client_id": .string(state.clientID),
