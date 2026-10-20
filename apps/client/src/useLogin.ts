@@ -45,7 +45,10 @@ export function useLogin(
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok)
+    if (!response.ok) {
+      const failure = await response.json().catch(() => ({}));
+      if (failure.error === 'invalid_invitation') throw new Error('邀请码不正确，请重新输入。');
+      if (failure.error === 'registration_closed') throw new Error('暂未开放注册。');
       throw new Error(
         path === '/auth/account' && response.status === 401
           ? '未能完成登录或注册，请检查账号、密码，或更换用户名。'
@@ -55,6 +58,7 @@ export function useLogin(
               ? '登录已失效，请重新登录。'
               : `登录服务暂不可用（${response.status}）`,
       );
+    }
     return response.json();
   }
   function apply(value: Session, signedIn = false) {
@@ -151,12 +155,22 @@ export function useLogin(
       if (current === generation.current) setBusy(false);
     }
   }
-  async function account(action: 'login' | 'signup', username: string, password: string) {
+  async function account(
+    action: 'login' | 'signup',
+    username: string,
+    password: string,
+    invitationCode = '',
+  ) {
     const current = ++generation.current;
     setBusy(true);
     setError('');
     try {
-      const result = await request(backend, '/auth/account', { action, username, password });
+      const result = await request(backend, '/auth/account', {
+        action,
+        username,
+        password,
+        ...(action === 'signup' ? { invitation_code: invitationCode } : {}),
+      });
       if (current === generation.current) apply({ ...result, backend }, true);
       else await request(backend, '/auth/logout', {}, result.access_token);
     } catch (e) {

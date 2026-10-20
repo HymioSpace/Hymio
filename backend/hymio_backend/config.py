@@ -19,6 +19,8 @@ class Settings:
     access_seconds: int = 900
     refresh_seconds: int = 2592000
     login_method: str = "account"
+    signup_enabled: bool = True
+    invitation_codes_file: Path | None = None
     host: str = "127.0.0.1"
     port: int = 8080
     computer_provider: str = "e2b"
@@ -36,6 +38,9 @@ class Settings:
         if data.get("e2b_key_file"):
             key = Path(data["e2b_key_file"]).expanduser()
             data["e2b_key_file"] = key if key.is_absolute() else path.parent / key
+        if data.get("invitation_codes_file"):
+            file = Path(data["invitation_codes_file"]).expanduser()
+            data["invitation_codes_file"] = file if file.is_absolute() else path.parent / file
         result = cls(**data)
         if result.computer_provider != "e2b":
             raise ValueError("Only the e2b computer provider is supported")
@@ -43,6 +48,8 @@ class Settings:
             raise ValueError("e2b requires e2b_key_file")
         if result.e2b_key_file and not result.e2b_key_file.read_text().strip():
             raise ValueError("Missing E2B credential")
+        if result.invitation_codes_file and result.login_method != "account":
+            raise ValueError("Invitation registration requires account login")
         if result.login_method not in ("account", "google"):
             raise ValueError("login_method must be account or google")
         if result.access_seconds < 1 or result.refresh_seconds < result.access_seconds:

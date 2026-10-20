@@ -62,7 +62,7 @@ Web 与 Desktop 共用前端，Tauri 原生能力放平台适配层。Chrome 选
 
 ## 部署与演进
 
-Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务。Oath 的多个用户共用运行服务，不按用户创建整套部署。当前可独立使用 `oath start`；Hymio 的 `deploy/start.py` 提供本机开发组合入口，生产统一部署尚未实现。
+Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务。Oath 的多个用户共用运行服务，不按用户创建整套部署。当前可独立使用 `oath start`；Hymio 的 `deploy/start.py` 提供本机开发组合入口，单机云端支持 Caddy/Backend 与可选私有 Casdoor 的 Compose 组合，Oath 独立管理；完整主机与身份初始化仍需部署者配置，见 feature19。
 
 应用模块先留在同仓库，按需独立构建和发布。Oath/Nostalgia 通过公开协议和固定版本产物接入，不复制源码，不默认增加 submodule。后端先按模块划分，不预设每个模块都是微服务。
 
@@ -73,3 +73,5 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 客户端响应与思考展示见 [App 响应与状态反馈](feature17-app-responsiveness.md)。
 
 渠道唯一连接、云电脑恢复与 Trace 阅读见 [Trace 与设备可用性](feature18-trace-devices.md)。
+
+单域名云部署、私有配置、邀请码注册与 iOS 分发见 [feature19](feature19-cloud-single-entry.md) 和 [部署手册](../deploy/cloud/README.md)。

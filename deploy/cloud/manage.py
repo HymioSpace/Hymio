@@ -21,8 +21,8 @@ def generate(path):
     for domain in domains:
         if not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?", domain):
             raise ValueError("Domain must be a hostname without scheme, path or port")
-    if len(set(domains)) != len(domains):
-        raise ValueError("Use distinct public domains")
+    if settings.get("agent_domain") in domains[:2]:
+        raise ValueError("Legacy agent domain must be separate from Web and API")
     config = Path(settings["backend_config_dir"]).expanduser()
     config = (
         (path.parent / config).resolve()
@@ -63,15 +63,25 @@ def generate(path):
         raise ValueError("Ports must be integers between 1 and 65535")
     OUTPUT.mkdir(exist_ok=True, mode=0o700)
     (OUTPUT / "client.toml").write_text(f'backend_url = "https://{api}"\n')
-    (OUTPUT / "Caddyfile").write_text(
-        f"{web} {{\n root * /srv\n try_files {{path}} /index.html\n file_server\n}}\n"
-        f"{api} {{\n reverse_proxy backend:8080\n}}\n"
-        + (
-            f"{agent} {{\n reverse_proxy host.docker.internal:{ports[0]}\n}}\n"
-            if agent
-            else ""
-        )
+    web_routes = " root * /srv\n try_files {path} /index.html\n file_server\n"
+    private_routes = (
+        " @private path /internal/*\n handle @private {\n  respond 404\n }\n"
     )
+    if web == api:
+        routes = (
+            f"{web} {{\n{private_routes}"
+            " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/*\n"
+            " handle @backend {\n  reverse_proxy backend:8080\n }\n"
+            f" handle {{\n{web_routes} }}\n}}\n"
+        )
+    else:
+        routes = (
+            f"{web} {{\n{web_routes}}}\n"
+            f"{api} {{\n{private_routes} reverse_proxy backend:8080\n}}\n"
+        )
+    if agent:
+        routes += f"{agent} {{\n reverse_proxy host.docker.internal:{ports[0]}\n}}\n"
+    (OUTPUT / "Caddyfile").write_text(routes)
     compose = {
         "name": "hymio-cloud",
         "services": {
@@ -107,6 +117,35 @@ def generate(path):
             name: {} for name in ("backend-data", "caddy-data", "caddy-config")
         },
     }
+    runtime_network = settings.get("runtime_network")
+    if runtime_network:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", runtime_network):
+            raise ValueError("Invalid runtime network name")
+        compose["networks"] = {"runtime": {"external": True, "name": runtime_network}}
+        compose["services"]["backend"]["networks"] = ["default", "runtime"]
+        compose["services"]["backend"].pop("ports")
+    if settings.get("managed_identity", False):
+        compose["services"]["identity-permissions"] = {
+            "image": "busybox:1.37.0",
+            "command": ["chown", "1000:1000", "/data"],
+            "volumes": ["identity-data:/data"],
+        }
+        compose["services"]["identity"] = {
+            "image": "casbin/casdoor:4.20.0",
+            "restart": "unless-stopped",
+            "depends_on": {
+                "identity-permissions": {"condition": "service_completed_successfully"}
+            },
+            "ports": ["127.0.0.1:8000:8000"],
+            "environment": {
+                "driverName": "sqlite",
+                "dataSourceName": "file:/data/casdoor.db?cache=shared",
+                "dbName": "casdoor",
+                "origin": "http://identity:8000",
+            },
+            "volumes": ["identity-data:/data"],
+        }
+        compose["volumes"]["identity-data"] = {}
     target = OUTPUT / "compose.json"
     target.write_text(json.dumps(compose, indent=2) + "\n")
     return target

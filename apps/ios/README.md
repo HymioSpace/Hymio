@@ -33,7 +33,7 @@ Each installation has its own delivery cursor. Backgrounding the app disconnects
 
 For a LAN Debug build, set `lan_host = "auto"` in the ignored repository file `deploy/local.toml`, then run `hymio restart --client web`. The launcher derives ignored `Config/Network.generated.xcconfig` from that single network configuration; do not edit the generated file. Debug uses it; Release does not. Signing settings stay unchanged. Select your Team in Xcode → Signing & Capabilities; there is no need to enter the same Team ID twice.
 
-For a remote deployment, copy `Config/Local.example.xcconfig` to ignored `Config/Local.xcconfig` and set your backend URL and bundle identifier. Do not enter keys or credentials there.
+For a remote deployment, copy `Config/Local.example.xcconfig` to ignored `Config/Local.xcconfig` and set your backend URL and bundle identifier. Local.xcconfig overrides the generated LAN endpoint in Debug as well. Remove its backend override to return to automatic LAN configuration. Do not enter keys or credentials there.
 
 ```xcconfig
 HYMIO_BACKEND_URL = https:/$()/your-domain.example
@@ -72,3 +72,33 @@ The UI test registers a synthetic account against the configured local backend, 
 Core models and projection are independently testable through Swift Package Manager. The Xcode project is checked in; no project generator is needed. Xcode resolves the pinned [MarkdownUI 2.4.1](https://github.com/gonzalezreal/swift-markdown-ui/releases/tag/2.4.1) package on the first build. Images use app-owned providers, with no credentials sent to external image hosts.
 
 The privacy manifest declares app-scoped UserDefaults use for the installation ID ([Apple's required-reason API guidance](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype)). Complete the distribution privacy labels and privacy-policy URL for your actual backend: accounts and conversation content are sent to your deployment and model provider.
+
+Archive checks the configured HTTPS backend before building. After changing an endpoint, create a new archive and upload a higher build number; an existing archive retains its original endpoint.
+
+## TestFlight distribution
+
+1. Deploy and verify the [HTTPS Backend](../../deploy/cloud/README.md). In ignored
+   `Config/Local.xcconfig`, configure its HTTPS origin and your own bundle identifier.
+   Keep Team IDs/signing overrides private; never commit Xcode's personal signing edits.
+2. Create the matching App in App Store Connect. Sign into Xcode's Apple Accounts and
+   select your Team with automatic signing. Choose **Any iOS Device (arm64)**.
+3. Set Version and a new Build number in Xcode. Info.plist derives these from
+   `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`; increment Build for every upload.
+4. **Product → Archive** uses Release. Inspect the resulting archive's app Info.plist:
+   `HymioBackendURL` must be the real HTTPS origin, not a placeholder or LAN address.
+   `CFBundleVersion` must be the new build number. Old archives retain their original values.
+5. In Organizer choose **Distribute App → App Store Connect → Upload**. A successful local
+   archive is not an upload. Wait until Apple's processing completes in App Store Connect.
+6. Under TestFlight, complete any requested compliance information, add this build to an
+   internal testing group, and add your App Store Connect user as an internal tester.
+7. On iPhone install TestFlight, accept the invitation, then install/update the correct
+   build. Neither USB nor a shared LAN is required when the Backend is reachable remotely.
+
+If a build is missing, first check upload success, Apple processing, compliance and group
+assignment. Rebuilding locally never updates an already installed TestFlight binary.
+If the app says the service is unconfigured, inspect the installed build's archive endpoint
+and upload a corrected, higher build number. If signup settings cannot load, the login page
+shows retry; invitation registration appears when Backend advertises it.
+
+See [Apple's upload guide](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)
+and [internal tester guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/).
