@@ -108,3 +108,10 @@ See [prompt and computer recovery](spec/feature21-prompt-computer-recovery.md).
 ### Models and media
 
 Choose the conversation model in Settings without creating another conversation. Attach photos, documents or audio; Hymio uses its media tools to understand them on demand. iOS supports Photos, Camera and Files. Image creation supports text prompts and MiniMax character references, with generated images kept as private attachments. See [setup](deploy/README.md#models-and-attachments), [design](spec/feature22-models-and-media.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
+
+### Work that carries on
+
+Arrange a task for now, a specific time, or a daily/weekly routine. Web/Desktop and iOS share a task
+panel for objectives, progress, results and schedule controls. The personal agent can do the work
+itself or delegate a bounded independent expert; you still have one conversation.
+[Tasks and delegation](spec/feature23-tasks-and-delegation.md) describes the execution boundaries.

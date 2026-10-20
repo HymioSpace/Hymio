@@ -1,6 +1,7 @@
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  Flag,
   ArrowUp,
   ArrowDown,
   SlidersHorizontal,
@@ -29,6 +30,7 @@ import {
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
+import { TasksPanel } from './TasksPanel';
 import { useLogin } from './useLogin';
 import { TraceBlock } from './TraceBlock';
 import { TracePage } from './TracePage';
@@ -56,6 +58,7 @@ export default function App() {
     bizUrl: '',
     credential: '',
   });
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [settings, setSettings] = useState(false),
     [debug, changeDebug] = useState(window.location.hash === '#/trace'),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
@@ -370,6 +373,14 @@ export default function App() {
             <span>hymio</span>
           </div>
           <div className="topbar-actions">
+            <button
+              className="icon-button"
+              aria-label="打开任务"
+              title="交给 Hymio 的事"
+              onClick={() => setTasksOpen(true)}
+            >
+              <Flag size={18} />
+            </button>
             <button
               className={`connection-pill ${connected ? 'online' : ''}`}
               onClick={() => setSettings(true)}
@@ -735,6 +746,7 @@ export default function App() {
           onRetry={() => void act(() => client.command('step.retry', {}))}
         />
       )}
+      {tasksOpen && <TasksPanel login={login} onClose={() => setTasksOpen(false)} />}
       {settings && <Settings login={login} onClose={() => setSettings(false)} />}
     </div>
   );

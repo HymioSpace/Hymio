@@ -1,0 +1,397 @@
+import { useEffect, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  CalendarDays,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  Clock3,
+  Flag,
+  LoaderCircle,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { Sheet, IconButton, Button } from '@hymio/ui';
+import type { LoginState } from './useLogin';
+import './tasks.css';
+import type { Work, Schedule } from './taskModels';
+import { TaskForm } from './TaskForm';
+const labels: Record<string, string> = {
+  scheduled: '已安排',
+  delivering: '正在送达',
+  ready: '等待开始',
+  running: '进行中',
+  blocked: '需要关注',
+  succeeded: '已完成',
+  failed: '未完成',
+  cancelled: '已取消',
+  paused: '已暂停',
+  active: '已安排',
+};
+const date = (value: number) =>
+  new Date(value * 1000).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+function status(task: Work) {
+  return task.state === 'active' ? task.runs[0]?.status || 'scheduled' : task.state;
+}
+function scheduleLabel(s: Schedule) {
+  return s.mode === 'now'
+    ? '即刻开始'
+    : s.mode === 'once'
+      ? new Date(s.at!).toLocaleString()
+      : `${s.mode === 'daily' ? '每天' : ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][s.weekday || 0]} ${s.time} · ${s.timezone}`;
+}
+export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () => void }) {
+  const [tasks, setTasks] = useState<Work[]>([]),
+    [selected, setSelected] = useState(''),
+    [filter, setFilter] = useState('all');
+  const [editing, setEditing] = useState<Work | 'new' | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(''),
+    [loaded, setLoaded] = useState(false);
+  async function request(data?: object) {
+    const session = login.session;
+    if (!session) throw new Error('请先登录');
+    const response = await fetch(session.backend + '/tasks', {
+      method: data ? 'POST' : 'GET',
+      headers: {
+        Authorization: 'Bearer ' + session.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: data ? JSON.stringify(data) : undefined,
+      redirect: 'error',
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) {
+      const value = await response.json().catch(() => ({}));
+      throw new Error(value.message || '暂时无法更新任务，请稍后重试');
+    }
+    return response.json();
+  }
+  async function load() {
+    try {
+      const v = await request();
+      setTasks(v.tasks);
+      setError('');
+      setLoaded(true);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        const v = await request();
+        if (active) {
+          setTasks(v.tasks);
+          setLoaded(true);
+        }
+      } catch {
+        if (active) setError('暂时无法读取任务');
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [login.session?.access_token]);
+  async function change(data: object) {
+    setBusy(true);
+    setError('');
+    try {
+      const updated = await request(data);
+      if (updated.id === selected) setDetail(updated);
+      await load();
+      setEditing(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const [detail, setDetail] = useState<Work | null>(null);
+  useEffect(() => {
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    let active = true;
+    const refresh = async () => {
+      try {
+        const value = await request({ action: 'get', task_id: selected });
+        if (active) setDetail(value);
+      } catch {
+        if (active) setError('暂时无法读取任务详情');
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [selected, login.session?.access_token]);
+  const task = detail?.id === selected ? detail : tasks.find((t) => t.id === selected),
+    run = task?.runs[0];
+  const visible = tasks.filter(
+    (t) =>
+      filter === 'all' ||
+      (filter === 'done'
+        ? status(t) === 'succeeded'
+        : !['succeeded', 'cancelled'].includes(status(t))),
+  );
+  return (
+    <Sheet className="tasks-dialog" labelledBy="tasks-title" onClose={onClose}>
+      <header className="tasks-header">
+        <div>
+          <span className="tasks-eyebrow">A LITTLE FURTHER, EVERY DAY</span>
+          <h2 id="tasks-title">
+            交给 Hymio 的事<span className="tasks-count">{tasks.length}</span>
+          </h2>
+          <p>从一句想法，到一件做成的事。</p>
+        </div>
+        <IconButton label="关闭任务" onClick={onClose}>
+          <X size={20} />
+        </IconButton>
+      </header>
+      {error && (
+        <p className="tasks-error" role="alert">
+          {error}
+          <button onClick={() => void load()}>重新读取</button>
+        </p>
+      )}
+      {editing ? (
+        <TaskForm
+          key={editing === 'new' ? 'new' : editing.id}
+          task={editing === 'new' ? undefined : editing}
+          busy={busy}
+          onCancel={() => setEditing(null)}
+          onSave={(data) => void change(data)}
+        />
+      ) : (
+        <div className={`tasks-layout ${task ? 'has-selection' : ''}`}>
+          <section className="tasks-list">
+            <div className="tasks-list-toolbar">
+              <div className="tasks-filters" aria-label="筛选任务">
+                {[
+                  ['all', '全部'],
+                  ['active', '待推进'],
+                  ['done', '已完成'],
+                ].map(([key, label]) => (
+                  <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <IconButton label="新建任务" onClick={() => setEditing('new')}>
+                <Plus size={19} />
+              </IconButton>
+            </div>
+            {!loaded && !error && (
+              <div className="tasks-empty">
+                <LoaderCircle size={24} />
+                <p>正在读取任务…</p>
+              </div>
+            )}
+            {loaded && !visible.length && (
+              <div className="tasks-empty">
+                <div className="tasks-empty-orbit">
+                  <Flag size={27} strokeWidth={1.4} />
+                </div>
+                <h3>{filter === 'done' ? '好结果，会留在这里。' : '把想做的事，留给我。'}</h3>
+                <p>
+                  现在开始，或约个时间。
+                  <br />
+                  你离开后，工作仍会继续。
+                </p>
+                <Button onClick={() => setEditing('new')}>
+                  <Plus size={15} />
+                  安排第一件事
+                </Button>
+              </div>
+            )}
+            <div className="task-cards">
+              {visible.map((t) => {
+                const state = status(t);
+                return (
+                  <button
+                    className={`task-card ${selected === t.id ? 'selected' : ''}`}
+                    key={t.id}
+                    onClick={() => setSelected(t.id)}
+                  >
+                    <span className={`task-state-icon ${state}`}>
+                      {state === 'succeeded' ? (
+                        <Check size={16} />
+                      ) : state === 'running' ? (
+                        <Sparkles size={16} />
+                      ) : (
+                        <Clock3 size={16} />
+                      )}
+                    </span>
+                    <span className="task-card-copy">
+                      <span className="task-card-title">{t.title}</span>
+                      <span className="task-card-preview">{t.runs[0]?.result || t.objective}</span>
+                      <span className="task-card-meta">
+                        <span className={`task-state ${state}`}>{labels[state] || state}</span>
+                        <span>{scheduleLabel(t.schedule)}</span>
+                      </span>
+                    </span>
+                    <ChevronRight size={14} />
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+          <section className="task-detail" aria-label="任务详情">
+            {task ? (
+              <>
+                <button className="task-back" onClick={() => setSelected('')}>
+                  <ArrowLeft size={15} />
+                  任务列表
+                </button>
+                <div className="task-detail-heading">
+                  <span className={`task-state ${status(task)}`}>
+                    {labels[status(task)] || status(task)}
+                  </span>
+                  <span className="task-detail-schedule">
+                    <CalendarDays size={14} />
+                    {scheduleLabel(task.schedule)}
+                  </span>
+                </div>
+                <h3>{task.title}</h3>
+                <p className="task-objective">{task.objective}</p>
+                <div className="task-criteria">
+                  <Flag size={15} />
+                  <div>
+                    <span>怎样算完成</span>
+                    <p>{task.success_criteria}</p>
+                  </div>
+                </div>
+                <div className="task-actions">
+                  {['paused', 'cancelled'].includes(task.state) ? (
+                    <button
+                      disabled={busy}
+                      onClick={() => void change({ action: 'resume', task_id: task.id })}
+                    >
+                      <Play size={14} />
+                      重新安排
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() => void change({ action: 'pause', task_id: task.id })}
+                      >
+                        <Pause size={14} />
+                        暂停日程
+                      </button>
+                      <button
+                        disabled={busy}
+                        onClick={() => void change({ action: 'cancel', task_id: task.id })}
+                      >
+                        取消任务
+                      </button>
+                    </>
+                  )}
+                  <button
+                    disabled={busy || run?.status === 'running' || run?.status === 'blocked'}
+                    onClick={() => setEditing(task)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    aria-label="删除任务"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm('删除任务并取消尚未完成的工作？')) {
+                        void change({ action: 'delete', task_id: task.id });
+                        setSelected('');
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                {run?.result && (
+                  <div className={`task-result ${run.status === 'succeeded' ? 'complete' : ''}`}>
+                    <div>
+                      <CheckCheck size={17} />
+                      <span>{run.status === 'succeeded' ? '这次的成果' : '最新进展'}</span>
+                    </div>
+                    <p>{run.result}</p>
+                  </div>
+                )}
+                <div className="task-timeline">
+                  <h4>
+                    工作记录<span>{task.runs.length} 次执行</span>
+                  </h4>
+                  {task.runs.map((r) => (
+                    <div className="task-run" key={r.id}>
+                      <div className="task-run-title">
+                        <span className={`task-state ${r.status}`}>
+                          {labels[r.status] || r.status}
+                        </span>
+                        <time>{date(r.started_at || r.due_at)}</time>
+                      </div>
+                      {r.agent_id && (
+                        <span className="task-delegated">
+                          <Sparkles size={12} />
+                          独立专家协作
+                        </span>
+                      )}
+                      {r.updates.map((n) => (
+                        <div className="task-note" key={n.note_id}>
+                          <span className="task-note-dot" />
+                          <div>
+                            <time>{date(n.created_at)}</time>
+                            <p>{n.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {!r.updates.length && (
+                        <p className="task-waiting">
+                          {r.status === 'scheduled'
+                            ? '到时间后，Hymio 会收到提醒。'
+                            : r.status === 'cancelled'
+                              ? '已停止后续安排。'
+                              : '进展和成果会记录在这里。'}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="task-detail-placeholder">
+                <span className="task-placeholder-line" />
+                <ArrowUpRight size={25} strokeWidth={1} />
+                <h3>让事情，慢慢有着落。</h3>
+                <p>选一件事，看看它走到了哪里。</p>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+      <footer className="tasks-footer">
+        <span>
+          <RefreshCw size={12} />
+          进展自动同步
+        </span>
+        <span>一个 Hymio，持续为你推进。</span>
+      </footer>
+    </Sheet>
+  );
+}

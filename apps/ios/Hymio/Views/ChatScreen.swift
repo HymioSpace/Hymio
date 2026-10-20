@@ -14,6 +14,7 @@ struct ChatScreen: View {
   @State private var cameraOpen = false
   @State private var profile = false
   @State private var tracePage = false
+  @State private var tasksPage = false
   @State private var atBottom = true
   @State private var sendBusy = false
   @FocusState private var typing: Bool
@@ -100,6 +101,7 @@ struct ChatScreen: View {
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
+      .navigationDestination(isPresented: $tasksPage) { TasksScreen(account: account) }
       .navigationDestination(isPresented: $tracePage) {
         TraceScreen(account: account, client: client)
       }
@@ -128,6 +130,12 @@ struct ChatScreen: View {
                   ? "正在处理" : client.phase, connected: client.connected)
             }
           }.accessibilityElement(children: .combine)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("任务", systemImage: "flag") {
+            typing = false
+            tasksPage = true
+          }
         }
         ToolbarItem(placement: .topBarTrailing) {
           Button {
