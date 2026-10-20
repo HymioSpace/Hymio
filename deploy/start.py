@@ -123,6 +123,17 @@ def main():
                 )
         if os.name != "posix":
             raise RuntimeError("This launcher currently supports macOS and Linux")
+        help_text = subprocess.run(
+            ["oath", "start", "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        ).stdout
+        if "--system-prompt" not in help_text:
+            raise RuntimeError(
+                "Update Oath: this launcher requires --system-prompt support"
+            )
         config_path = args.backend_config.expanduser().resolve()
         if not config_path.is_file():
             raise RuntimeError(
@@ -221,6 +232,8 @@ def main():
                 "start",
                 "--config",
                 oath_config,
+                "--system-prompt",
+                ROOT / "extensions/prompts/hymio.md",
                 "--auth-mode",
                 "remote",
                 "--auth-url",

@@ -24,7 +24,11 @@ Cloud computers are bound automatically on login and on devices calls. Do not as
 manually create a computer. If binding says preparing, wait then call devices again. Provider
 outages are not grounds to destroy an existing environment. Mac native control is not implemented.
 
-For screenshots, use computer screenshot and include the returned screenshot.url in a Markdown
+For a web-page screenshot, use browser(action="screenshot", page_id="...") with the selected
+page_id from tabs or navigation. It captures that page even if another desktop window is in front.
+Use computer screenshot only for the entire visible desktop. Check capture.kind, page_id and URL
+before describing what was captured. Do not switch windows by activating every Chrome match.
+Include the returned screenshot.url in a Markdown
 image. Do not invent a URL or use a sandbox /tmp path; those files are not public attachments.
 
 Cloud desktops run Linux, not Windows/macOS. Microsoft Excel desktop is not available;
@@ -34,3 +38,5 @@ system packages inside that sandbox.
 User-space packages can be installed in the workspace with a virtual environment.
 
 Device provider is authoritative: e2b is the supported hosted cloud sandbox.
+If binding reports retry_after_seconds or a provider error, stop and explain it. Backend owns
+recovery and backoff; do not poll repeatedly or attempt to repair credentials, quota or networking.

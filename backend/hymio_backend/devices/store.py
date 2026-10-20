@@ -35,6 +35,9 @@ class DeviceStore:
                     invocation_id TEXT NOT NULL, deadline REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS device_ensures (
                     user_id TEXT PRIMARY KEY, owner TEXT NOT NULL, deadline REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS device_recovery (
+                    user_id TEXT PRIMARY KEY, failures INTEGER NOT NULL,
+                    retry_at REAL NOT NULL, error TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS device_media (
                     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, device_id TEXT NOT NULL,
                     content BLOB NOT NULL, created_at REAL NOT NULL);
@@ -160,6 +163,31 @@ class DeviceStore:
                 (user_id, owner, time.time() + 180),
             )
         return owner
+
+    def recovery(self, user_id, *, error=None, clear=False):
+        with self.transaction() as db:
+            row = db.execute("SELECT * FROM device_recovery WHERE user_id=?", (user_id,)).fetchone()
+            if clear:
+                db.execute("DELETE FROM device_recovery WHERE user_id=?", (user_id,))
+                return None
+            if error:
+                failures = (row["failures"] if row else 0) + 1
+                retry_at = time.time() + min(300, 5 * 2 ** min(failures - 1, 6))
+                db.execute(
+                    "INSERT OR REPLACE INTO device_recovery VALUES(?,?,?,?)",
+                    (user_id, failures, retry_at, error),
+                )
+                return {"retry_at": retry_at, "error": error}
+            return dict(row) if row else None
+
+    def provision_record(self, user_id, device_id):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT status,result FROM device_commands WHERE user_id=? AND device_id=? "
+                "AND invocation_id LIKE ? ORDER BY submitted_at DESC LIMIT 1",
+                (user_id, device_id, "provision:" + device_id + "%"),
+            ).fetchone()
+            return dict(row) if row else None
 
     def finish_ensure(self, user_id, owner):
         with self.transaction() as db:
@@ -431,6 +459,34 @@ class DeviceStore:
                     "DELETE FROM device_locks WHERE device_id=? AND invocation_id=?",
                     (device_id, control_id),
                 )
+
+    def reconcile_control(self, user_id, device_id, physical):
+        with self.transaction() as db:
+            lock = db.execute(
+                "SELECT * FROM device_locks WHERE user_id=? AND device_id=? AND deadline<?",
+                (user_id, device_id, time.time()),
+            ).fetchone()
+            if not lock:
+                return False
+            expected = (
+                "online"
+                if lock["invocation_id"].startswith("control:resume:")
+                else "paused"
+                if lock["invocation_id"].startswith("control:pause:")
+                else None
+            )
+            if physical != expected:
+                return False
+            db.execute(
+                "UPDATE devices SET control_state=? WHERE user_id=? AND id=? "
+                "AND revoked_at IS NULL",
+                ("active" if physical == "online" else "paused", user_id, device_id),
+            )
+            db.execute(
+                "DELETE FROM device_locks WHERE user_id=? AND device_id=? AND invocation_id=?",
+                (user_id, device_id, lock["invocation_id"]),
+            )
+            return True
 
     def commands(self, user_id, device_id, invocation_id=None, limit=20):
         with self.transaction() as db:

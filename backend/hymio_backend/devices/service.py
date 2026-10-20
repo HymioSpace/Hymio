@@ -2,8 +2,15 @@
 
 import base64
 import time
+import uuid
 
-from .providers import E2BComputer
+from .providers import (
+    DispatchRejected,
+    E2BComputer,
+    ProviderUnavailable,
+    ProvisionRejected,
+    provider_failure,
+)
 from .store import DeviceConflict, DeviceStore
 from .validation import validate
 
@@ -21,13 +28,26 @@ class DeviceService:
             raise ValueError("provider_not_configured")
         return self.providers[device["provider"]]
 
+    def physical(self, device):
+        provider = self.provider(device)
+        if hasattr(provider, "probe"):
+            result = provider.probe(device)
+            if result.get("error"):
+                raise ProviderUnavailable(result["error"])
+            return result["state"]
+        return provider.state(device)
+
     def describe(self, device):
         channel = device["provider"] == "channel"
-        physical = (
-            ("online" if device["last_seen"] > time.time() - 75 else "offline")
-            if channel
-            else (self.provider(device).state(device) if device["provider_ref"] else "offline")
-        )
+        provider_error = None
+        try:
+            physical = (
+                ("online" if device["last_seen"] > time.time() - 75 else "offline")
+                if channel
+                else (self.physical(device) if device["provider_ref"] else "offline")
+            )
+        except ProviderUnavailable as error:
+            physical, provider_error = "offline", error.code
         state = (
             "missing"
             if physical == "missing"
@@ -36,12 +56,7 @@ class DeviceService:
             else physical
         )
         if not channel and not device["provider_ref"]:
-            try:
-                record = self.store.commands(
-                    device["user_id"], device["id"], "provision:" + device["id"]
-                )
-            except KeyError:
-                record = None
+            record = self.store.provision_record(device["user_id"], device["id"])
             state = (
                 "preparing"
                 if record is None or record["status"] == "running"
@@ -55,6 +70,7 @@ class DeviceService:
             "generation": device["generation"],
             "state": state,
             "provider_state": physical,
+            "provider_error": provider_error,
             "online": state == "online",
             "capabilities": [] if channel else ["bash", "browser", "computer"],
             "workspace": None if channel else "~/workspace",
@@ -66,7 +82,19 @@ class DeviceService:
     def provision(self, user_id):
         device = self.store.create(user_id, self.settings.computer_provider)
         if not device["provider_ref"]:
-            invocation = "provision:" + device["id"]
+            prior = self.store.provision_record(user_id, device["id"])
+            if prior and prior["status"] in {"running", "outcome_unknown"}:
+                lock = self.store.expired_execution(user_id, device["id"])
+                provider = self.provider(device)
+                reference = (
+                    provider.recover(device) if lock and hasattr(provider, "recover") else None
+                )
+                if not reference:
+                    raise DeviceConflict("provision_outcome_unknown")
+                self.store.set_ref(user_id, device["id"], reference)
+                self.store.release_expired_execution(user_id, device["id"], lock)
+                return self.describe(self.store.get(user_id, device["id"]))
+            invocation = "provision:" + device["id"] + ":" + uuid.uuid4().hex
             _, result = self.store.claim(
                 user_id, device["id"], invocation, {"provision": device["provider"]}, 120
             )
@@ -79,6 +107,13 @@ class DeviceService:
                         self.provider(device).stop({**device, "provider_ref": reference})
                         raise
                     self.store.finish(user_id, invocation, {"status": "succeeded"})
+                except ProvisionRejected as error:
+                    self.store.finish(
+                        user_id,
+                        invocation,
+                        {"status": "failed", "error": error.code, "dispatched": False},
+                    )
+                    raise
                 except Exception:
                     self.store.finish(
                         user_id, invocation, {"status": "outcome_unknown"}, release=False
@@ -87,6 +122,14 @@ class DeviceService:
         return self.describe(self.store.get(user_id, device["id"]))
 
     def ensure_available(self, user_id, *, wake=False):
+        recovery = self.store.recovery(user_id)
+        if recovery and recovery["retry_at"] > time.time():
+            return {
+                "action": "unavailable",
+                "error": recovery["error"],
+                "retry_after_seconds": max(1, round(recovery["retry_at"] - time.time())),
+                "notice": "Recovery is backing off. Keep the binding; do not repeat repairs.",
+            }
         owner = self.store.begin_ensure(user_id)
         if owner is None:
             return {
@@ -99,7 +142,9 @@ class DeviceService:
             )
             action = "created" if device is None else "reused"
             if device and device["provider_ref"]:
-                physical = self.provider(device).state(device)
+                physical = self.physical(device)
+                if self.store.reconcile_control(user_id, device["id"], physical):
+                    device = self.store.get(user_id, device["id"])
                 if physical == "missing":
                     device = self.store.replace_missing(user_id, device["id"])
                     action = "replaced"
@@ -115,14 +160,17 @@ class DeviceService:
                         if lock and self.provider(device).execution_idle(device):
                             self.store.release_expired_execution(user_id, device["id"], lock)
                     if physical == "online" and device["control_state"] == "active":
+                        self.store.recovery(user_id, clear=True)
                         return {"action": "reused", "device": self.describe(device)}
                     if physical == "online" and device["control_state"] != "active":
                         return {"action": "recovery_required", "device": self.describe(device)}
                     # Paused environments retain the same binding and filesystem.
 
                     if device["control_state"] == "paused" and not wake:
+                        self.store.recovery(user_id, clear=True)
                         return {"action": "paused", "device": self.describe(device)}
                     result = self.control(user_id, device["id"], "resume")
+                    self.store.recovery(user_id, clear=True)
                     return {"action": "resumed", "device": result}
                 elif device["control_state"] != "active":
                     return {"action": "recovery_required", "device": self.describe(device)}
@@ -130,15 +178,25 @@ class DeviceService:
                 result = self.provision(user_id)
             except DeviceConflict:
                 return {
-                    "action": "preparing",
-                    "notice": "Computer busy or awaiting recovery; commands were not repeated.",
+                    "action": "recovery_required",
+                    "notice": "Prior operation running or outcome unknown. Do not repeat commands.",
                 }
+            if result["online"]:
+                self.store.recovery(user_id, clear=True)
             return {
                 "action": action if result["online"] else result["state"],
                 "device": result,
                 "notice": "Deleted sandbox replaced by empty computer. Old files were not restored."
                 if result.get("replaces_device_id")
                 else "",
+            }
+        except ProviderUnavailable as error:
+            retry = self.store.recovery(user_id, error=error.code)
+            return {
+                "action": "unavailable",
+                "error": error.code,
+                "retry_after_seconds": max(1, round(retry["retry_at"] - time.time())),
+                "notice": "Provider unavailable. Computer preserved; do not loop or recreate it.",
             }
         finally:
             self.store.finish_ensure(user_id, owner)
@@ -169,7 +227,11 @@ class DeviceService:
             return known
         started = time.monotonic()
         try:
-            if self.provider(device).state(device) != "online":
+            physical = self.physical(device)
+            if physical == "paused":
+                self.provider(device).resume(device)
+                physical = self.physical(device)
+            if physical != "online":
                 return self.store.finish(
                     user_id,
                     invocation_id,
@@ -180,6 +242,20 @@ class DeviceService:
                         "error": "Device unavailable; no command was dispatched",
                     },
                 )
+        except Exception as error:
+            return self.store.finish(
+                user_id,
+                invocation_id,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation_id,
+                    "status": "failed",
+                    "error": "Computer unavailable before command dispatch",
+                    "provider_error": provider_failure(error).code,
+                    "dispatched": False,
+                },
+            )
+        try:
             remaining = timeout - (time.monotonic() - started)
             if remaining <= 0:
                 return self.store.finish(
@@ -190,6 +266,7 @@ class DeviceService:
                         "invocation_id": invocation_id,
                         "status": "failed",
                         "error": "Deadline expired before dispatch",
+                        "dispatched": False,
                     },
                 )
             payload = self.provider(device).execute(
@@ -224,6 +301,18 @@ class DeviceService:
                 "duration_ms": round((time.monotonic() - started) * 1000),
             }
             return self.store.finish(user_id, invocation_id, result)
+        except DispatchRejected as error:
+            return self.store.finish(
+                user_id,
+                invocation_id,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation_id,
+                    "status": "failed",
+                    "error": error.code,
+                    "dispatched": False,
+                },
+            )
         except Exception:
             result = {
                 "device_id": device_id,

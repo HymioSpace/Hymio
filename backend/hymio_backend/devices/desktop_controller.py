@@ -12,6 +12,21 @@ class OperationRejected(ValueError):
     pass
 
 
+def image_result(image, kind, **metadata):
+    if image[:8] != b"\x89PNG\r\n\x1a\n":
+        raise OperationRejected("Capture did not produce a PNG image")
+    return {
+        "screenshot_base64": base64.b64encode(image).decode(),
+        "capture": {
+            "kind": kind,
+            "width": int.from_bytes(image[16:20], "big"),
+            "height": int.from_bytes(image[20:24], "big"),
+            "captured_at": time.time(),
+            **metadata,
+        },
+    }
+
+
 def shell(command, cwd, timeout):
     started = time.monotonic()
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
@@ -104,21 +119,30 @@ def browser(args, timeout):
             page.close()
             page = context.pages[0] if context.pages else context.new_page()
         page.set_default_timeout(timeout * 1000)
+        session = context.new_cdp_session(page)
+        try:
+            window = session.send("Browser.getWindowForTarget")
+            if window["bounds"].get("windowState") == "minimized":
+                session.send(
+                    "Browser.setWindowBounds",
+                    {"windowId": window["windowId"], "bounds": {"windowState": "normal"}},
+                )
+        finally:
+            session.detach()
         page.bring_to_front()
-        subprocess.run(
-            [
-                "xdotool",
-                "search",
-                "--onlyvisible",
-                "--class",
-                "google-chrome|chromium",
-                "windowactivate",
-                "--sync",
-            ],
-            check=True,
-            timeout=min(3, timeout),
-            capture_output=True,
-        )
+        if action == "screenshot":
+            image = page.screenshot(
+                type="png",
+                full_page=False,
+                animations="disabled",
+                caret="hide",
+                timeout=timeout * 1000,
+            )
+            result = image_result(
+                image, "browser_viewport", page_id=page_id(page), url=page.url, title=page.title()
+            )
+            connected.close()
+            return result
         if action == "navigate" or action == "new_tab" and args.get("url"):
             if not args["url"].startswith(("https://", "http://")):
                 raise ValueError("Expected HTTP(S) URL")
@@ -161,7 +185,7 @@ def computer(args, timeout):
             path = directory + "/screen.png"
             subprocess.run(["scrot", path], check=True, timeout=timeout)
             with open(path, "rb") as file:
-                return {"screenshot_base64": base64.b64encode(file.read()).decode()}
+                return image_result(file.read(), "desktop")
     if action == "click":
         x, y = int(args["x"]), int(args["y"])
         if not 0 <= x < 1280 or not 0 <= y < 800:

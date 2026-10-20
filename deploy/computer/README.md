@@ -49,6 +49,7 @@ requires operator investigation or explicit revoke/reprovision with data-loss co
 - devices: list owned devices and capabilities.
 - bash: command/cwd on an explicit device; background descendants end with the invocation.
 - browser: DOM snapshot/navigate/click/fill/key, tabs/new_tab/switch_tab/close_tab, back/forward/reload.
+- browser screenshot: requires `page_id`, captures that page's viewport regardless of other windows.
 - computer: screenshot/click/type/key/scroll, sharing the browser's desktop.
 - device_command: query a prior invocation without repeating it.
 
@@ -62,6 +63,15 @@ Internal list/execute/command routes require a service credential and authoritat
 Screenshots are owner-only authenticated media references. Client supports enlarged snapshots,
 not live remote desktop. Oath's current text context does not visually inspect screenshot references;
 autonomous visual reasoning requires a multimodal adapter. DOM-based browsing works today.
+Capture metadata identifies browser viewport versus desktop, dimensions, timestamp, and page URL/ID
+where applicable. Use the returned screenshot URL rather than inventing a sandbox file link.
+
+Provider errors include safe diagnostic codes (authentication, rate limit, timeout, configuration).
+Automatic ensure uses a persistent 5–300 second backoff and retains the existing binding.
+A command rejected before dispatch releases its lock; uncertain dispatched effects are never replayed.
+Confirmed creation rejection can retry after backoff. If creation was uncertain, recovery may adopt a
+single sandbox with the binding's metadata after the old deadline; absence or ambiguity never creates
+another sandbox. Expired lifecycle locks resolve only when the provider confirms the intended state.
 
 ## Software
 

@@ -99,3 +99,8 @@ Use the [cloud deployment guide](deploy/cloud/README.md) for static Web, contain
 ### Progressive interaction surfaces
 
 Web/Desk and native iOS render the same limited Hymio UI catalog: cards, metrics, text, choices, inputs and explicit message buttons. Streamed prose is buffered independently of durable events; UI records reveal as valid nodes arrive. See [the contract](spec/feature20-progressive-ui.md) and [model skill](extensions/skills/hymio-ui/SKILL.md). This is a focused native subset inspired by json-render, not arbitrary generated React execution or full Google A2UI compatibility.
+
+Hymio's [application instructions](extensions/prompts/hymio.md) load through Oath's
+`--system-prompt` option. The local launcher passes this file automatically; update Oath before
+using the launcher. Role and style stay in a fixed prefix, while device state comes from tools.
+See [prompt and computer recovery](spec/feature21-prompt-computer-recovery.md).

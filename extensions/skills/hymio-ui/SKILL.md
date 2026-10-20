@@ -11,6 +11,7 @@ is either a complete spec or one complete JSON patch. Prefer patches: add a pare
 child IDs, then add children as information arrives. One JSON object per line, no pretty-printing.
 Use at most 64 nodes and 64 KiB per block, depth 12. Each child belongs to only one parent.
 Use stable IDs `[A-Za-z0-9_-]{1,64}`. Ordinary text can precede/follow the surface.
+Begin patches with `{"op":"add","path":"/root","value":"your-root-id"}`; a root-only object is not a spec.
 
 Allowed patch paths: `/root`, `/elements/<id>`; operations add, replace, remove. Replacing a node
 replaces the whole node. No nested property patching, data bindings or other JSON Patch operations.

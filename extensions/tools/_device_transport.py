@@ -51,7 +51,8 @@ def call(invocation, operation, capability=None):
     except (URLError, TimeoutError) as error:
         if operation == "list":
             raise ToolExecutionError(
-                "Computer preparation may still be running. Call devices again; do not repeat commands."
+                "Computer preparation is pending or unavailable. Backend owns recovery. "
+                "Report the condition and wait for new input; do not poll or repeat commands."
             ) from error
         raise ToolExecutionError(
             f"Result unavailable for device_id={invocation.arguments.get('device_id')}, "

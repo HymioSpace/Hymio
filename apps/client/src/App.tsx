@@ -144,6 +144,7 @@ export default function App() {
   const streaming = model.messages.some((m) => m.streaming);
   const lastMessage = model.messages.at(-1);
   const awaitingReply =
+    !model.pauseNotice &&
     lastMessage?.role === 'user' &&
     lastMessage.delivery !== 'failed' &&
     (!!lastMessage.delivery ||
@@ -567,6 +568,11 @@ export default function App() {
                     <i />
                   </span>
                 </div>
+              )}
+              {model.pauseNotice && (
+                <p role="status" className="tool-history-summary">
+                  {model.pauseNotice}
+                </p>
               )}
               {latestFailure?.error && failureKey !== dismissedFailure && (
                 <div className="task-error">

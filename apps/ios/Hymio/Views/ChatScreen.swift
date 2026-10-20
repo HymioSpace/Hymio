@@ -60,6 +60,10 @@ struct ChatScreen: View {
               Label(client.model.failure, systemImage: "exclamationmark.circle").font(.footnote)
                 .foregroundStyle(.secondary)
             }
+            if !client.model.pauseNotice.isEmpty {
+              Label(client.model.pauseNotice, systemImage: "pause.circle")
+                .font(.footnote).foregroundStyle(.secondary)
+            }
             Color.clear.frame(height: 1).id("bottom").onAppear { atBottom = true }.onDisappear {
               atBottom = false
             }

@@ -66,6 +66,7 @@ class BrowserTool(Tool):
             "Control Chromium on the target desktop via DOM. snapshot/navigate "
             "return text and selectors; click/fill use those selectors. "
             "Use tabs to get page_id; specify it when working across tabs. "
+            "screenshot requires page_id and captures that page's viewport as authenticated media. "
             "Browser and computer share the same desktop and profile.",
             schema(
                 {
@@ -74,6 +75,7 @@ class BrowserTool(Tool):
                         "type": "string",
                         "enum": [
                             "snapshot",
+                            "screenshot",
                             "navigate",
                             "click",
                             "fill",
