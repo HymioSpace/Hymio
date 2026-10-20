@@ -157,3 +157,5 @@ The settings screen uses Backend's `model_options` (first item is the default). 
 Update both Oath and Hymio before starting. The Oath build must support `agent.selectable_models`. The launcher uses a 150-second tool deadline for media calls and writes an ignored `backend/hymio-media.local.toml` overlay. Normal files and photos upload through the authenticated Backend; they do not require an E2B computer.
 
 Uploads support images, PDF, DOCX, PPTX, XLS/XLSX, text/Markdown/CSV/HTML/JSON/XML/YAML and MP3/WAV/M4A/OGG/FLAC. Individual files are limited to 20 MiB, with eight attachments per message and 256 MiB per user. Video and arbitrary archives are not supported. Scanned PDFs may need OCR; empty extracted text is not a successful visual interpretation.
+
+For a second API provider, configure Oath `agent.model_providers.deepseek-flash` with `model`, `api_base`, `credential`, `import_env` and optional `extra_params`. Add `deepseek-flash` to Backend `model_options`. Export `DEEPSEEK_API_KEY` before the first start so Oath can seed its independent Vault alias; later starts read Vault. Media APIs continue to use the default MiniMax provider.
