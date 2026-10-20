@@ -21,8 +21,7 @@ struct MessageRow: View {
         }
       }.accessibilityIdentifier("message.user")
     } else {
-      HStack(alignment: .top, spacing: 9) {
-        Companion(size: 34, mood: message.streaming ? .replying : .idle)
+      HStack(alignment: .top, spacing: 0) {
         VStack(alignment: .leading, spacing: 12) {
           if !message.reasoning.isEmpty {
             DisclosureGroup {

@@ -451,10 +451,6 @@ a {
 .message-user .message-body {
   max-width: 78%;
 }
-.message-avatar {
-  padding-top: 3px;
-  flex: none;
-}
 .message-body {
   min-width: 0;
   max-width: calc(100% - 50px);
@@ -1891,12 +1887,12 @@ a {
   cursor: wait;
 }
 
-/* Replies, tool activity and pending work share the same avatar column. */
+/* Replies, tool activity and pending work share one text column. */
 .message-assistant,
 .message.working-indicator {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  column-gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 0;
   align-items: start;
 }
 .message-assistant > .message-body {
@@ -1915,8 +1911,8 @@ a {
 @media (max-width: 700px) {
   .message-assistant,
   .message.working-indicator {
-    grid-template-columns: 30px minmax(0, 1fr);
-    column-gap: 7px;
+    grid-template-columns: minmax(0, 1fr);
+    column-gap: 0;
   }
   .message.working-indicator > span {
     min-height: 30px;
@@ -2367,7 +2363,95 @@ a {
   display: grid;
   place-items: center;
 }
-.profile-button .companion.compact {
-  width: 28px;
-  height: 28px;
+
+.connection-pill > .companion.compact {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+.trace-model-report {
+  padding: 12px 14px;
+}
+.trace-performance {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 20px;
+}
+.trace-performance dt {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.trace-performance dd {
+  margin: 0;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.trace-exchange {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.trace-exchange small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.trace-exchange p {
+  margin: 5px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 130px;
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.trace-message-toggle {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 14px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.trace-messages ol {
+  padding: 0;
+  list-style: none;
+  max-height: 400px;
+  overflow: auto;
+  margin: 0;
+}
+.trace-messages li {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.trace-messages summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12px;
+  cursor: pointer;
+}
+.trace-messages summary code {
+  color: var(--blue);
+  flex: none;
+}
+.trace-messages summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trace-messages pre {
+  font: 12px/1.7 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 350px;
+  overflow: auto;
+}
+@media (max-width: 700px) {
+  .trace-performance {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

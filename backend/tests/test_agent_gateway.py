@@ -1,6 +1,9 @@
 import asyncio
+import json
 import socket
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import uvicorn
@@ -11,6 +14,8 @@ from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosedError
 
 from hymio_backend.agent_gateway import relay_agent
+from hymio_backend.devices.store import DeviceStore
+from hymio_backend.session_store import SessionStore
 
 
 class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
@@ -18,6 +23,7 @@ class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
         payload = "x" * (9 * 1024 * 1024)
 
         async def agent(ws):
+            await ws.recv()
             await ws.send(payload)
             async for message in ws:
                 if message == "close-too-large":
@@ -29,8 +35,16 @@ class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
             port = upstream.sockets[0].getsockname()[1]
             settings = SimpleNamespace(oath_ws=f"ws://127.0.0.1:{port}", origins=())
 
+            temp = tempfile.TemporaryDirectory()
+            self.addCleanup(temp.cleanup)
+            channels = DeviceStore(
+                SessionStore(SimpleNamespace(database=Path(temp.name) / "state.sqlite"))
+            )
+            devices = SimpleNamespace(store=channels, ensure_available=lambda user: None)
+            sessions = SimpleNamespace(verify=lambda credential: {"user_id": "alice"})
+
             async def endpoint(ws):
-                await relay_agent(ws, settings)
+                await relay_agent(ws, settings, sessions, devices)
 
             app = Starlette(routes=[WebSocketRoute("/agent/ws", endpoint)])
             listener = socket.socket()
@@ -44,6 +58,19 @@ class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
                 async with connect(
                     f"ws://127.0.0.1:{listener.getsockname()[1]}/agent/ws", max_size=None
                 ) as client:
+                    await client.send(
+                        json.dumps(
+                            {
+                                "v": 2,
+                                "type": "agent.attach",
+                                "payload": {
+                                    "credential": "synthetic",
+                                    "user_id": "alice",
+                                    "client_id": "synthetic-web",
+                                },
+                            }
+                        )
+                    )
                     self.assertEqual(len(await asyncio.wait_for(client.recv(), 10)), len(payload))
                     for i in range(3):
                         await client.send(f"heartbeat-{i}")

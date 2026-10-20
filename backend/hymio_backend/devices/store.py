@@ -56,6 +56,49 @@ class DeviceStore:
                 for name, definition in columns.items():
                     if name not in existing:
                         db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+            self._channel_policy(db)
+
+    def _channel_policy(self, db):
+        db.execute(
+            """UPDATE devices SET revoked_at=? WHERE id IN (
+            SELECT id FROM (SELECT id, row_number() OVER (
+                PARTITION BY user_id,kind ORDER BY last_seen DESC,created_at DESC,id DESC
+            ) AS rank FROM devices WHERE revoked_at IS NULL AND kind IN ('web','ios'))
+            WHERE rank>1)""",
+            (time.time(),),
+        )
+        db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS one_channel_kind ON devices(user_id,kind) "
+            "WHERE revoked_at IS NULL AND kind IN ('web','ios')"
+        )
+        db.execute("""CREATE TABLE IF NOT EXISTS channel_connections (
+            user_id TEXT NOT NULL, kind TEXT NOT NULL, owner TEXT NOT NULL, deadline REAL NOT NULL,
+            PRIMARY KEY(user_id,kind))""")
+
+    def connection_claim(self, user_id, kind, owner):
+        with self.transaction() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO channel_connections VALUES(?,?,?,?)",
+                (user_id, kind, owner, time.time() + 45),
+            )
+
+    def connection_renew(self, user_id, kind, owner):
+        with self.transaction() as db:
+            return (
+                db.execute(
+                    "UPDATE channel_connections SET deadline=? "
+                    "WHERE user_id=? AND kind=? AND owner=? AND deadline>?",
+                    (time.time() + 45, user_id, kind, owner, time.time()),
+                ).rowcount
+                == 1
+            )
+
+    def connection_release(self, user_id, kind, owner):
+        with self.transaction() as db:
+            db.execute(
+                "DELETE FROM channel_connections WHERE user_id=? AND kind=? AND owner=?",
+                (user_id, kind, owner),
+            )
 
     def create(self, user_id, provider):
         with self.transaction() as db:
@@ -161,15 +204,22 @@ class DeviceStore:
                     raise DeviceConflict("installation_kind_conflict")
                 device_id = row["id"]
             else:
-                if (
-                    kind == "mac"
-                    and db.execute(
-                        "SELECT 1 FROM devices WHERE user_id=? AND kind='mac' "
-                        "AND revoked_at IS NULL",
-                        (user_id,),
-                    ).fetchone()
-                ):
-                    raise DeviceConflict("mac_already_bound")
+                same_kind = db.execute(
+                    "SELECT * FROM devices WHERE user_id=? AND kind=? AND revoked_at IS NULL",
+                    (user_id, kind),
+                ).fetchone()
+                if same_kind:
+                    if kind == "mac":
+                        raise DeviceConflict("mac_already_bound")
+                    db.execute(
+                        "UPDATE devices SET provider_ref=?,last_seen=? WHERE id=?",
+                        (installation_id, time.time(), same_kind["id"]),
+                    )
+                    return dict(
+                        db.execute(
+                            "SELECT * FROM devices WHERE id=?", (same_kind["id"],)
+                        ).fetchone()
+                    )
                 device_id = uuid.uuid4().hex
                 db.execute(
                     "INSERT INTO devices(id,user_id,name,kind,provider,provider_ref,created_at) "
@@ -300,6 +350,42 @@ class DeviceStore:
             if not row:
                 raise KeyError("media_not_found")
             return row[0]
+
+    def expired_execution(self, user_id, device_id):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT * FROM device_locks WHERE user_id=? AND device_id=? "
+                "AND deadline<? AND invocation_id NOT LIKE 'control:%'",
+                (user_id, device_id, time.time() - 5),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def release_expired_execution(self, user_id, device_id, lock):
+        with self.transaction() as db:
+            deleted = db.execute(
+                "DELETE FROM device_locks WHERE user_id=? AND device_id=? "
+                "AND invocation_id=? AND deadline=? AND deadline<?",
+                (user_id, device_id, lock["invocation_id"], lock["deadline"], time.time() - 5),
+            )
+            if deleted.rowcount:
+                db.execute(
+                    "UPDATE device_commands SET status='outcome_unknown',result=? "
+                    "WHERE user_id=? AND invocation_id=? AND status='running'",
+                    (
+                        json.dumps(
+                            {
+                                "status": "outcome_unknown",
+                                "error": (
+                                    "Expired execution; no remote operation running. "
+                                    "Effects were not repeated."
+                                ),
+                            }
+                        ),
+                        user_id,
+                        lock["invocation_id"],
+                    ),
+                )
+            return deleted.rowcount == 1
 
     def begin_control(self, user_id, device_id, action):
         recovery_id = "control:" + action + ":" + uuid.uuid4().hex

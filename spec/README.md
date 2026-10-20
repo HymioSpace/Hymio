@@ -19,6 +19,8 @@
 | 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：E2B Desktop |
 | 14 | [iOS MVP](feature14-ios-mvp.md) | Implemented：SwiftUI、同账号持续对话与前台恢复 |
 | 16 | [单入口与局域网真机体验](feature16-lan-entry.md) | Implemented：单入口、LAN 启动与配置 |
+| 17 | [App 响应与状态反馈](feature17-app-responsiveness.md) | Implemented |
+| 18 | [Trace 与设备可用性](feature18-trace-devices.md) | Implemented |
 | 15 | [统一设计与组件](feature15-unified-design.md) | Implemented |
 
 

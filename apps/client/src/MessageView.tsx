@@ -13,7 +13,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { ToolCalls } from './ToolActivityGroup';
-import { Companion, IconButton } from '@hymio/ui';
+import { IconButton } from '@hymio/ui';
 import { MessageImage } from './MessageImage';
 import type { LoginState } from './useLogin';
 
@@ -87,11 +87,6 @@ export function MessageView({
   const { state: copied, copy } = useCopy(message.content);
   return (
     <article className={`message message-${message.role}`} data-testid={`message-${message.role}`}>
-      {message.role === 'assistant' && (
-        <div className="message-avatar">
-          <Companion compact mood={message.streaming ? 'replying' : 'idle'} />
-        </div>
-      )}
       <div className="message-body">
         {message.reasoning && (
           <details className="reasoning-panel">

@@ -9,12 +9,20 @@ from pathlib import Path
 CONTROLLER = Path(__file__).with_name("desktop_controller.py").read_text()
 
 
-def controller_program(request):
+def controller_program(request, expires_at=None):
     return (
         "import json\n"
         + CONTROLLER
         + (
-            f"\ntry:\n    print(json.dumps(execute({request!r})))\n"
+            f"\ntry:\n    request = {request!r}\n"
+            + (
+                f"    remaining = {expires_at!r} - time.time()\n"
+                "    if remaining <= 0: raise OperationRejected('Dispatch deadline expired')\n"
+                "    request['timeout'] = min(request['timeout'], remaining)\n"
+                if expires_at is not None
+                else ""
+            )
+            + "    print(json.dumps(execute(request)))\n"
             "except OperationRejected as error:\n"
             "    print(json.dumps({'operation_rejected': str(error)}))\n"
         )
@@ -36,6 +44,9 @@ class ComputerProvider(ABC):
 
     def state(self, device):
         return "online" if self.inspect(device) else "offline"
+
+    @abstractmethod
+    def execution_idle(self, device): ...
 
     @abstractmethod
     def pause(self, device): ...
@@ -145,6 +156,11 @@ else:
             request_timeout=30,
         )
 
+    def execution_idle(self, device):
+        sandbox = self.connect(device)
+        processes = sandbox.commands.list(request_timeout=5)
+        return not any("class OperationRejected" in " ".join([p.cmd, *p.args]) for p in processes)
+
     def execute(self, device, request, timeout):
         deadline = time.monotonic() + timeout
         sandbox = self.connect(device, request_timeout=min(5, timeout))
@@ -152,7 +168,7 @@ else:
         if remaining <= 0:
             raise TimeoutError("Execution deadline expired before dispatch")
         request = {**request, "timeout": min(request["timeout"], remaining)}
-        program = controller_program(request)
+        program = controller_program(request, expires_at=time.time() + remaining)
         command = f"timeout -k 1s {remaining + 1}s /opt/hymio/bin/python -c " + shlex.quote(program)
         return json.loads(
             sandbox.commands.run(

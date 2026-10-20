@@ -49,7 +49,7 @@ deadline、status 和 result。重复请求返回同一次操作；参数不同�
 ## 多端进度
 
 Oath outbox 是 user_id 下的连续 event_seq。ACK 按 (user_id, client_id) 保存，
-不能用 user_id 或 device_id 共用一个 ACK。一个设备可以有多个独立客户端窗口。
+不能用 user_id 或 device_id 共用一个 ACK。每类渠道仅允许一个活动连接，新连接接管旧连接；Web、iPhone、Mac 可同时在线。详见 [Trace 与设备可用性](feature18-trace-devices.md)。
 客户端先持久化事件，再确认连续进度；发现缺口就重新请求历史，不跨过缺口 ACK。
 本机缓存损坏时换投递 client_id，从完整历史恢复。缓存与 pending command 按账号隔离。
 输入带 source_device_id、client_id、已接收 cursor；它们是上下文，不能作为授权凭据。

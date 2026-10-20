@@ -20,6 +20,7 @@ import UIKit
   private var generation = UUID()
   private var owner = ""
   private var sourceDevice = ""
+  private var replaced = false
   private var ready = false
   private let account: AccountService
   init(account: AccountService) { self.account = account }
@@ -33,7 +34,7 @@ import UIKit
     return value
   }
   func activate() {
-    guard account.session != nil, loop == nil else { return }
+    guard account.session != nil, loop == nil, !replaced else { return }
     let token = UUID()
     generation = token
     loop = Task { [weak self] in await self?.run(token) }
@@ -51,6 +52,7 @@ import UIKit
     phase = "已暂停连接"
   }
   func reset() {
+    replaced = false
     suspend()
     try? cache?.clear()
     cache = nil
@@ -65,6 +67,7 @@ import UIKit
     error = ""
   }
   func reconnect() {
+    replaced = false
     suspend()
     activate()
   }
@@ -109,6 +112,7 @@ import UIKit
             type: "agent.attach",
             payload: .object([
               "credential": .string(s.access_token), "user_id": .string(s.user_id),
+              "channel_kind": .string("ios"),
               "client_id": .string(state.clientID), "history_limit": .number(10),
             ])), socket: ws)
         heartbeat = Task { [weak self, weak ws] in
@@ -156,6 +160,13 @@ import UIKit
         self.error = error.localizedDescription
         phase = "重新连接中"
         ready = false
+        if socket?.closeCode.rawValue == 4009 {
+          replaced = true
+          self.error = "已在另一台 iPhone 打开。点击重连可接管。"
+          phase = "已在其他设备连接"
+          heartbeat?.cancel()
+          break
+        }
         let oversized =
           socket?.closeCode.rawValue == 1009
           || ((error as NSError).domain == NSPOSIXErrorDomain

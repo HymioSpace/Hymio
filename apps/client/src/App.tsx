@@ -12,6 +12,7 @@ import {
   Plug,
   ArrowRight,
   Square,
+  Ellipsis,
   ShieldCheck,
   LoaderCircle,
   Terminal,
@@ -29,6 +30,7 @@ import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
+client.channelKind = desktop ? 'mac' : 'web';
 const overlayQuery = '(max-width: 1150px)';
 const watchOverlay = (notify: () => void) => {
   const query = window.matchMedia(overlayQuery);
@@ -69,7 +71,7 @@ export default function App() {
     [clock, setClock] = useState(Date.now());
   const login = useLogin(
     (value, signedIn) => {
-      client.connect(value);
+      client.connect(value, signedIn);
       setConnection(value);
       if (signedIn) setSettings(false);
     },
@@ -273,10 +275,14 @@ export default function App() {
       setNotice(e instanceof Error ? e.message : String(e));
     }
   }
+  function reconnect() {
+    client.allowTakeover();
+    login.reconnect();
+  }
   async function send() {
     if (!draft.trim() || sending) return;
     if (!connected) {
-      login.reconnect();
+      reconnect();
       setNotice('正在重新连接，草稿已保留，连接后可发送。');
       return;
     }
@@ -339,7 +345,7 @@ export default function App() {
             aria-label="我的账号"
             onClick={() => setSettings(true)}
           >
-            <Companion compact />
+            <Ellipsis size={18} />
           </button>
         </div>
       </nav>
@@ -354,6 +360,7 @@ export default function App() {
               onClick={() => setSettings(true)}
               aria-label="我的账号与连接状态"
             >
+              {(busy || streaming || awaitingReply) && <Companion compact mood={mood} />}
               <StatusBadge tone={connected ? 'active' : 'neutral'}>{status}</StatusBadge>
               <ChevronDown size={12} />
             </button>
@@ -449,9 +456,6 @@ export default function App() {
                     key={first.id}
                     className="message message-assistant message-tool-activity"
                   >
-                    <div className="message-avatar">
-                      <Companion compact mood="idle" />
-                    </div>
                     <div className="message-body">
                       <ToolActivityGroup
                         messages={group}
@@ -550,9 +554,6 @@ export default function App() {
               ))}
               {(busy || streaming || awaitingReply) && (
                 <div className="message working-indicator">
-                  <div className="message-avatar">
-                    <Companion compact mood={mood} />
-                  </div>
                   <span>
                     Hymio {streaming ? '正在回复' : awaitingReply ? '正在等候回复' : '正在接着做'}
                     <i />
@@ -609,7 +610,7 @@ export default function App() {
           {(notice || state.error || login.error) && (
             <div role="alert" className="notice-bar">
               <span>{notice || state.error || login.error}</span>
-              {!connected && login.session && <button onClick={login.reconnect}>重新连接</button>}
+              {!connected && login.session && <button onClick={reconnect}>重新连接</button>}
               <button
                 className="icon-button"
                 aria-label="收起提示"
@@ -635,7 +636,7 @@ export default function App() {
             <div className="offline-banner">
               <WifiOff size={14} />
               <span>暂时离线，已接纳的工作仍会继续。</span>
-              <button onClick={login.reconnect}>重新连接</button>
+              <button onClick={reconnect}>重新连接</button>
               <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
           )}

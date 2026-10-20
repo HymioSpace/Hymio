@@ -48,7 +48,6 @@ struct ChatScreen: View {
               && !client.model.messages.contains(where: \.streaming)
             {
               HStack(spacing: 10) {
-                Companion(size: 30, animated: true, mood: .working)
                 ProgressView().controlSize(.small)
                 Text(client.model.awaitingReply ? "正在等候回复…" : "正在继续处理…").font(.caption)
                   .foregroundStyle(.secondary)
@@ -92,9 +91,17 @@ struct ChatScreen: View {
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
-            ConnectionStatus(
-              text: client.connected && (client.model.working || client.model.awaitingReply)
-                ? "正在处理" : client.phase, connected: client.connected)
+            HStack(spacing: 5) {
+              if client.connected
+                && (client.model.working || client.model.awaitingReply
+                  || client.model.messages.contains(where: \.streaming))
+              {
+                Companion(size: 24, animated: true, mood: .working)
+              }
+              ConnectionStatus(
+                text: client.connected && (client.model.working || client.model.awaitingReply)
+                  ? "正在处理" : client.phase, connected: client.connected)
+            }
           }.accessibilityElement(children: .combine)
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -102,7 +109,8 @@ struct ChatScreen: View {
             typing = false
             profile = true
           } label: {
-            Companion(size: 40).frame(width: 44, height: 44).contentShape(Rectangle())
+            Image(systemName: "ellipsis").font(.title3).frame(width: 44, height: 44).contentShape(
+              Rectangle())
           }.buttonStyle(.plain).accessibilityLabel("我的账号")
             .matchedTransitionSource(id: "account", in: transitions)
         }

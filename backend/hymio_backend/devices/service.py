@@ -109,7 +109,17 @@ class DeviceService:
                         "device": self.describe(device),
                         "notice": "Provider unavailable; existing environment was not replaced.",
                     }
-                elif physical == "paused":
+                elif physical in ("online", "paused"):
+                    if device["control_state"] != "paused" or wake:
+                        lock = self.store.expired_execution(user_id, device["id"])
+                        if lock and self.provider(device).execution_idle(device):
+                            self.store.release_expired_execution(user_id, device["id"], lock)
+                    if physical == "online" and device["control_state"] == "active":
+                        return {"action": "reused", "device": self.describe(device)}
+                    if physical == "online" and device["control_state"] != "active":
+                        return {"action": "recovery_required", "device": self.describe(device)}
+                    # Paused environments retain the same binding and filesystem.
+
                     if device["control_state"] == "paused" and not wake:
                         return {"action": "paused", "device": self.describe(device)}
                     result = self.control(user_id, device["id"], "resume")
