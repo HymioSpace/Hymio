@@ -573,3 +573,16 @@
     transition: none;
   }
 }
+
+.task-result .task-result-body {
+  font-size: 13px;
+  line-height: 1.85;
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 14px;
+}
+.task-result .task-result-body p {
+  white-space: normal;
+  max-height: none;
+  overflow: visible;
+}

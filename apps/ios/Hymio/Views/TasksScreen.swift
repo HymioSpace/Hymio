@@ -169,7 +169,7 @@ private struct TaskDetailScreen: View {
             Label(
               run["status"].text == "succeeded" ? "这次的成果" : "最新进展", systemImage: "checkmark.circle"
             ).font(.caption).foregroundStyle(Brand.blue)
-            Text(run["result"].text).font(.subheadline).lineSpacing(6).textSelection(.enabled)
+            MessageContent(content: run["result"].text, account: account)
           }.frame(maxWidth: .infinity, alignment: .leading).padding(20).background(
             Brand.blue.opacity(0.045), in: RoundedRectangle(cornerRadius: 16))
         }

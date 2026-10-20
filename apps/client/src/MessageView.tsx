@@ -164,6 +164,16 @@ const markdownComponents = {
   a: AttachmentLink,
 };
 
+export function MessageMarkdown({ content, login }: { content: string; login: LoginState }) {
+  return (
+    <ImageLogin.Provider value={login}>
+      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </Markdown>
+    </ImageLogin.Provider>
+  );
+}
+
 export function MessageView({
   message,
   tools,

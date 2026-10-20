@@ -22,6 +22,7 @@ import type { LoginState } from './useLogin';
 import './tasks.css';
 import type { Work, Schedule } from './taskModels';
 import { TaskForm } from './TaskForm';
+import { MessageMarkdown } from './MessageView';
 const labels: Record<string, string> = {
   scheduled: '已安排',
   delivering: '正在送达',
@@ -331,7 +332,9 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                       <CheckCheck size={17} />
                       <span>{run.status === 'succeeded' ? '这次的成果' : '最新进展'}</span>
                     </div>
-                    <p>{run.result}</p>
+                    <div className="markdown task-result-body">
+                      <MessageMarkdown content={run.result} login={login} />
+                    </div>
                   </div>
                 )}
                 <div className="task-timeline">
