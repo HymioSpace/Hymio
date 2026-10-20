@@ -27,6 +27,9 @@
 		D3A380EB070B8A4568F5986B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 176FE332B9C3F1046C218652 /* Assets.xcassets */; };
 		ECD5211167FA9B0613BDA793 /* AccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AE8CD1C170AC8FEE781FE /* AccountService.swift */; };
 		EFB913028BABF89FD749629B /* MarkdownMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */; };
+		0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD5700E47A1BFC4213A3589B /* AgentSurface.swift */; };
+		185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856EE296FF34503C942684F2 /* AgentSurfaceView.swift */; };
+		AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D85FDC20A5009A0CDA661C; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +66,9 @@
 		D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarkdownMessage.swift; path = Views/MarkdownMessage.swift; sourceTree = "<group>"; };
 		DC2B5F1DFEAED91AE224EDF1 /* Hymio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hymio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EA3D248CD2A928457B0A2209 /* AgentClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentClient.swift; path = Services/AgentClient.swift; sourceTree = "<group>"; };
+		AD5700E47A1BFC4213A3589B /* AgentSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurface.swift; path = Core/AgentSurface.swift; sourceTree = "<group>"; };
+		856EE296FF34503C942684F2 /* AgentSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurfaceView.swift; path = Views/AgentSurfaceView.swift; sourceTree = "<group>"; };
+		C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TraceScreen.swift; path = Views/TraceScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -128,6 +134,9 @@
 				289837D493915AFD31A1E797 /* Conversation.swift */,
 				A8B7BECB35225524AD1F4C54 /* ConversationCache.swift */,
 				172A12AE67E2F572FE902CC3 /* Models.swift */,
+				C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */,
+				856EE296FF34503C942684F2 /* AgentSurfaceView.swift */,
+				AD5700E47A1BFC4213A3589B /* AgentSurface.swift */,
 				4D191D956B2D5C1BB207028E /* HymioApp.swift */,
 				A12AE8CD1C170AC8FEE781FE /* AccountService.swift */,
 				EA3D248CD2A928457B0A2209 /* AgentClient.swift */,
@@ -272,6 +281,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */,
+				185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */,
+				0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */,
 				24B8D828DBEE5A2B20AA7CD9 /* Conversation.swift in Sources */,
 				911D7FB47E85604CEA8C192D /* ConversationCache.swift in Sources */,
 				3FF4260028DF483BDC665155 /* Models.swift in Sources */,

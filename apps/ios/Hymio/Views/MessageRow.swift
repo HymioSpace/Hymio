@@ -4,8 +4,10 @@ struct MessageRow: View {
   let message: ChatMessage
   let tools: [String: JSON]
   var approvals: [Approval] = []
+  var onAction: (String) async throws -> Void = { _ in }
   @ObservedObject var account: AccountService
   @State private var expanded = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
     if message.role == "user" {
       HStack {
@@ -25,11 +27,13 @@ struct MessageRow: View {
         VStack(alignment: .leading, spacing: 12) {
           if !message.reasoning.isEmpty {
             DisclosureGroup {
-              Text(message.reasoning).font(.callout).foregroundStyle(.secondary).textSelection(
-                .enabled)
+              BufferedProse(
+                source: message.reasoning, streaming: message.streaming, account: account,
+                plain: true)
             } label: {
               HStack(spacing: 7) {
-                if message.thinking { ProgressView().controlSize(.mini) }
+                Image(systemName: "brain").symbolEffect(
+                  .pulse, isActive: message.thinking && !reduceMotion)
                 Text(message.thinking ? "正在思考…" : "思考过程")
               }.font(.caption).foregroundStyle(.secondary)
             }.tint(.secondary).accessibilityIdentifier("message.reasoning")
@@ -41,12 +45,11 @@ struct MessageRow: View {
             }
           }
           if !message.content.isEmpty {
-            MessageContent(content: message.content, account: account)
-              .contextMenu {
-                Button("复制回复", systemImage: "doc.on.doc") {
-                  UIPasteboard.general.string = message.content
-                }
-              }
+            ProgressiveMessageContent(
+              content: message.content, streaming: message.streaming, account: account,
+              onAction: onAction
+            )
+
           }
           if !message.calls.isEmpty {
             DisclosureGroup(isExpanded: $expanded) {
@@ -54,7 +57,7 @@ struct MessageRow: View {
                 let tool = tools[String(message.id.dropFirst("assistant:".count)) + "-\(i)"]
                 VStack(alignment: .leading, spacing: 8) {
                   HStack {
-                    Label(toolName(call["name"].text), systemImage: "terminal")
+                    Label(toolName(call["name"].text), systemImage: toolIcon(call["name"].text))
                     Spacer()
                     ToolOutcomeLabel(outcome: toolOutcome(index: i))
                   }.font(.caption)
@@ -78,7 +81,7 @@ struct MessageRow: View {
             }.tint(.secondary)
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
-      }.accessibilityIdentifier("message.assistant")
+      }.accessibilityElement(children: .contain).accessibilityIdentifier("message.assistant")
     }
   }
   private var summaryOutcome: String {
@@ -99,6 +102,12 @@ struct MessageRow: View {
       if approval.status == "denied" { return "denied" }
     }
     return tools[id]?["outcome"].text ?? "running"
+  }
+  private func toolIcon(_ name: String) -> String {
+    [
+      "browser": "globe", "computer": "desktopcomputer", "devices": "laptopcomputer",
+      "skill": "book.closed",
+    ][name] ?? "terminal"
   }
   private func toolName(_ value: String) -> String {
     [

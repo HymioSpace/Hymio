@@ -1,0 +1,107 @@
+[
+  {
+    "name": "plan",
+    "spec": {
+      "root": "plan",
+      "elements": {
+        "plan": {
+          "type": "Card",
+          "props": {
+            "title": "Your afternoon",
+            "subtitle": "A little room for you."
+          },
+          "children": [
+            "badge",
+            "time",
+            "go"
+          ]
+        },
+        "badge": {
+          "type": "Badge",
+          "props": {
+            "text": "ONE SMALL THING"
+          }
+        },
+        "time": {
+          "type": "Choice",
+          "props": {
+            "label": "Time",
+            "options": [
+              "15 min",
+              "30 min"
+            ],
+            "value": "30 min"
+          }
+        },
+        "go": {
+          "type": "Button",
+          "props": {
+            "label": "Plan together",
+            "prompt": "Plan {{time}} of reading."
+          }
+        }
+      }
+    },
+    "valid": true
+  },
+  {
+    "name": "unknown component",
+    "spec": {
+      "root": "x",
+      "elements": {
+        "x": {
+          "type": "Script",
+          "props": {}
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "bad options",
+    "spec": {
+      "root": "x",
+      "elements": {
+        "x": {
+          "type": "Choice",
+          "props": {
+            "options": "bad"
+          }
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "cycle",
+    "spec": {
+      "root": "x",
+      "elements": {
+        "x": {
+          "type": "Column",
+          "props": {},
+          "children": [
+            "x"
+          ]
+        }
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "unresolved child",
+    "spec": {
+      "root": "x",
+      "elements": {
+        "x": {
+          "type": "Column",
+          "props": {},
+          "children": [
+            "pending"
+          ]
+        }
+      }
+    },
+    "valid": true
+  }
+]

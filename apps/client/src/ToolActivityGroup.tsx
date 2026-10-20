@@ -1,4 +1,15 @@
-import { Check, ChevronRight, CircleAlert, Clock3, LoaderCircle, Terminal } from 'lucide-react';
+import {
+  Check,
+  ChevronRight,
+  CircleAlert,
+  Clock3,
+  LoaderCircle,
+  Terminal,
+  Globe,
+  Monitor,
+  BookOpen,
+  Laptop,
+} from 'lucide-react';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { obj, str } from '@hymio/protocol';
 import { JsonView } from './JsonView';
@@ -51,11 +62,18 @@ export function ToolCalls({
         const result = tools.find((t) => t.id === `${message.stepId}-${i}`);
         const state = outcome(`${message.stepId}-${i}`, result, approvals);
         const name = str(call.name);
+        const ToolIcon =
+          (
+            { browser: Globe, computer: Monitor, skill: BookOpen, devices: Laptop } as Record<
+              string,
+              typeof Terminal
+            >
+          )[name] || Terminal;
         const hint = name === 'skill' ? str(args.query) || str(args.name) : str(args.action);
         return (
           <details key={i} className="tool-call-detail">
             <summary>
-              <Terminal size={13} />
+              <ToolIcon size={13} />
               <strong>{names[name] || name}</strong>
               {hint && <span className="tool-call-hint">{hint}</span>}
               <span>{states[state] || state}</span>

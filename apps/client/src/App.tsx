@@ -25,19 +25,12 @@ import { Settings } from './Settings';
 import { useLogin } from './useLogin';
 import { MessageView } from './MessageView';
 import { groupMessages, ToolActivityGroup } from './ToolActivityGroup';
-import { DebugPanel } from './DebugPanel';
+import { TracePage } from './TracePage';
 import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
 client.channelKind = desktop ? 'mac' : 'web';
-const overlayQuery = '(max-width: 1150px)';
-const watchOverlay = (notify: () => void) => {
-  const query = window.matchMedia(overlayQuery);
-  query.addEventListener('change', notify);
-  return () => query.removeEventListener('change', notify);
-};
-const overlaySnapshot = () => window.matchMedia(overlayQuery).matches;
 function Brand() {
   return (
     <svg viewBox="0 0 34 34" fill="none" aria-label="Hymio">
@@ -47,7 +40,6 @@ function Brand() {
   );
 }
 export default function App() {
-  const narrow = useSyncExternalStore(watchOverlay, overlaySnapshot, () => false);
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const model = useMemo(
     () => conversation(state.events, state.pending),
@@ -59,7 +51,7 @@ export default function App() {
     credential: '',
   });
   const [settings, setSettings] = useState(false),
-    [debug, setDebug] = useState(false),
+    [debug, changeDebug] = useState(window.location.hash === '#/trace'),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
     [notice, setNotice] = useState(''),
     [dismissedFailure, setDismissedFailure] = useState(
@@ -69,6 +61,15 @@ export default function App() {
     [nearBottom, setNearBottom] = useState(true),
     [sending, setSending] = useState(false),
     [clock, setClock] = useState(Date.now());
+  function setDebug(value: boolean) {
+    window.location.hash = value ? '/trace' : '/chat';
+    changeDebug(value);
+  }
+  useEffect(() => {
+    const route = () => changeDebug(window.location.hash === '#/trace');
+    window.addEventListener('hashchange', route);
+    return () => window.removeEventListener('hashchange', route);
+  }, []);
   const login = useLogin(
     (value, signedIn) => {
       client.connect(value, signedIn);
@@ -309,14 +310,14 @@ export default function App() {
   const welcome = model.messages.length === 0;
   if (!login.session) return <LoginScreen login={login} />;
   return (
-    <div className={`app ${debug ? 'debug-open' : ''} ${desktop ? 'desktop' : ''}`}>
-      <nav className="rail" aria-label="主导航" inert={debug && narrow}>
+    <div className={`app ${debug ? 'trace-page-open' : ''} ${desktop ? 'desktop' : ''}`}>
+      <nav className="rail" aria-label="主导航">
         <a className="brand-mark" href="#" aria-label="Hymio 首页">
           <Brand />
         </a>
         <div className="rail-primary">
           <button
-            className="rail-button active"
+            className={`rail-button ${debug ? '' : 'active'}`}
             title="持续对话"
             aria-label="持续对话"
             onClick={() => {
@@ -332,7 +333,7 @@ export default function App() {
             className={`rail-button ${debug ? 'active' : ''}`}
             title="工作观察"
             aria-label="工作观察"
-            aria-expanded={debug}
+            aria-current={debug ? 'page' : undefined}
             aria-controls="work-observer"
             onClick={() => setDebug(!debug)}
           >
@@ -349,7 +350,7 @@ export default function App() {
           </button>
         </div>
       </nav>
-      <main className="main" inert={debug && narrow}>
+      <main className="main" hidden={debug}>
         <header className="topbar">
           <div className="topbar-brand" data-tauri-drag-region>
             <span>hymio</span>
@@ -367,7 +368,7 @@ export default function App() {
             <button
               className={`icon-button observe-button ${debug ? 'selected' : ''}`}
               aria-label="打开工作观察"
-              aria-expanded={debug}
+              aria-current={debug ? 'page' : undefined}
               aria-controls="work-observer"
               title="工作观察"
               onClick={() => setDebug(!debug)}
@@ -466,6 +467,11 @@ export default function App() {
                   </article>
                 ) : (
                   <MessageView
+                    onAction={async (text) => {
+                      following.current = true;
+                      setNearBottom(true);
+                      await client.message(text);
+                    }}
                     key={first.id}
                     message={first}
                     tools={model.tools}
@@ -709,10 +715,9 @@ export default function App() {
         </div>
       </main>
       {debug && (
-        <DebugPanel
+        <TracePage
           key={`${connection.wsUrl}|${state.userId}`}
           state={state}
-          modal={narrow}
           connection={connection}
           onClose={() => setDebug(false)}
           onStatus={() => client.status()}
