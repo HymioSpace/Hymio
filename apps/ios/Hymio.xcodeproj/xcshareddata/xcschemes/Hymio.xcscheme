@@ -107,5 +107,14 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent title = "Validate release backend" scriptText = '/bin/sh "$PROJECT_DIR/scripts/validate-release-config.sh"&#10;'>
+               <EnvironmentBuildable>
+                  <BuildableReference BuildableIdentifier = "primary" BlueprintIdentifier = "F5C5372FB20A22E4D466501F" BuildableName = "Hymio.app" BlueprintName = "Hymio" ReferencedContainer = "container:Hymio.xcodeproj" />
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
    </ArchiveAction>
 </Scheme>

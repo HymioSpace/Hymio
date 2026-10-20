@@ -7,7 +7,10 @@ export function LoginScreen({ login }: { login: LoginState }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [invitationCode, setInvitationCode] = useState('');
+  const [invitationRequired, setInvitationRequired] = useState(false);
   const [reveal, setReveal] = useState(false);
+  const [signupAllowed, setSignupAllowed] = useState(false);
   const [method, setMethod] = useState<'account' | 'google'>('account');
   useEffect(() => {
     const controller = new AbortController();
@@ -16,7 +19,11 @@ export function LoginScreen({ login }: { login: LoginState }) {
         if (!response.ok) throw new Error('unavailable');
         return response.json();
       })
-      .then((options) => setMethod(options.login_method === 'google' ? 'google' : 'account'))
+      .then((options) => {
+        setMethod(options.login_method === 'google' ? 'google' : 'account');
+        setSignupAllowed(options.signup_enabled !== false);
+        setInvitationRequired(options.invitation_required === true);
+      })
       .catch(() => {});
     return () => controller.abort();
   }, [login.backend]);
@@ -36,7 +43,9 @@ export function LoginScreen({ login }: { login: LoginState }) {
             className="account-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void login.account(mode, username.trim(), password).finally(() => setPassword(''));
+              void login
+                .account(mode, username.trim(), password, invitationCode)
+                .finally(() => setPassword(''));
             }}
           >
             <label htmlFor="account-username">用户名</label>
@@ -77,6 +86,25 @@ export function LoginScreen({ login }: { login: LoginState }) {
                 {reveal ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
+            {mode === 'signup' && invitationRequired && (
+              <>
+                <label htmlFor="account-invitation">邀请码</label>
+                <input
+                  id="account-invitation"
+                  name="invitation"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="输入邀请码"
+                  required
+                  maxLength={256}
+                  value={invitationCode}
+                  onChange={(e) => setInvitationCode(e.target.value)}
+                  disabled={login.busy}
+                />
+                <p className="account-hint">邀请码请联系作者获取。</p>
+              </>
+            )}
             {mode === 'signup' && (
               <p className="account-hint">用户名为 3–32 位字母、数字、下划线或连字符。</p>
             )}
@@ -84,20 +112,22 @@ export function LoginScreen({ login }: { login: LoginState }) {
               {login.busy ? '正在处理…' : mode === 'signup' ? '创建账号' : '登录'}
               {!login.busy && <ArrowRight size={17} />}
             </Button>
-            <p className="login-help">
-              {mode === 'signup' ? '已有账号？' : '第一次来？'}
-              <button
-                type="button"
-                disabled={login.busy}
-                onClick={() => {
-                  setMode(mode === 'signup' ? 'login' : 'signup');
-                  setPassword('');
-                  setReveal(false);
-                }}
-              >
-                {mode === 'signup' ? '登录' : '创建账号'}
-              </button>
-            </p>
+            {signupAllowed && (
+              <p className="login-help">
+                {mode === 'signup' ? '已有账号？' : '第一次来？'}
+                <button
+                  type="button"
+                  disabled={login.busy}
+                  onClick={() => {
+                    setMode(mode === 'signup' ? 'login' : 'signup');
+                    setPassword('');
+                    setReveal(false);
+                  }}
+                >
+                  {mode === 'signup' ? '登录' : '创建账号'}
+                </button>
+              </p>
+            )}
           </form>
         ) : (
           <>

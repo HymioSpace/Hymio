@@ -97,6 +97,11 @@ struct SecureSession {
     if let token { req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
     let (data, response) = try await NoRedirects.session.data(for: req)
     guard let response = response as? HTTPURLResponse else { throw ServiceError.message("服务响应无效") }
+    if response.statusCode == 403,
+      let failure = try? JSON.decode(data), failure["error"].text == "invalid_invitation"
+    {
+      throw ServiceError.message("邀请码不正确，请重新输入。")
+    }
     if response.statusCode == 401 { throw ServiceError.unauthorized }
     guard (200..<300).contains(response.statusCode) else {
       throw ServiceError.message(
@@ -104,7 +109,7 @@ struct SecureSession {
     }
     return data
   }
-  func login(username: String, password: String, signup: Bool) async {
+  func login(username: String, password: String, signup: Bool, invitationCode: String = "") async {
     guard !busy else { return }
     busy = true
     error = ""
@@ -118,7 +123,7 @@ struct SecureSession {
         "auth/account",
         body: .object([
           "action": .string(signup ? "signup" : "login"), "username": .string(username),
-          "password": .string(password),
+          "password": .string(password), "invitation_code": .string(signup ? invitationCode : ""),
         ]))
       let next = try JSONDecoder().decode(LoginSession.self, from: data)
       do { try SecureSession.save(next) } catch {

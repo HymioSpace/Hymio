@@ -1,6 +1,11 @@
 # Copy to cloud.local.toml. Public hostnames only, no scheme or path.
 web_domain = "app.example.com"
 api_domain = "api.example.com"
+# Set both domains to the same hostname for a single public entry.
+# Include an internal Casdoor for account-form login (no public admin interface).
+managed_identity = false
+# Optional: join Oath's existing Docker network instead of publishing Backend on a bridge.
+# runtime_network = "oath_oath"
 # Optional legacy direct Oath WSS entry; clients normally use api_domain/agent/ws.
 # agent_domain = "agent.example.com"
 # Directory contains hymio.toml and private/ secret files; outside the image context.

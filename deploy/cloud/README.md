@@ -1,84 +1,181 @@
 # Single-host cloud deployment
 
-Run Web, HTTPS and Hymio Backend with Compose on a Linux Docker host. Use E2B for cloud
-desktops: Backend has no Docker socket and user computers do not share this server.
-Oath and your OIDC provider remain independently managed services. This is a single-host
-starting point, not a multi-replica deployment or a fully provisioned cloud installer.
+One HTTPS entry serves Web, login, chat, business APIs and authenticated media. Caddy,
+Backend and optionally Casdoor run in Compose; Oath remains independently managed with
+its CLI. Cloud computers run on E2B, not on this host. This supports one Backend instance,
+not horizontal scaling or a complete infrastructure provisioner.
 
-## Prepare once
+## 1. Prepare the host and private files
 
-1. Install Docker Engine + Compose and Python 3.11+. Deploy Oath using its installer and
-   configure the model, Vault credentials and Hymio remote auth. Deploy/configure Casdoor
-   separately with a public HTTPS issuer and minimal signup fields.
-2. Point two DNS names at this server: `app.example.com` and `api.example.com`. Allow inbound 80/443. Caddy obtains and renews certificates.
-3. Create `/opt/hymio/config/hymio.toml` from the Backend example. Store secrets under
-   `/opt/hymio/config/private/`, readable by container UID 10001. Do not copy secrets into
-   the repository or loosen them to world-readable. Bind mounts preserve host ownership.
-4. Set these Backend values (replace example domains):
+Install Docker Engine, Compose, Python 3.11+ and Oath. Check out reviewed versions of
+Hymio and Oath. Point `hymio.example.com` at the host and allow inbound TCP 80/443.
+Keep direct Oath, identity, queue and Vault ports private.
+
+Keep configuration outside the checkout:
+
+```text
+/opt/hymio/config/
+  cloud.toml
+  hymio.toml
+  oath.toml
+  private/
+    backend/
+      casdoor-client-secret
+      internal-service-token
+      e2b-api-key
+      invitation-codes
+    oath/
+      vault-role-id
+      vault-secret-id
+```
+
+Use mode 600 for secret/config files. Backend and Oath application containers use UID
+10001: bind-mounted inputs must be readable by that UID, and parent directories mounted
+into Backend must be traversable. Keep model import credentials and identity administrator
+credentials separately readable by the host administrator only. Do not put them in an image,
+checkout, client config, `.env` or shell history.
+
+Copy `backend/hymio.example.toml` to `/opt/hymio/config/hymio.toml`, retaining its identity
+and secret-file settings. For the shared Docker-network setup, use:
 
 ```toml
 database = "/data/hymio.sqlite"
 host = "0.0.0.0"
 port = 8080
-public_url = "https://api.example.com"
-callback_url = "https://api.example.com/auth/callback"
-origins = ["https://app.example.com", "http://tauri.localhost", "tauri://localhost"]
-oath_ws = "ws://host.docker.internal:8765"
-oath_biz = "http://host.docker.internal:8766"
+issuer = "http://identity:8000"
+client_id = "REPLACE_WITH_CASDOOR_CLIENT_ID"
+client_secret_file = "./private/backend/casdoor-client-secret"
+service_token_file = "./private/backend/internal-service-token"
+public_url = "https://hymio.example.com"
+callback_url = "https://hymio.example.com/auth/callback"
+origins = ["https://hymio.example.com", "http://tauri.localhost", "tauri://localhost"]
+oath_ws = "ws://gateway:8765"
+oath_biz = "http://biz:8766"
+login_method = "account"
+signup_enabled = true
+invitation_codes_file = "./private/backend/invitation-codes"
 computer_provider = "e2b"
-e2b_key_file = "./private/e2b-api-key"
+e2b_key_file = "./private/backend/e2b-api-key"
 e2b_template = "hymio-desktop"
 ```
 
-Keep issuer, client ID, client secret and service token settings from the Backend setup.
-Register the HTTPS callback in Casdoor. Build the E2B template once using the
-[computer guide](../computer/README.md#e2b-desktop).
+Build the E2B template using the [computer guide](../computer/README.md#e2b-desktop).
+Set `signup_enabled = false` to close registration entirely. If registration is enabled
+without `invitation_codes_file`, registration remains open for backward compatibility.
 
-5. Copy `cloud.example.toml` to `cloud.local.toml`. Set domains and config directory.
-   `backend_internal_bind` must be the host's Docker bridge IPv4 address (usually
-   `172.17.0.1`; check `ip addr show docker0`), not its public interface. Oath containers
-   reach Hymio via `http://host.docker.internal:8080`. Use that base for remote auth and
-   the Hymio extensions' private connection file; mount the Hymio tools/skills through
-   Oath's CLI. Disable host Bash. Follow the local launcher's generated configuration
-   structure; automated Oath cloud configuration is not included yet.
-6. Oath WS/Biz published ports must be reachable from the Docker bridge. A port bound
-   only to host `127.0.0.1` cannot be reached through host.docker.internal. Configure Oath
-   bindings accordingly, keeping Biz and direct WS inaccessible from the public network
-   (including Docker's firewall rules). Clients use the API domain's `/agent/ws`; no separate agent domain is required. Enable Oath
-   remote auth. Existing deployments can retain optional `agent_domain` for compatibility. Redis/Vault and other Oath internal ports stay private.
+## 2. Start Oath and generate the cloud stack
 
-## Operate
+Configure Oath's model provider and Vault using its installer/docs. Import the model key
+through the host bootstrap; do not propagate it into Agent/Bash environments. Disable
+host Bash for cloud users. The Backend internal service token must match the token Oath
+uses for remote authentication and Hymio's device extensions.
 
-From the Hymio repository:
+From the Hymio checkout, start Oath first to create its Docker network:
 
-```bash
-python3 deploy/cloud/manage.py prepare
-# Inspect generated Compose and Caddy configuration, then:
-python3 deploy/cloud/manage.py start
+```sh
+oath start --config /opt/hymio/config/oath.toml \
+  --skill "$PWD/extensions/skills" --tool "$PWD/extensions/tools" \
+  --auth-mode remote --auth-url http://backend:8080/internal/auth/verify \
+  --auth-token-file /opt/hymio/config/private/backend/internal-service-token
+```
+
+Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
+and the same service token, following the [deployment guide](../README.md).
+If bootstrapping as root, ensure generated Vault role/secret files are readable by
+UID 10001 after Oath initializes them, before accepting chat requests. A root-only
+bind-mounted credential causes model calls to fail even when container health passes.
+
+Copy `deploy/cloud/cloud.example.toml` to `/opt/hymio/config/cloud.toml` and set:
+
+```toml
+web_domain = "hymio.example.com"
+api_domain = "hymio.example.com"
+backend_config_dir = "/opt/hymio/config"
+runtime_network = "oath_oath"
+managed_identity = true
+```
+
+Replace the network name if Oath uses another Compose project/network. Backend joins
+this existing network without publishing its own port. Oath WS/Biz and Vault can stay
+bound to host localhost. Only Caddy publishes public ports. `/internal/*` returns 404
+at the public entry; private containers can still reach Backend's internal endpoints.
+
+```sh
+python3 deploy/cloud/manage.py prepare --config /opt/hymio/config/cloud.toml
+python3 deploy/cloud/manage.py start --config /opt/hymio/config/cloud.toml
+```
+
+`start` builds the images and waits for container health. Managed identity provisions
+only a Casdoor container and persistent volume, not its application or owner account.
+
+## 3. Configure identity and invitation registration
+
+Managed Casdoor is published only on host `127.0.0.1:8000`. Access its administration
+interface through SSH forwarding, for example:
+
+```sh
+ssh -L 8000:127.0.0.1:8000 your-admin@your-server
+```
+
+Open `http://localhost:8000` locally. Initialize/rotate administrator credentials according
+to the pinned Casdoor image's setup instructions. Create a **separate organization** for
+normal users; `built-in` is reserved for Casdoor administrators. Create a password-login
+application with authorization-code support and the exact HTTPS callback above. Copy its
+client ID into `hymio.toml` and its secret into the private secret file. Create the initial
+owner account in that organization. Restart Backend after changing its TOML or client secret.
+
+Enable signup on this private Casdoor application for invitation registration. Keep signup
+fields limited to username/password/confirmation; disable extra required profile fields.
+The Hymio forms handle the invitation separately. This setup supports account-form login;
+Google/browser OIDC requires a separately configured public issuer.
+
+Put one **reusable invitation code per line** in `private/backend/invitation-codes`.
+No code is built into the public source. Edit the file to replace or add codes; Backend
+reloads it on each signup without restart. Empty/unreadable files never allow registration.
+Web and iOS show “邀请码请联系作者获取。”; codes never enter Casdoor, Oath or model context.
+Keep Casdoor private: its own public signup route would bypass Hymio's invitation check.
+
+## 4. Verify and operate
+
+```sh
+curl --fail https://hymio.example.com/health
+curl --fail https://hymio.example.com/auth/options
+# Expect 404; no internal endpoint should be accessible here.
+curl -o /dev/null -w '%{http_code}\n' https://hymio.example.com/internal/auth/verify
+
 python3 deploy/cloud/manage.py status
 python3 deploy/cloud/manage.py logs
 python3 deploy/cloud/manage.py stop
 ```
 
-`start` builds locked application dependencies, starts containers and waits for Backend
-health. Web's public API address is bundled at build time; change the cloud config and
-run start again after changing domains. No .env is used. Stop preserves named volumes
-and does not stop Oath, Casdoor or E2B computers. Upgrade Hymio by checking out a reviewed
-commit and running start again; manage Oath upgrades separately with a fixed version.
+`status`, `logs` and `stop` use the last generated stack. Start again with the explicit
+config path when changing configuration. Changing the Web public address requires a rebuild
+(`start`); editing invitation codes does not. Stop preserves volumes, stops managed Casdoor
+if enabled, and leaves Oath, externally managed identity and E2B computers running.
 
-## Persistence and checks
+Verify wrong-code rejection, signup/login/logout, two-account isolation, two chat turns,
+WSS reconnect/history, and a cloud-computer command. `/health` proves process liveness,
+not that the model, identity or E2B works. Do not use a production account in automated tests.
 
-Backend database/screenshots and Caddy certificates use named volumes. Never use
-`down --volumes` as a normal stop. Take consistent SQLite backups with SQLite's backup
-API, not by copying a live database without its WAL. Back up Oath and Casdoor separately;
-E2B pause is not a file backup. Test a restore before depending on the deployment.
+Container restart policies alone are insufficient for a sealed Vault after host reboot.
+Use your host service manager to start Docker, run Oath's bootstrap/unseal flow, restore
+credential ownership, and bring up the generated Hymio Compose stack in that order.
+Keep the host bootstrap's private inputs outside the repository. This repository does not
+yet install a host boot service automatically. Test this recovery path on your deployment.
 
-Verify login/signup/logout, two-account isolation, WSS reconnect replay, a cloud command,
-command lookup and pause/resume after deploying. `/health` is process liveness, not proof
-that Oath, OIDC or E2B is healthy. Existing device E2E accepts a deployed Backend URL;
-see its `--help`. Public DNS/TLS and actual cloud networking require deployment validation.
+Back up Backend, Oath, Casdoor and Caddy volumes and private configuration separately.
+Use SQLite's backup API for live databases; copying the database without its WAL can lose
+data. Never use `down --volumes` for routine stops. E2B pause is not a file backup. Test
+restoration before relying on backups. Upgrade reviewed versions and restart the stacks;
+automated backups and a full identity/host provisioner remain future work.
 
-SQLite is intentionally single Backend instance. Horizontal scaling requires a shared
-database and coordinated provider control; adding replicas now is unsupported. Automatic
-backups, sandbox renewal, idle policy and a full Oath/Casdoor provisioning script remain
-future work.
+## Other networking layouts
+
+Distinct Web/API domains remain supported. Without `runtime_network`, Backend publishes
+on `backend_internal_bind` (default Docker bridge `172.17.0.1`) and Oath reaches it through
+`host.docker.internal`. Verify the actual bridge address and firewall Docker-published ports;
+localhost host bindings cannot be reached through that bridge. Configure Oath upstream ports
+accordingly. Optional legacy `agent_domain` exposes a separate Oath entry and must differ
+from Web/API names. The recommended shared-network layout needs no direct public Oath entry.
+
+For iPhone distribution, follow the [iOS/TestFlight guide](../../apps/ios/README.md#testflight-distribution).

@@ -68,12 +68,34 @@ def build_app(settings, *, provider=None):
             if path == "/health":
                 return JSONResponse({"alive": True})
             if path == "/auth/options":
-                return JSONResponse({"login_method": settings.login_method})
+                return JSONResponse(
+                    {
+                        "login_method": settings.login_method,
+                        "signup_enabled": settings.signup_enabled,
+                        "invitation_required": settings.invitation_codes_file is not None,
+                    }
+                )
             if path == "/auth/account":
                 if settings.login_method != "account":
                     return JSONResponse({"error": "account_login_disabled"}, 403)
                 data = await body(request)
                 action = text(data, "action")
+                if action == "signup" and not settings.signup_enabled:
+                    return JSONResponse({"error": "registration_closed"}, 403)
+                if action == "signup" and settings.invitation_codes_file:
+                    invitation = data.get("invitation_code", "")
+                    if not isinstance(invitation, str) or len(invitation) > 256:
+                        return JSONResponse({"error": "invalid_invitation"}, 403)
+                    try:
+                        codes = await asyncio.to_thread(settings.invitation_codes_file.read_text)
+                    except (OSError, UnicodeError):
+                        return JSONResponse({"error": "registration_unavailable"}, 503)
+                    valid = [code.strip() for code in codes.splitlines() if code.strip()]
+                    if not any(
+                        hmac.compare_digest(invitation.strip().encode(), code.encode())
+                        for code in valid
+                    ):
+                        return JSONResponse({"error": "invalid_invitation"}, 403)
                 username, password = text(data, "username"), text(data, "password")
                 if action not in ("login", "signup") or not re.fullmatch(
                     r"[A-Za-z0-9_-]{3,32}", username

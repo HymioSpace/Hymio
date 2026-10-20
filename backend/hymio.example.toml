@@ -16,6 +16,9 @@ port = 8080
 
 # Set google only after configuring a Google-only Casdoor application with signup.
 login_method = "account"
+signup_enabled = true
+# Optional private file; one reusable invitation code per line, reloaded per signup.
+# invitation_codes_file = "./private/invitation-codes"
 
 # One hosted E2B Desktop per user. Credentials stay in Backend.
 computer_provider = "e2b"
