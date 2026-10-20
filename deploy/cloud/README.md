@@ -74,6 +74,7 @@ From the Hymio checkout, start Oath first to create its Docker network:
 
 ```sh
 oath start --config /opt/hymio/config/oath.toml \
+  --system-prompt "$PWD/extensions/prompts/hymio.md" \
   --skill "$PWD/extensions/skills" --tool "$PWD/extensions/tools" \
   --auth-mode remote --auth-url http://backend:8080/internal/auth/verify \
   --auth-token-file /opt/hymio/config/private/backend/internal-service-token
@@ -81,6 +82,10 @@ oath start --config /opt/hymio/config/oath.toml \
 
 Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
 and the same service token, following the [deployment guide](../README.md).
+Use an Oath release with `--system-prompt` and `max_tool_only_steps` support. Keep the
+role, style and skill guidance in the versioned Markdown file; do not put changing device
+state or user data in it. Restart after updating instructions. The runtime's tool-only limit
+defaults to 100; its independent run step/time limits may stop work sooner.
 If bootstrapping as root, ensure generated Vault role/secret files are readable by
 UID 10001 after Oath initializes them, before accepting chat requests. A root-only
 bind-mounted credential causes model calls to fail even when container health passes.

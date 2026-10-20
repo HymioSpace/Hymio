@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import logging
 
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
@@ -8,10 +9,38 @@ from ..session_store import Unauthorized
 from .service import DeviceService
 from .store import DeviceConflict
 
+_log = logging.getLogger(__name__)
+
 
 def device_routes(settings, sessions, bearer, body):
     service = DeviceService(settings, sessions)
     store = service.store
+    preparing = {}
+
+    async def ensure(user_id, *, wake=False):
+        task = preparing.get(user_id)
+        if task is None or task.done():
+            task = asyncio.create_task(
+                asyncio.to_thread(service.ensure_available, user_id, wake=wake)
+            )
+            preparing[user_id] = task
+
+            def finished(done):
+                if preparing.get(user_id) is done:
+                    preparing.pop(user_id, None)
+                if not done.cancelled():
+                    error = done.exception()
+                    if error:
+                        _log.warning("Computer preparation interrupted: %s", type(error).__name__)
+
+            task.add_done_callback(finished)
+        try:
+            return await asyncio.wait_for(asyncio.shield(task), timeout=3)
+        except TimeoutError:
+            return {
+                "action": "preparing",
+                "notice": "Preparation continues in Backend. Do not poll or run repair commands.",
+            }
 
     async def endpoint(request):
         try:
@@ -33,10 +62,10 @@ def device_routes(settings, sessions, bearer, body):
             path = request.url.path
             binding = None
             if path.endswith("/ensure"):
-                return JSONResponse(await asyncio.to_thread(service.ensure_available, user_id))
+                return JSONResponse(await ensure(user_id))
             if internal and path.endswith("/list"):
                 try:
-                    binding = await asyncio.to_thread(service.ensure_available, user_id, wake=True)
+                    binding = await ensure(user_id, wake=True)
                 except DeviceConflict:
                     binding = {
                         "action": "blocked",
@@ -102,7 +131,7 @@ def device_routes(settings, sessions, bearer, body):
                         "Web, iOS and Mac bindings currently provide conversation only; "
                         "binding them does not enable native control."
                         if any(device["capabilities"] for device in described)
-                        else "Cloud computer may be preparing. Check binding and retry devices. "
+                        else "Cloud computer may be preparing. Report binding state and wait. "
                         "Web, iOS and Mac are conversation channels, not execution targets."
                     ),
                 }

@@ -9,6 +9,37 @@ from pathlib import Path
 CONTROLLER = Path(__file__).with_name("desktop_controller.py").read_text()
 
 
+class ProviderUnavailable(RuntimeError):
+    def __init__(self, code="provider_unavailable"):
+        self.code = code
+        super().__init__(code)
+
+
+class ProvisionRejected(ProviderUnavailable):
+    """The provider rejected creation before allocating an environment."""
+
+
+class DispatchRejected(ProviderUnavailable):
+    """No user command was sent to the sandbox."""
+
+
+def provider_failure(error):
+    name = type(error).__name__
+    return ProviderUnavailable(
+        {
+            "AuthenticationException": "provider_authentication",
+            "RateLimitException": "provider_rate_limit",
+            "ServiceBusyException": "provider_busy",
+            "TimeoutException": "provider_timeout",
+            "TimeoutError": "provider_timeout",
+            "PermissionError": "provider_credentials_unreadable",
+            "FileNotFoundError": "provider_credentials_unreadable",
+            "SandboxUnreachableException": "sandbox_unreachable",
+            "InvalidArgumentException": "provider_configuration",
+        }.get(name, "provider_unavailable")
+    )
+
+
 def controller_program(request, expires_at=None):
     return (
         "import json\n"
@@ -72,20 +103,24 @@ class E2BComputer(ComputerProvider):
         )
 
     def provision(self, device):
+        from e2b import AuthenticationException, InvalidArgumentException, RateLimitException
         from e2b_desktop import Sandbox
 
         if device["provider_ref"]:
             self.connect(device)
             return device["provider_ref"]
-        desktop = Sandbox.create(
-            template=self.template,
-            timeout=3600,
-            lifecycle={"on_timeout": "pause", "auto_resume": False},
-            resolution=(1280, 800),
-            metadata={"hymio_device_id": device["id"]},
-            request_timeout=40,
-            api_key=self.key_file.read_text().strip(),
-        )
+        try:
+            desktop = Sandbox.create(
+                template=self.template,
+                timeout=3600,
+                lifecycle={"on_timeout": "pause", "auto_resume": False},
+                resolution=(1280, 800),
+                metadata={"hymio_device_id": device["id"]},
+                request_timeout=40,
+                api_key=self.key_file.read_text().strip(),
+            )
+        except (AuthenticationException, InvalidArgumentException, RateLimitException) as error:
+            raise ProvisionRejected(provider_failure(error).code) from None
         try:
             desktop.commands.run("mkdir -p ~/workspace ~/browser", timeout=10)
             desktop.commands.run(
@@ -121,18 +156,38 @@ else:
     def inspect(self, device):
         return self.state(device) == "online"
 
+    def recover(self, device):
+        from e2b import Sandbox, SandboxQuery
+
+        try:
+            page = Sandbox.list(
+                query=SandboxQuery(metadata={"hymio_device_id": device["id"]}),
+                limit=2,
+                api_key=self.key_file.read_text().strip(),
+                request_timeout=5,
+            )
+            matches = page.next_items()
+        except Exception as error:
+            raise provider_failure(error) from None
+        if len(matches) > 1 or page.has_next:
+            raise ProviderUnavailable("ambiguous_binding")
+        return matches[0].sandbox_id if matches else None
+
     def state(self, device):
+        return self.probe(device)["state"]
+
+    def probe(self, device):
         from e2b import Sandbox, SandboxNotFoundException
 
         try:
             info = Sandbox.get_info(
                 device["provider_ref"], api_key=self.key_file.read_text().strip(), request_timeout=5
             )
-            return "paused" if info.state.value == "paused" else "online"
+            return {"state": "paused" if info.state.value == "paused" else "online"}
         except SandboxNotFoundException:
-            return "missing"
-        except Exception:
-            return "offline"
+            return {"state": "missing"}
+        except Exception as error:
+            return {"state": "offline", "error": provider_failure(error).code}
 
     def pause(self, device):
         from e2b import Sandbox
@@ -163,10 +218,13 @@ else:
 
     def execute(self, device, request, timeout):
         deadline = time.monotonic() + timeout
-        sandbox = self.connect(device, request_timeout=min(5, timeout))
+        try:
+            sandbox = self.connect(device, request_timeout=min(5, timeout))
+        except Exception as error:
+            raise DispatchRejected(provider_failure(error).code) from None
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            raise TimeoutError("Execution deadline expired before dispatch")
+            raise DispatchRejected("dispatch_deadline")
         request = {**request, "timeout": min(request["timeout"], remaining)}
         program = controller_program(request, expires_at=time.time() + remaining)
         command = f"timeout -k 1s {remaining + 1}s /opt/hymio/bin/python -c " + shlex.quote(program)

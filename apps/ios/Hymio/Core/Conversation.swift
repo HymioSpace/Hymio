@@ -25,6 +25,7 @@ public struct Conversation {
   public var terminals: [String: JSON] = [:]
   public var working = false
   public var failure = ""
+  public var pauseNotice = ""
   private var indices: [String: Int] = [:]
   public init(
     events: [Event], pending: [Command] = [], accepted: Set<String> = [], rejected: Set<String> = []
@@ -41,18 +42,19 @@ public struct Conversation {
       message.delivery =
         rejected.contains(command.id)
         ? "failed" : accepted.contains(command.id) ? "accepted" : "queued"
-      if message.delivery != "failed" { failure = "" }
+      if message.delivery != "failed" { failure = ""; pauseNotice = "" }
       messages.append(message)
     }
   }
   public var awaitingReply: Bool {
-    messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty
+    messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty && pauseNotice.isEmpty
   }
   public mutating func apply(_ e: Event) {
     let p = e.payload
     let step = p["step_id"].text
     switch e.event_type {
     case "user.message":
+      pauseNotice = ""
       let id = p["user_context"]["hymio_message_id"].text
       if !id.isEmpty {
         messages.removeAll { $0.id == "local:\(id)" }
@@ -116,6 +118,11 @@ public struct Conversation {
       if let i = approvals.firstIndex(where: { $0.id == p["invocation_id"].text }) {
         approvals[i].status = p["status"].text
       }
+    case "agent.paused" where p["reason"].text == "tool_only_budget":
+      working = false
+      pauseNotice = "已暂停自动续行，工具结果已保留。发送消息后继续。"
+    case "agent.resumed":
+      pauseNotice = ""
     case "step.status":
       let status = p["status"].text
       working = ["prepared", "running", "queued"].contains(status)

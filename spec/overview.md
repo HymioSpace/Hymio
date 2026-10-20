@@ -38,6 +38,8 @@ spec/              整体与 feature 设计
 
 跨端视觉与组件边界见 [feature15](feature15-unified-design.md)。
 
+应用指令与云电脑恢复见 [feature21](feature21-prompt-computer-recovery.md)。
+
 ## 信息流
 
 ```mermaid

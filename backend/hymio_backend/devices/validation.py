@@ -6,6 +6,7 @@ FIELDS = {
 REQUIRED = {
     "browser": {
         "snapshot": (),
+        "screenshot": ("page_id",),
         "navigate": ("url",),
         "click": ("selector",),
         "fill": ("selector", "text"),

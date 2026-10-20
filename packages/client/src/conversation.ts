@@ -32,6 +32,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
   const assistants = new Map<string, Message>();
   const approvals = new Map<string, Approval>();
   const tools = new Map<string, ToolActivity>();
+  let pauseNotice = '';
   const steps = new Map<
     string,
     { id: string; status: string; traceId: string; error: string; eventSeq: number }
@@ -40,6 +41,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
     const p = event.payload,
       step = str(p.step_id);
     if (event.event_type === 'user.message') {
+      pauseNotice = '';
       steps.clear();
       messages.push({
         id: `user:${event.event_seq}`,
@@ -139,6 +141,9 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
         time: event.occur_dt,
       });
     }
+    if (event.event_type === 'agent.paused' && p.reason === 'tool_only_budget')
+      pauseNotice = '已暂停自动续行，工具结果已保留。发送消息后继续。';
+    if (event.event_type === 'agent.resumed') pauseNotice = '';
     if (event.event_type === 'step.status') {
       steps.set(step, {
         id: step,
@@ -175,6 +180,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       time: new Date(p.at).toISOString(),
       delivery: p.delivery || 'queued',
     });
+    if (p.delivery !== 'failed') pauseNotice = '';
   }
   const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {
@@ -182,6 +188,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
     approvals: [...approvals.values()],
     tools: [...tools.values()],
     latestStep,
+    pauseNotice,
   };
 }
 
