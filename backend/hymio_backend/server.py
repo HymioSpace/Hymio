@@ -16,6 +16,7 @@ from starlette.routing import Route, WebSocketRoute
 from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .context.routes import context_routes
 from .devices.routes import device_routes
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
@@ -26,11 +27,11 @@ def bearer(request):
     return header[7:] if header.startswith("Bearer ") else ""
 
 
-async def body(request):
+async def body(request, limit=16384):
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
-        if len(raw) > 16384:
+        if len(raw) > limit:
             raise ValueError("Request too large")
     value = json.loads(raw)
     if not isinstance(value, dict):
@@ -169,15 +170,19 @@ def build_app(settings, *, provider=None):
     async def agent_socket(websocket):
         await relay_agent(websocket, settings)
 
-    routes = device_routes(settings, store, bearer, body) + [
-        WebSocketRoute("/agent/ws", agent_socket),
-        Route("/health", endpoint),
-        Route("/auth/options", endpoint),
-        Route("/auth/callback", endpoint),
-        Route("/auth/me", endpoint),
-        Route("/agent/traces", endpoint),
-        Route("/agent/traces/{trace_id}", endpoint),
-    ]
+    routes = (
+        context_routes(settings, store, bearer, body)
+        + device_routes(settings, store, bearer, body)
+        + [
+            WebSocketRoute("/agent/ws", agent_socket),
+            Route("/health", endpoint),
+            Route("/auth/options", endpoint),
+            Route("/auth/callback", endpoint),
+            Route("/auth/me", endpoint),
+            Route("/agent/traces", endpoint),
+            Route("/agent/traces/{trace_id}", endpoint),
+        ]
+    )
     routes += [
         Route("/oath-biz" + path, endpoint)
         for path in ("/heartbeat", "/list_traces", "/query_trace", "/conversation_history")
@@ -207,5 +212,5 @@ def build_app(settings, *, provider=None):
         app,
         allow_origins=list(settings.origins),
         allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id"],
+        allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id", "Idempotency-Key"],
     )

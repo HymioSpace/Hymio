@@ -21,6 +21,7 @@
 | 16 | [单入口与局域网真机体验](feature16-lan-entry.md) | Implemented：单入口、LAN 启动与配置 |
 | 15 | [统一设计与组件](feature15-unified-design.md) | Implemented |
 
+| 17 | [Context 与 dreaming 接入](feature17-context-dreaming.md) | Implemented：手动整理闭环 |
 
 ## 设计与实现
 

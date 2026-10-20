@@ -24,6 +24,7 @@ class Settings:
     computer_provider: str = "e2b"
     e2b_key_file: Path | None = None
     e2b_template: str = "hymio-desktop"
+    nostalgia_connections_file: Path | None = None
 
     @classmethod
     def load(cls, path):
@@ -36,6 +37,9 @@ class Settings:
         if data.get("e2b_key_file"):
             key = Path(data["e2b_key_file"]).expanduser()
             data["e2b_key_file"] = key if key.is_absolute() else path.parent / key
+        if data.get("nostalgia_connections_file"):
+            file = Path(data["nostalgia_connections_file"]).expanduser()
+            data["nostalgia_connections_file"] = file if file.is_absolute() else path.parent / file
         result = cls(**data)
         if result.computer_provider != "e2b":
             raise ValueError("Only the e2b computer provider is supported")

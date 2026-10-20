@@ -21,3 +21,6 @@ login_method = "account"
 computer_provider = "e2b"
 e2b_key_file = "./private/e2b-api-key"
 e2b_template = "hymio-desktop"
+
+# Optional per-user Nostalgia endpoints and credential file references.
+# nostalgia_connections_file = "./private/nostalgia-connections.json"

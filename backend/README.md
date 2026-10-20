@@ -55,6 +55,64 @@ Revocation is visible to Oath on the next verification (within 30 seconds for id
 
 The Dockerfile builds the same backend. Mount private configuration and credential files read-only, mount a writable database directory, and set `host = "0.0.0.0"` in container configuration. Use HTTPS/WSS for deployed clients.
 
+## Nostalgia and dreaming
+
+Run the sibling Nostalgia service separately. Casdoor already uses port 8000 locally, so publish
+Nostalgia on 8001 (`NOSTALGIA_PUBLISHED_PORT=8001` for its Compose). Obtain the stable Hymio user ID
+from authenticated `GET /auth/me`. Configure a Nostalgia token scoped to that user's context;
+the Nostalgia-side user ID can match the Hymio user ID or be independently mapped by its token.
+
+Copy `nostalgia-connections.example.json` to ignored `private/nostalgia-connections.json`, replace
+the user ID and endpoint, and put the token in `private/nostalgia-token` with private file permissions.
+`token_file` resolves relative to the connections JSON. Add to `hymio.toml`:
+
+```toml
+nostalgia_connections_file = "./private/nostalgia-connections.json"
+```
+
+Restart Backend. An absent binding is denied, never routed to another user's default endpoint.
+Backend must be able to reach the configured Nostalgia URL. From Docker, use service DNS or a
+host gateway instead of localhost. No context token is sent to the browser, Oath or the model.
+
+The unified launcher prepares `extensions/tools/_connection.local` and mounts the context tool
+and skills along with the device tools. For a separately managed Oath deployment, mount
+`extensions/tools` and `extensions/skills`, disable built-in Bash as described in the extensions
+guide, and privately create `_connection.local` containing
+`{"url":"http://BACKEND_REACHABLE_FROM_OATH:8080","token":"BACKEND_SERVICE_CREDENTIAL"}`.
+That service credential is the same one referenced by Backend's `service_token_file`.
+
+Example calls with a Hymio application access token (a fresh request key per new operation):
+
+```bash
+curl http://localhost:8080/context/records \
+  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: capture-example-1' \
+  -d '{"item_type":"context","context_type":"text","context":{"text":"I use Vim"}}'
+curl http://localhost:8080/context/dreams \
+  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: dream-example-1' -d '{}'
+curl http://localhost:8080/context/dreams/DREAM_ID \
+  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN"
+```
+
+`202` means Oath accepted the task; poll the returned dream ID until `committed` or inspect a
+remaining draft. Resume with `POST /context/dreams/DREAM_ID/resume`, `{}` and a new key. After an
+uncertain transport response, retry the original route with its original key. Abort uses the same
+path ending in `/abort`. Published artifacts and buffer can be inspected with
+`GET /context/injection`. Main-agent queries use the `nostalgia` tool; dreaming explicitly puts
+summary and buffer in model-visible task text. There is no periodic scheduler in this MVP.
+
+Run Backend regressions and the cross-repository Oath/Nostalgia integration from `backend/`:
+
+```bash
+uv run python -m pytest -q
+uv run --with-editable ../../Oath --with-editable ../../Nostalgia python -m pytest -q
+```
+
+The second command uses real HTTP, Oath Gateway/Brain and threaded tools with a deterministic
+model. It verifies transport and publication, not live model quality. See
+[Context and dreaming](../spec/feature17-context-dreaming.md) for the protocol and limitations.
+
 ## Registration and Google sign-in
 
 Use a dedicated Hymio organization, not `built-in`. Enable **Enable signup** on the Hymio application and leave **Disable self signup** off. Keep password sign-in enabled in account mode.
