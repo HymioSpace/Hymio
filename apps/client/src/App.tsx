@@ -19,13 +19,18 @@ import {
   Terminal,
   X,
 } from 'lucide-react';
-import { OathClient, conversation, executionActivity, createIdentity } from '@hymio/client';
+import {
+  OathClient,
+  buildTurns,
+  conversation,
+  executionActivity,
+  createIdentity,
+} from '@hymio/client';
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
 import { useLogin } from './useLogin';
-import { MessageView } from './MessageView';
-import { groupMessages, ToolActivityGroup } from './ToolActivityGroup';
+import { TraceBlock } from './TraceBlock';
 import { TracePage } from './TracePage';
 import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
@@ -458,38 +463,20 @@ export default function App() {
                     : `已同步 ${state.replay.received} 条服务端事件`}
                 </div>
               )}
-              {groupMessages(model.messages).map((group) => {
-                const first = group[0];
-                return first.role === 'assistant' &&
-                  !first.content.trim() &&
-                  first.calls?.length ? (
-                  <article
-                    key={first.id}
-                    className="message message-assistant message-tool-activity"
-                  >
-                    <div className="message-body">
-                      <ToolActivityGroup
-                        messages={group}
-                        tools={model.tools}
-                        approvals={model.approvals}
-                      />
-                    </div>
-                  </article>
-                ) : (
-                  <MessageView
-                    onAction={async (text) => {
-                      following.current = true;
-                      setNearBottom(true);
-                      await client.message(text);
-                    }}
-                    key={first.id}
-                    message={first}
-                    tools={model.tools}
-                    login={login}
-                    approvals={model.approvals}
-                  />
-                );
-              })}
+              {buildTurns(model.messages).map((turn) => (
+                <TraceBlock
+                  key={turn.id}
+                  turn={turn}
+                  tools={model.tools}
+                  login={login}
+                  approvals={model.approvals}
+                  onAction={async (text) => {
+                    following.current = true;
+                    setNearBottom(true);
+                    await client.message(text);
+                  }}
+                />
+              ))}
               {unattachedTools.length > 0 && (
                 <div className="work-summary">
                   <button onClick={() => setToolsOpen(!toolsOpen)}>

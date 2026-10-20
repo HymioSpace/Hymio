@@ -43,14 +43,13 @@ struct ChatScreen: View {
                 }
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
-            ForEach(client.model.messages) { message in
-              MessageRow(
-                message: message, tools: client.model.terminals, approvals: client.model.approvals,
+            ForEach(client.model.turns) { turn in
+              TraceRow(
+                turn: turn, tools: client.model.terminals, approvals: client.model.approvals,
                 onAction: {
                   try await client.message($0)
                 }, account: account
-              ).id(message.id)
-
+              ).id(turn.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
               ApprovalCard(approval: approval, client: client)

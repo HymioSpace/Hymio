@@ -55,6 +55,58 @@ final class HymioUITests: XCTestCase {
     add(traceScreenshot)
   }
 
+  @MainActor func testFinishedTraceCollapsesIntoWorkedSummary() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
+    app.launch()
+    if app.buttons["我的账号"].waitForExistence(timeout: 3) {
+      app.buttons["我的账号"].tap()
+      app.buttons["account.logout"].tap()
+      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
+      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+      confirm.tap()
+    }
+    let username = "fold_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
+    let password = "Test-" + UUID().uuidString
+    defer { cleanupAccount(username: String(username), password: password) }
+    XCTAssertTrue(app.buttons["login.toggle"].waitForExistence(timeout: 15))
+    app.buttons["login.toggle"].tap()
+    app.textFields["login.username"].tap()
+    app.textFields["login.username"].typeText(username)
+    app.secureTextFields["login.password"].tap()
+    app.secureTextFields["login.password"].typeText(password)
+    app.buttons["login.submit"].tap()
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 40))
+    editor.tap()
+    // current_time 是纯本地工具，秒回，不依赖云电脑。
+    editor.typeText(
+      "现在几点？先调用 current_time 工具拿到当前 UTC 时间，然后告诉我答案。必须调用工具，不要凭空回答。"
+    )
+    app.buttons["chat.send"].tap()
+
+    let fold = app.descendants(matching: .any).matching(identifier: "trace.fold").firstMatch
+    XCTAssertTrue(fold.waitForExistence(timeout: 180), app.debugDescription)
+    let worked = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已工作")).firstMatch
+    XCTAssertTrue(worked.waitForExistence(timeout: 10), app.debugDescription)
+    XCTAssertTrue(worked.label.count > "已工作 ".count, worked.label)
+    // 收起时过程不在无障碍树里。
+    XCTAssertFalse(app.staticTexts["current_time"].exists, app.debugDescription)
+    let folded = XCTAttachment(screenshot: app.screenshot())
+    folded.name = "native-trace-folded"
+    folded.lifetime = .keepAlways
+    add(folded)
+
+    fold.tap()
+    XCTAssertTrue(
+      app.staticTexts["current_time"].waitForExistence(timeout: 15), app.debugDescription)
+    let expanded = XCTAttachment(screenshot: app.screenshot())
+    expanded.name = "native-trace-expanded"
+    expanded.lifetime = .keepAlways
+    add(expanded)
+  }
+
   @MainActor func testRealAccountChatAndReconnect() throws {
     continueAfterFailure = false
     let app = XCUIApplication()

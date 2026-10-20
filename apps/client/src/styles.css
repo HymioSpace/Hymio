@@ -1887,6 +1887,67 @@ a {
   cursor: wait;
 }
 
+/* 一次工作：用户消息在上，过程收成一行，最终回复留在下面。 */
+.trace-fold {
+  margin: -8px 0 20px;
+  max-width: min(640px, 100%);
+}
+.trace-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 32px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.trace-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.trace-fold > summary:hover {
+  color: var(--ink);
+}
+.trace-fold > summary:focus-visible {
+  outline: 2px solid #8297ee;
+  outline-offset: 4px;
+}
+.trace-fold-chevron {
+  transition: transform 140ms ease;
+  flex-shrink: 0;
+}
+.trace-fold[open] > summary .trace-fold-chevron {
+  transform: rotate(90deg);
+}
+.trace-fold-body {
+  border-left: 1px solid var(--line);
+  margin: 6px 0 0 6px;
+  padding: 2px 0 2px 14px;
+}
+.trace-fold-body .message:first-child {
+  margin-top: 14px;
+}
+.trace-fold-body .message:last-child {
+  margin-bottom: 4px;
+}
+.trace-live {
+  margin: -8px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .trace-fold {
+    max-width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-fold-chevron {
+    transition: none;
+  }
+}
+
 /* Replies, tool activity and pending work share one text column. */
 .message-assistant,
 .message.working-indicator {
