@@ -24,3 +24,13 @@ signup_enabled = true
 computer_provider = "e2b"
 e2b_key_file = "./private/e2b-api-key"
 e2b_template = "hymio-desktop"
+
+# Choices use Oath's configured provider and credential. Restart after changing.
+model_options = ["MiniMax-M2.7", "MiniMax-M3"]
+vision_model = "MiniMax-M3"
+# Local launcher derives these from oath.toml; set explicitly in cloud deployments.
+# media_api_base = "https://api.minimax.cn/v1"
+# media_credential = "model/default"
+# vault_url = "http://vault:8200"
+# vault_role_id_file = "./private/vault-role-id"
+# vault_secret_id_file = "./private/vault-secret-id"

@@ -104,3 +104,7 @@ Hymio's [application instructions](extensions/prompts/hymio.md) load through Oat
 `--system-prompt` option. The local launcher passes this file automatically; update Oath before
 using the launcher. Role and style stay in a fixed prefix, while device state comes from tools.
 See [prompt and computer recovery](spec/feature21-prompt-computer-recovery.md).
+
+### Models and media
+
+Choose the conversation model in Settings without creating another conversation. Attach photos, documents or audio; Hymio uses its media tools to understand them on demand. iOS supports Photos, Camera and Files. Image creation supports text prompts and MiniMax character references, with generated images kept as private attachments. See [setup](deploy/README.md#models-and-attachments), [design](spec/feature22-models-and-media.md) and [third-party notices](THIRD_PARTY_NOTICES.md).

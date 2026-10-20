@@ -55,6 +55,7 @@ struct BufferedProse: View {
     Group {
       if plain {
         Text(frame.text).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+          .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
       } else if frame.pending || streaming {
         let parts = AgentSurface.stableMarkdown(frame.text)
         VStack(alignment: .leading, spacing: 8) {

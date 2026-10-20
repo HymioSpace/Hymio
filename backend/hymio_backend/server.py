@@ -14,10 +14,12 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route, WebSocketRoute
 
 from .agent_gateway import relay_agent
-from .devices.service import DeviceService
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
 from .devices.routes import device_routes
+from .devices.service import DeviceService
+from .media.routes import media_routes
+from .media.store import MediaStore
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
 
@@ -189,20 +191,25 @@ def build_app(settings, *, provider=None):
         except Exception:
             return JSONResponse({"error": "service_unavailable"}, 503)
 
+    media = MediaStore(store)
     channel_devices = DeviceService(settings, store)
 
     async def agent_socket(websocket):
-        await relay_agent(websocket, settings, store, channel_devices)
+        await relay_agent(websocket, settings, store, channel_devices, media)
 
-    routes = device_routes(settings, store, bearer, body) + [
-        WebSocketRoute("/agent/ws", agent_socket),
-        Route("/health", endpoint),
-        Route("/auth/options", endpoint),
-        Route("/auth/callback", endpoint),
-        Route("/auth/me", endpoint),
-        Route("/agent/traces", endpoint),
-        Route("/agent/traces/{trace_id}", endpoint),
-    ]
+    routes = (
+        media_routes(settings, store, bearer, body, media)
+        + device_routes(settings, store, bearer, body)
+        + [
+            WebSocketRoute("/agent/ws", agent_socket),
+            Route("/health", endpoint),
+            Route("/auth/options", endpoint),
+            Route("/auth/callback", endpoint),
+            Route("/auth/me", endpoint),
+            Route("/agent/traces", endpoint),
+            Route("/agent/traces/{trace_id}", endpoint),
+        ]
+    )
     routes += [
         Route("/oath-biz" + path, endpoint)
         for path in ("/heartbeat", "/list_traces", "/query_trace", "/conversation_history")
@@ -232,5 +239,5 @@ def build_app(settings, *, provider=None):
         app,
         allow_origins=list(settings.origins),
         allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id"],
+        allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id", "X-File-Name"],
     )

@@ -151,3 +151,28 @@ test('local messages render before events and exact echoed IDs replace them', ()
     'accepted',
   );
 });
+
+test('a finalised reply is stamped when it landed, not when its first delta arrived', () => {
+  const stream = event(1, 'assistant.delta', {
+    step_id: 'a',
+    attempt: 1,
+    channel: 'content',
+    text: '答',
+  });
+  const result = conversation([
+    { ...stream, occur_dt: '2026-01-01T00:00:00.000000Z' },
+    {
+      ...event(2, 'assistant.message', { step_id: 'a', content: '答案', tool_calls: [] }),
+      occur_dt: '2026-01-01T00:00:04.000000Z',
+    },
+  ]);
+  assert.equal(result.messages[0].time, '2026-01-01T00:00:04.000000Z');
+  // 快照回放不带已完结 step 的增量，只有定稿事件 —— 两条路径必须给出同一个时间。
+  const replayed = conversation([
+    {
+      ...event(2, 'assistant.message', { step_id: 'a', content: '答案', tool_calls: [] }),
+      occur_dt: '2026-01-01T00:00:04.000000Z',
+    },
+  ]);
+  assert.equal(replayed.messages[0].time, result.messages[0].time);
+});

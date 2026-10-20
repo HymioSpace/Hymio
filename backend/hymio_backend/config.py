@@ -26,6 +26,13 @@ class Settings:
     computer_provider: str = "e2b"
     e2b_key_file: Path | None = None
     e2b_template: str = "hymio-desktop"
+    model_options: tuple[str, ...] = ("MiniMax-M2.7", "MiniMax-M3")
+    vision_model: str = "MiniMax-M3"
+    media_api_base: str = "https://api.minimax.cn/v1"
+    media_credential: str = ""
+    vault_url: str = "http://127.0.0.1:8200"
+    vault_role_id_file: Path | None = None
+    vault_secret_id_file: Path | None = None
 
     @classmethod
     def load(cls, path):
@@ -41,7 +48,16 @@ class Settings:
         if data.get("invitation_codes_file"):
             file = Path(data["invitation_codes_file"]).expanduser()
             data["invitation_codes_file"] = file if file.is_absolute() else path.parent / file
+        for key in ("vault_role_id_file", "vault_secret_id_file"):
+            if data.get(key):
+                file = Path(data[key]).expanduser()
+                data[key] = file if file.is_absolute() else path.parent / file
+        data["model_options"] = tuple(data.get("model_options", ("MiniMax-M2.7", "MiniMax-M3")))
         result = cls(**data)
+        if not result.model_options or any(
+            not isinstance(m, str) or not m.strip() or len(m) > 128 for m in result.model_options
+        ):
+            raise ValueError("model_options must contain model identifiers")
         if result.computer_provider != "e2b":
             raise ValueError("Only the e2b computer provider is supported")
         if result.computer_provider == "e2b" and not result.e2b_key_file:
@@ -54,7 +70,14 @@ class Settings:
             raise ValueError("login_method must be account or google")
         if result.access_seconds < 1 or result.refresh_seconds < result.access_seconds:
             raise ValueError("Invalid token lifetimes")
-        for url in (result.issuer, result.public_url, result.callback_url, result.oath_biz):
+        for url in (
+            result.issuer,
+            result.public_url,
+            result.callback_url,
+            result.oath_biz,
+            result.media_api_base,
+            result.vault_url,
+        ):
             parsed = urlsplit(url)
             if (
                 parsed.scheme not in ("http", "https")

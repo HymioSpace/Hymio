@@ -255,12 +255,12 @@ a {
   background: #809bff;
 }
 .welcome h1 {
-  font-family: 'Songti SC', 'STSong', Georgia, serif;
+  font-family: var(--font-body);
   font-weight: 500;
-  font-size: 36px;
-  letter-spacing: 1px;
-  margin: 2px 0 16px;
-  line-height: 1.5;
+  font-size: 34px;
+  letter-spacing: -0.8px;
+  margin: 2px 0 12px;
+  line-height: 1.35;
 }
 .welcome h1 span {
   color: var(--muted);
@@ -1887,6 +1887,67 @@ a {
   cursor: wait;
 }
 
+/* 一次工作：用户消息在上，过程收成一行，最终回复留在下面。 */
+.trace-fold {
+  margin: -8px 0 20px;
+  max-width: min(640px, 100%);
+}
+.trace-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 32px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.trace-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.trace-fold > summary:hover {
+  color: var(--ink);
+}
+.trace-fold > summary:focus-visible {
+  outline: 2px solid #8297ee;
+  outline-offset: 4px;
+}
+.trace-fold-chevron {
+  transition: transform 140ms ease;
+  flex-shrink: 0;
+}
+.trace-fold[open] > summary .trace-fold-chevron {
+  transform: rotate(90deg);
+}
+.trace-fold-body {
+  border-left: 1px solid var(--line);
+  margin: 6px 0 0 6px;
+  padding: 2px 0 2px 14px;
+}
+.trace-fold-body .message:first-child {
+  margin-top: 14px;
+}
+.trace-fold-body .message:last-child {
+  margin-bottom: 4px;
+}
+.trace-live {
+  margin: -8px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .trace-fold {
+    max-width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-fold-chevron {
+    transition: none;
+  }
+}
+
 /* Replies, tool activity and pending work share one text column. */
 .message-assistant,
 .message.working-indicator {
@@ -2783,4 +2844,278 @@ a {
   .surface-frame {
     transition: none;
   }
+}
+
+/* Composer hierarchy: attachments, text, quiet action row. */
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'files files' 'input input' 'attach send';
+  align-items: center;
+  gap: 6px 12px;
+  padding: 14px 16px 10px;
+  border-radius: 24px;
+  box-shadow: 0 4px 24px -12px #243b651c;
+}
+.composer > textarea {
+  grid-area: input;
+  min-height: 42px;
+  padding: 4px 4px 8px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.composer-actions {
+  grid-area: send;
+}
+.attachment-control {
+  display: contents;
+}
+.attachment-add {
+  grid-area: attach;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 7px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.attachment-add:hover {
+  background: var(--mist, #f5f6fa);
+  color: var(--ink);
+}
+.attachment-tray {
+  grid-area: files;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  scrollbar-width: thin;
+}
+.attachment-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  width: 216px;
+  min-height: 66px;
+  padding: 8px 28px 8px 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+}
+.attachment-file-copy {
+  display: grid;
+  gap: 5px;
+  overflow: hidden;
+}
+.attachment-file-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+.attachment-file-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.2px;
+}
+.attachment-file-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: var(--mist, #f5f6fa);
+  color: var(--muted);
+}
+.attachment-chip button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+.attachment-chip button:hover {
+  background: var(--mist, #f5f6fa);
+  color: var(--ink);
+}
+.attachment-upload-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 12px;
+}
+.composer .send-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+.composer-footer {
+  padding-top: 10px;
+}
+.model-settings {
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.model-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.model-setting-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.model-setting-copy {
+  flex: 1;
+  min-width: 0;
+}
+.model-setting-copy label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.model-setting-copy p {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 5px 0 0;
+  line-height: 1.5;
+}
+.model-settings select {
+  max-width: 168px;
+  font: inherit;
+  font-size: 12px;
+  padding: 9px 25px 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.model-settings > p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.settings-dialog .dialog-note {
+  margin: 12px 0 24px;
+  padding: 0;
+  text-align: left;
+}
+.settings-dialog .device-manager {
+  border-top: 0;
+  padding-top: 24px;
+  margin-top: 0;
+}
+.settings-dialog > .h-button {
+  width: 100%;
+}
+.message-user .message-image {
+  max-width: min(100%, 280px);
+  max-height: 280px;
+  object-fit: contain;
+}
+@media (max-width: 700px) {
+  .composer {
+    padding: 12px 12px 8px;
+    border-radius: 22px;
+  }
+  .composer-footer {
+    font-size: 10px;
+  }
+  .attachment-chip {
+    width: 192px;
+  }
+  .model-setting-row {
+    flex-wrap: wrap;
+  }
+  .model-settings select {
+    max-width: 100%;
+  }
+}
+
+.attachment-link {
+  color: var(--accent, #4765e8);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.attachment-thumbnail {
+  width: 46px;
+  height: 46px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+@media (max-width: 700px) {
+  .model-setting-row {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+  .model-setting-row select {
+    grid-column: 2;
+    width: 100%;
+  }
+  .attachment-chip button {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+.sent-attachment-tray {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: 0 0 10px;
+  justify-content: flex-start;
+  max-width: 100%;
+}
+.message-user .sent-attachment-tray .message-image {
+  display: block;
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: zoom-in;
+}
+.sent-attachment-tray:last-child {
+  margin-bottom: 0;
+}
+.reasoning-panel > div {
+  text-align: left;
 }

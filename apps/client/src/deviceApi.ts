@@ -43,7 +43,7 @@ export async function deviceImage(login: LoginState, path: string, signal?: Abor
   const url = new URL(path, session.backend + '/');
   if (
     url.origin !== new URL(session.backend).origin ||
-    !/^\/devices\/media\/[a-f0-9]{32}$/.test(url.pathname)
+    !/^\/(?:devices\/media|attachments)\/[a-f0-9]{32}$/.test(url.pathname)
   )
     throw new Error('截图地址与当前服务不一致');
   const response = await fetch(url.href, {

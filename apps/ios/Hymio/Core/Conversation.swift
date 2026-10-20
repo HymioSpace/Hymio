@@ -7,6 +7,8 @@ public struct ChatMessage: Identifiable {
   public var time: String
   public var streaming = false
   public var attempt = 0
+  /// step.status 里的 trace_id：同一条 trace 的多个 step 属于同一次工作。
+  public var trace = ""
   public var calls: [JSON] = []
   public var reasoning = ""
   public var thinking = false
@@ -27,6 +29,8 @@ public struct Conversation {
   public var failure = ""
   public var pauseNotice = ""
   private var indices: [String: Int] = [:]
+  /// step_id -> trace_id。step.status 先于该step 的任何输出到达，所以这里总是来得及。
+  private var traces: [String: String] = [:]
   public init(
     events: [Event], pending: [Command] = [], accepted: Set<String> = [], rejected: Set<String> = []
   ) {
@@ -42,12 +46,18 @@ public struct Conversation {
       message.delivery =
         rejected.contains(command.id)
         ? "failed" : accepted.contains(command.id) ? "accepted" : "queued"
-      if message.delivery != "failed" { failure = ""; pauseNotice = "" }
+      if message.delivery != "failed" {
+        failure = ""
+        pauseNotice = ""
+      }
       messages.append(message)
     }
   }
+  /// 一次工作为单位的消息序列，界面按它来折叠过程。
+  public var turns: [Turn] { buildTurns(messages) }
   public var awaitingReply: Bool {
-    messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty && pauseNotice.isEmpty
+    messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty
+      && pauseNotice.isEmpty
   }
   public mutating func apply(_ e: Event) {
     let p = e.payload
@@ -71,7 +81,7 @@ public struct Conversation {
         messages.append(
           ChatMessage(
             id: "assistant:\(step)", role: "assistant", content: "", time: e.occur_dt,
-            streaming: true, attempt: p["attempt"].int))
+            streaming: true, attempt: p["attempt"].int, trace: traces[step] ?? ""))
       }
       let i = indices[step]!
       guard messages[i].streaming else { return }
@@ -95,7 +105,9 @@ public struct Conversation {
       if indices[key] == nil {
         indices[key] = messages.count
         messages.append(
-          ChatMessage(id: "assistant:\(key)", role: "assistant", content: "", time: e.occur_dt))
+          ChatMessage(
+            id: "assistant:\(key)", role: "assistant", content: "", time: e.occur_dt,
+            trace: traces[key] ?? ""))
       }
       let i = indices[key]!
       messages[i].content = p["content"].text
@@ -125,6 +137,7 @@ public struct Conversation {
       pauseNotice = ""
     case "step.status":
       let status = p["status"].text
+      if !step.isEmpty, !p["trace_id"].text.isEmpty { traces[step] = p["trace_id"].text }
       working = ["prepared", "running", "queued"].contains(status)
       if ["completed", "failed", "paused", "cancelled"].contains(status), let i = indices[step] {
         messages[i].streaming = false

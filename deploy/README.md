@@ -149,3 +149,11 @@ The phone uses the single Backend URL printed by `hymio status`: login, chat at 
 LAN auto-configuration supports account login and preserves the registered Casdoor callback for backend-only code exchange. Browser OIDC deployments configure public callbacks separately. Existing sessions refresh advertised endpoints on login/refresh; sign out/in if an older session still points at a loopback WS address.
 
 Use the same trusted Wi-Fi, allow the Mac firewall prompt and permit Local Network access on iPhone. LAN HTTP is for Debug development; use cloud HTTPS for remote access. Open the printed Backend URL with `/health` in iPhone Safari, then [install through Xcode](../apps/ios/README.md#install-directly-on-your-own-iphone).
+
+## Models and attachments
+
+The settings screen uses Backend's `model_options` (first item is the default). Local startup forwards that allowlist to Oath and derives the media provider endpoint, Vault alias and private AppRole paths from `oath.toml`. It does not copy the API key. `vision_model` defaults to MiniMax-M3; image generation uses image-01 and audio transcription uses asr-1.0. The account must have access/balance for each API; a text subscription alone may not include them.
+
+Update both Oath and Hymio before starting. The Oath build must support `agent.selectable_models`. The launcher uses a 150-second tool deadline for media calls and writes an ignored `backend/hymio-media.local.toml` overlay. Normal files and photos upload through the authenticated Backend; they do not require an E2B computer.
+
+Uploads support images, PDF, DOCX, PPTX, XLS/XLSX, text/Markdown/CSV/HTML/JSON/XML/YAML and MP3/WAV/M4A/OGG/FLAC. Individual files are limited to 20 MiB, with eight attachments per message and 256 MiB per user. Video and arbitrary archives are not supported. Scanned PDFs may need OCR; empty extracted text is not a successful visual interpretation.

@@ -8,6 +8,8 @@ export interface Message {
   streaming?: boolean;
   attempt?: number;
   stepId?: string;
+  /** step.status 里的 trace_id：同一条 trace 的多个 step 属于同一次工作。 */
+  traceId?: string;
   calls?: Data[];
   reasoning?: string;
   thinking?: boolean;
@@ -67,6 +69,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
           streaming: true,
           attempt,
           stepId: step,
+          traceId: steps.get(step)?.traceId,
         };
         assistants.set(step, message);
         messages.push(message);
@@ -95,11 +98,15 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
           content: '',
           time: event.occur_dt,
           stepId: step,
+          traceId: steps.get(step)?.traceId,
         };
         assistants.set(step, message);
         messages.push(message);
       }
       message.content = str(p.content);
+      // 定稿时间才是这条回复的时间。快照回放会丢掉已完结 step 的增量，
+      // 不跟着改的话，实时流和刷新后的历史会算出两套时长。
+      message.time = event.occur_dt;
       message.streaming = false;
       message.thinking = false;
       if (typeof p.reasoning === 'string') message.reasoning = p.reasoning;

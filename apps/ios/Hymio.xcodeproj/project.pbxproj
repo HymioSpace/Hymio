@@ -30,6 +30,8 @@
 		0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD5700E47A1BFC4213A3589B /* AgentSurface.swift */; };
 		185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856EE296FF34503C942684F2 /* AgentSurfaceView.swift */; };
 		AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D85FDC20A5009A0CDA661C; };
+		22BAD4A10E82A26B49A7DCD6 /* Turns.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6FBE11B38B83545FC62260 /* Turns.swift */; };
+		527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1419663CB9F728D5B1A10D48 /* TraceRow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +71,8 @@
 		AD5700E47A1BFC4213A3589B /* AgentSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurface.swift; path = Core/AgentSurface.swift; sourceTree = "<group>"; };
 		856EE296FF34503C942684F2 /* AgentSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurfaceView.swift; path = Views/AgentSurfaceView.swift; sourceTree = "<group>"; };
 		C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TraceScreen.swift; path = Views/TraceScreen.swift; sourceTree = "<group>"; };
+		DE6FBE11B38B83545FC62260 /* Turns.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Turns.swift; path = Core/Turns.swift; sourceTree = "<group>"; };
+		1419663CB9F728D5B1A10D48 /* TraceRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TraceRow.swift; path = Views/TraceRow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -131,6 +135,7 @@
 		8F6D8548EA9B9521AE7ED1E2 /* Hymio */ = {
 			isa = PBXGroup;
 			children = (
+				DE6FBE11B38B83545FC62260 /* Turns.swift */,
 				289837D493915AFD31A1E797 /* Conversation.swift */,
 				A8B7BECB35225524AD1F4C54 /* ConversationCache.swift */,
 				172A12AE67E2F572FE902CC3 /* Models.swift */,
@@ -144,6 +149,7 @@
 				69CFA0574482053C3DD45B96 /* AccountScreen.swift */,
 				A08D683071705B687119808D /* ChatScreen.swift */,
 				14915AB0360238B6E30C3640 /* Companion.swift */,
+				1419663CB9F728D5B1A10D48 /* TraceRow.swift */,
 				9EF407C74ED7B6555E82B58A /* LoginScreen.swift */,
 				419CB3FBB96AA3E52CE79590 /* MessageRow.swift */,
 				176FE332B9C3F1046C218652 /* Assets.xcassets */,
@@ -284,6 +290,7 @@
 				AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */,
 				185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */,
 				0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */,
+				22BAD4A10E82A26B49A7DCD6 /* Turns.swift in Sources */,
 				24B8D828DBEE5A2B20AA7CD9 /* Conversation.swift in Sources */,
 				911D7FB47E85604CEA8C192D /* ConversationCache.swift in Sources */,
 				3FF4260028DF483BDC665155 /* Models.swift in Sources */,
@@ -294,6 +301,7 @@
 				208550A64016FE008FF214B4 /* AccountScreen.swift in Sources */,
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
 				2C7DEF380E999F886E17F4CC /* Companion.swift in Sources */,
+				527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */,
 				77D9C0B959C7A3DE1B99ABD8 /* LoginScreen.swift in Sources */,
 				1D4B5A58869F9C995894EB41 /* MessageRow.swift in Sources */,
 				9E0248992302CB28D263C815 /* DesignSystem.swift in Sources */,

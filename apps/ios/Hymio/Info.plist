@@ -25,6 +25,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>拍摄照片并发送给 Hymio，帮助理解你看到的内容。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>开发时连接同一网络内的 Hymio 服务。</string>
 	<key>UIApplicationSceneManifest</key>

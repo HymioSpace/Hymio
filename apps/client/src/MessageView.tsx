@@ -23,6 +23,75 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
   const login = useContext(ImageLogin);
   return login ? <MessageImage src={src} alt={alt} login={login} /> : null;
 }
+function UserMessageContent({ content, login }: { content: string; login: LoginState }) {
+  const images: string[] = [];
+  const text = content
+    .replace(/!\[[^\]]*\]\((\/attachments\/[a-f0-9]{32})\)/g, (_, source: string) => {
+      images.push(source);
+      return '';
+    })
+    .trim();
+  return (
+    <ImageLogin.Provider value={login}>
+      {images.length > 0 && (
+        <div className="sent-attachment-tray">
+          {images.map((source, index) => (
+            <MessageImage key={source + index} src={source} alt="已发送的图片" login={login} />
+          ))}
+        </div>
+      )}
+      {text && (
+        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {text}
+        </Markdown>
+      )}
+    </ImageLogin.Provider>
+  );
+}
+function AttachmentLink({ children, href, ...props }: React.ComponentProps<'a'>) {
+  const login = useContext(ImageLogin);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const local = /^\/attachments\/[a-f0-9]{32}$/.test(href || '');
+  async function download() {
+    const session = login?.session;
+    if (!session || !href || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch(session.backend + href, {
+        headers: { Authorization: 'Bearer ' + session.access_token },
+        redirect: 'error',
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!response.ok) throw new Error('文件暂时无法下载');
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = typeof children === 'string' ? children : 'attachment';
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      setError('文件下载失败，请重试');
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (local)
+    return (
+      <span>
+        <button className="attachment-link" disabled={busy} onClick={() => void download()}>
+          {busy ? '正在下载…' : children}
+        </button>
+        {error && <span role="alert">{error}</span>}
+      </span>
+    );
+  return (
+    <a {...props} href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  );
+}
 function useCopy(text: string) {
   const [state, setState] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -92,11 +161,7 @@ const markdownComponents = {
   ),
   img: MarkdownImage,
   pre: MessageCode,
-  a: ({ children, ...props }: React.ComponentProps<'a'>) => (
-    <a {...props} target="_blank" rel="noreferrer">
-      {children}
-    </a>
-  ),
+  a: AttachmentLink,
 };
 
 export function MessageView({
@@ -128,7 +193,7 @@ export function MessageView({
         )}
         <div className={`message-bubble ${message.streaming ? 'streaming' : ''}`}>
           {message.role === 'user' ? (
-            <p>{message.content}</p>
+            <UserMessageContent content={message.content} login={login} />
           ) : (
             <ImageLogin.Provider value={login}>
               <ProgressiveContent

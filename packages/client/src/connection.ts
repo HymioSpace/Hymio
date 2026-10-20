@@ -430,10 +430,11 @@ export class OathClient {
     this.flush();
     return command.id;
   }
-  message(content: string) {
+  message(content: string, attachmentIds: string[] = []) {
     return this.command('user.message', {
       content,
       user_context: {
+        attachment_ids: attachmentIds,
         locale: navigator.language,
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         source_device_id: this.sourceDeviceId || null,
