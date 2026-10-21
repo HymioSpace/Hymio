@@ -10,6 +10,11 @@ struct LoginSession: Codable {
   var name: String
   var oath_ws: String
   var oath_biz: String
+  var displayName: String {
+    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty || UUID(uuidString: value) != nil
+      || value.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil ? "我的账号" : value
+  }
 }
 enum ServiceError: LocalizedError {
   case message(String)
@@ -125,7 +130,8 @@ struct SecureSession {
           "action": .string(signup ? "signup" : "login"), "username": .string(username),
           "password": .string(password), "invitation_code": .string(signup ? invitationCode : ""),
         ]))
-      let next = try JSONDecoder().decode(LoginSession.self, from: data)
+      var next = try JSONDecoder().decode(LoginSession.self, from: data)
+      if next.displayName == "我的账号" { next.name = username }
       do { try SecureSession.save(next) } catch {
         _ = try? await raw("auth/logout", body: .object([:]), token: next.access_token)
         throw error
@@ -144,7 +150,8 @@ struct SecureSession {
     let task = Task { () throws -> LoginSession in
       let data = try await self.raw(
         "auth/refresh", body: .object(["refresh_token": .string(current.refresh_token)]))
-      let next = try JSONDecoder().decode(LoginSession.self, from: data)
+      var next = try JSONDecoder().decode(LoginSession.self, from: data)
+      if next.displayName == "我的账号" { next.name = current.name }
       guard owner == self.generation else { throw CancellationError() }
       try SecureSession.save(next)
       self.session = next
@@ -159,7 +166,11 @@ struct SecureSession {
   }
   func request(_ path: String, body: JSON? = nil, timeout: Double = 25) async throws -> JSON {
     let s = try await credential()
-    return try JSON.decode(await raw(path, body: body, token: s.access_token, timeout: timeout))
+    let owner = generation
+    let value = try JSON.decode(
+      await raw(path, body: body, token: s.access_token, timeout: timeout))
+    guard owner == generation else { throw CancellationError() }
+    return value
   }
   func logout() async {
     generation = UUID()
@@ -180,7 +191,9 @@ struct SecureSession {
     request.httpBody = data
     request.timeoutInterval = 60
     request.setValue("Bearer " + session.access_token, forHTTPHeaderField: "Authorization")
-    request.setValue(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed), forHTTPHeaderField: "X-File-Name")
+    request.setValue(
+      name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+      forHTTPHeaderField: "X-File-Name")
     let (result, response) = try await NoRedirects.session.data(for: request)
     guard let response = response as? HTTPURLResponse, response.statusCode == 201 else {
       throw ServiceError.message("附件上传失败，请检查文件格式后重试。")
@@ -203,7 +216,8 @@ struct SecureSession {
     }
     let header = response.value(forHTTPHeaderField: "Content-Disposition") ?? ""
     let encoded = header.components(separatedBy: "filename*=UTF-8''").last ?? "attachment"
-    let name = URL(fileURLWithPath: encoded.removingPercentEncoding ?? "attachment").lastPathComponent
+    let name = URL(fileURLWithPath: encoded.removingPercentEncoding ?? "attachment")
+      .lastPathComponent
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let target = folder.appendingPathComponent(name.isEmpty ? "attachment" : name)
@@ -218,7 +232,9 @@ struct SecureSession {
     if protected {
       // Only the configured backend receives authentication, even if a model invents a host.
       let path = url.path
-      guard path.range(of: "^/(?:devices/media|attachments)/[a-f0-9]{32}$", options: .regularExpression) != nil
+      guard
+        path.range(of: "^/(?:devices/media|attachments)/[a-f0-9]{32}$", options: .regularExpression)
+          != nil
       else { throw ServiceError.message("图片地址无效") }
       let s = try await credential()
       return try await raw(String(path.dropFirst()), token: s.access_token)

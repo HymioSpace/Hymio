@@ -1,12 +1,11 @@
+import { HomePanel } from './HomePanel';
+import { Home, MessageCircle, UserRound } from 'lucide-react';
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Flag,
   ArrowUp,
   ArrowDown,
-  SlidersHorizontal,
-  AudioLines,
-  Activity,
   Circle,
   CheckCheck,
   ChevronDown,
@@ -14,7 +13,6 @@ import {
   Plug,
   ArrowRight,
   Square,
-  Ellipsis,
   ShieldCheck,
   LoaderCircle,
   Terminal,
@@ -39,14 +37,6 @@ import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
 client.channelKind = desktop ? 'mac' : 'web';
-function Brand() {
-  return (
-    <svg viewBox="0 0 34 34" fill="none" aria-label="Hymio">
-      <path d="M10 7V26M24 15V26" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
-      <path d="M15 15L19 18" stroke="#4b70ff" strokeWidth="4" strokeLinecap="round" />
-    </svg>
-  );
-}
 export default function App() {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const model = useMemo(
@@ -69,6 +59,19 @@ export default function App() {
     credential: '',
   });
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState('');
+  const [page, setPage] = useState<'home' | 'chat'>(
+    window.location.hash === '#/chat' ? 'chat' : 'home',
+  );
+  function navigate(next: 'home' | 'chat') {
+    setPage(next);
+    changeDebug(false);
+    window.location.hash = '/' + next;
+  }
+  function openTask(id = '') {
+    setSelectedTask(id);
+    setTasksOpen(true);
+  }
   const [settings, setSettings] = useState(false),
     [debug, changeDebug] = useState(window.location.hash === '#/trace'),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
@@ -81,11 +84,15 @@ export default function App() {
     [sending, setSending] = useState(false),
     [clock, setClock] = useState(Date.now());
   function setDebug(value: boolean) {
-    window.location.hash = value ? '/trace' : '/chat';
+    window.location.hash = value ? '/trace' : '/' + page;
     changeDebug(value);
   }
   useEffect(() => {
-    const route = () => changeDebug(window.location.hash === '#/trace');
+    const route = () => {
+      changeDebug(window.location.hash === '#/trace');
+      if (window.location.hash === '#/home') setPage('home');
+      if (window.location.hash === '#/chat') setPage('chat');
+    };
     window.addEventListener('hashchange', route);
     return () => window.removeEventListener('hashchange', route);
   }, []);
@@ -270,7 +277,7 @@ export default function App() {
       observer.disconnect();
       cancelAnimationFrame(scrollFrame.current);
     };
-  }, [model.messages.length === 0]);
+  }, [model.messages.length === 0, page]);
   useEffect(() => {
     const timer = setInterval(() => {
       setClock(Date.now());
@@ -338,59 +345,65 @@ export default function App() {
   if (!login.session) return <LoginScreen login={login} />;
   return (
     <div className={`app ${debug ? 'trace-page-open' : ''} ${desktop ? 'desktop' : ''}`}>
-      <nav className="rail" aria-label="主导航">
-        <a className="brand-mark" href="#" aria-label="Hymio 首页">
-          <Brand />
-        </a>
+      <nav className="rail product-rail" aria-label="主导航">
+        <button className="product-brand" onClick={() => navigate('home')} aria-label="Hymio 首页">
+          <Companion compact />
+          <b>hymio</b>
+        </button>
         <div className="rail-primary">
           <button
-            className={`rail-button ${debug ? '' : 'active'}`}
-            title="持续对话"
-            aria-label="持续对话"
-            onClick={() => {
-              setDebug(false);
-              input.current?.focus();
-            }}
+            className={`rail-button ${page === 'home' && !debug ? 'active' : ''}`}
+            aria-current={page === 'home' && !debug ? 'page' : undefined}
+            onClick={() => navigate('home')}
           >
-            <AudioLines size={23} />
+            <Home size={19} />
+            <span>今日</span>
+          </button>
+          <button
+            className={`rail-button ${page === 'chat' && !debug ? 'active' : ''}`}
+            aria-current={page === 'chat' && !debug ? 'page' : undefined}
+            onClick={() => navigate('chat')}
+          >
+            <MessageCircle size={19} />
+            <span>对话</span>
+          </button>
+          <button className={`rail-button ${tasksOpen ? 'active' : ''}`} onClick={() => openTask()}>
+            <Flag size={19} />
+            <span>任务</span>
+          </button>
+          <button
+            className={`rail-button ${settings ? 'active' : ''}`}
+            onClick={() => setSettings(true)}
+          >
+            <UserRound size={19} />
+            <span>我的</span>
           </button>
         </div>
         <div className="rail-bottom">
-          <button
-            className={`rail-button ${debug ? 'active' : ''}`}
-            title="工作观察"
-            aria-label="工作观察"
-            aria-current={debug ? 'page' : undefined}
-            aria-controls="work-observer"
-            onClick={() => setDebug(!debug)}
-          >
-            <Activity size={21} />
-          </button>
-          <span className="rail-divider" />
-          <button
-            className="profile-button"
-            title="我的账号"
-            aria-label="我的账号"
-            onClick={() => setSettings(true)}
-          >
-            <Ellipsis size={18} />
-          </button>
+          <small>
+            对话随时继续。
+            <br />
+            交代的事，也继续推进。
+          </small>
         </div>
       </nav>
-      <main className="main" hidden={debug}>
+      {!debug && page === 'home' && (
+        <HomePanel
+          key={`${login.backend}|${login.session.user_id}`}
+          login={login}
+          mood={mood}
+          hasConversation={model.messages.length > 0}
+          conversationReady={connected}
+          onChat={() => navigate('chat')}
+          onTask={openTask}
+        />
+      )}
+      <main className="main" hidden={debug || page !== 'chat'}>
         <header className="topbar">
           <div className="topbar-brand" data-tauri-drag-region>
             <span>hymio</span>
           </div>
           <div className="topbar-actions">
-            <button
-              className="icon-button"
-              aria-label="打开任务"
-              title="交给 Hymio 的事"
-              onClick={() => setTasksOpen(true)}
-            >
-              <Flag size={18} />
-            </button>
             <button
               className={`connection-pill ${connected ? 'online' : ''}`}
               onClick={() => setSettings(true)}
@@ -399,16 +412,6 @@ export default function App() {
               {(busy || streaming || awaitingReply) && <Companion compact mood={mood} />}
               <StatusBadge tone={connected ? 'active' : 'neutral'}>{status}</StatusBadge>
               <ChevronDown size={12} />
-            </button>
-            <button
-              className={`icon-button observe-button ${debug ? 'selected' : ''}`}
-              aria-label="打开工作观察"
-              aria-current={debug ? 'page' : undefined}
-              aria-controls="work-observer"
-              title="工作观察"
-              onClick={() => setDebug(!debug)}
-            >
-              <SlidersHorizontal size={18} />
             </button>
           </div>
         </header>
@@ -767,8 +770,23 @@ export default function App() {
           onRetry={() => void act(() => client.command('step.retry', {}))}
         />
       )}
-      {tasksOpen && <TasksPanel login={login} onClose={() => setTasksOpen(false)} />}
-      {settings && <Settings login={login} onClose={() => setSettings(false)} />}
+      {tasksOpen && (
+        <TasksPanel
+          login={login}
+          initialSelected={selectedTask}
+          onClose={() => setTasksOpen(false)}
+        />
+      )}
+      {settings && (
+        <Settings
+          login={login}
+          onClose={() => setSettings(false)}
+          onTrace={() => {
+            setSettings(false);
+            setDebug(true);
+          }}
+        />
+      )}
     </div>
   );
 }

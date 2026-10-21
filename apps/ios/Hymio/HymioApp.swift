@@ -13,7 +13,7 @@ import SwiftUI
     WindowGroup {
       Group {
         if account.session != nil {
-          ChatScreen(account: account, client: client)
+          ProductShell(account: account, client: client).id(account.session?.user_id)
         } else {
           LoginScreen(account: account)
         }

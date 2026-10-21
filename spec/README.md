@@ -4,6 +4,7 @@
 
 | 编号 | 方案 | 状态 |
 | --- | --- | --- |
+| 25 | [Personal home and platform navigation](feature25-personal-home.md) | Implemented |
 | 24 | [Portable local deployment](feature24-local-bootstrap.md) | Implemented |
 | 01 | [导入与同步](feature01-context-ingress.md) | Draft |
 | 02 | [身份、Agent 与渠道](feature02-agent-channels.md) | Draft |

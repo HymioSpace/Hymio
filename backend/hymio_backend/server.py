@@ -118,6 +118,7 @@ def build_app(settings, *, provider=None):
                 if not (8 if action == "signup" else 1) <= len(password) <= 128:
                     raise ValueError("Invalid password length")
                 claims = await asyncio.to_thread(accounts.authenticate, action, username, password)
+                claims["preferred_username"] = username
                 return JSONResponse(await asyncio.to_thread(store.create_session, claims))
             if path == "/auth/start":
                 data = await body(request)

@@ -15,7 +15,7 @@ struct TraceRow: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 25) {
+    VStack(alignment: .leading, spacing: 10) {
       if let user = turn.user { row(user) }
       if turn.foldable {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,13 +23,13 @@ struct TraceRow: View {
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { expanded.toggle() }
           } label: {
             HStack(spacing: 9) {
-              Image(systemName: "checkmark.circle").foregroundStyle(Brand.blue)
-              Text(worked(Date())).fontWeight(.medium).foregroundStyle(Brand.ink)
-              Text("工作过程").foregroundStyle(Brand.muted)
+              Image(systemName: "checkmark").font(.caption2).foregroundStyle(Brand.muted)
+              Text(worked(Date())).foregroundStyle(Brand.muted)
+
               Spacer(minLength: 4)
               Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                 .rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Brand.muted)
-            }.font(.caption).padding(.horizontal, 14).frame(minHeight: 46)
+            }.font(.caption).padding(.horizontal, expanded ? 12 : 0).frame(minHeight: 44)
               .contentShape(Rectangle())
           }.buttonStyle(.plain)
             .accessibilityIdentifier("trace.fold")
@@ -39,10 +39,20 @@ struct TraceRow: View {
             Divider().padding(.horizontal, 14)
             VStack(alignment: .leading, spacing: 14) {
               ForEach(turn.activity) { row($0, compact: true) }
-            }.padding(14)
+              if !turn.trace.isEmpty {
+                NavigationLink {
+                  TraceRecordScreen(traceID: turn.trace, account: account)
+                } label: {
+                  Label("查看执行详情", systemImage: "arrow.up.right")
+                    .font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
+                }
+              }
+            }.padding(12)
           }
-        }.background(Brand.mist.opacity(0.65), in: RoundedRectangle(cornerRadius: 16))
-          .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.line.opacity(0.8)))
+        }.background(
+          expanded ? Brand.mist.opacity(0.5) : Color.clear, in: RoundedRectangle(cornerRadius: 14)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(expanded ? Brand.line : Color.clear))
       } else {
         if !turn.activity.isEmpty { live }
         ForEach(turn.activity) { row($0) }

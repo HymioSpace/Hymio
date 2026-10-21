@@ -6,8 +6,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.buttons["我的账号"].waitForExistence(timeout: 3) {
-      app.buttons["我的账号"].tap()
+    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
+      app.tabBars.buttons["我的"].tap()
       app.buttons["account.logout"].tap()
       let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
       XCTAssertTrue(confirm.waitForExistence(timeout: 5))
@@ -23,6 +23,7 @@ final class HymioUITests: XCTestCase {
     app.secureTextFields["login.password"].tap()
     app.secureTextFields["login.password"].typeText(password)
     app.buttons["login.submit"].tap()
+    openChat(app)
     let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
     XCTAssertTrue(editor.waitForExistence(timeout: 40))
     editor.tap()
@@ -47,8 +48,9 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Help me plan 15 min of reading. Do not call tools."].waitForExistence(
         timeout: 10))
-    app.buttons["工作观察"].tap()
-    XCTAssertTrue(app.navigationBars["工作观察"].waitForExistence(timeout: 10))
+    app.tabBars.buttons["我的"].tap()
+    app.buttons["工作记录"].tap()
+    XCTAssertTrue(app.navigationBars["工作记录"].waitForExistence(timeout: 10))
     let traceScreenshot = XCTAttachment(screenshot: app.screenshot())
     traceScreenshot.name = "native-trace-page"
     traceScreenshot.lifetime = .keepAlways
@@ -60,8 +62,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.buttons["我的账号"].waitForExistence(timeout: 3) {
-      app.buttons["我的账号"].tap()
+    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
+      app.tabBars.buttons["我的"].tap()
       app.buttons["account.logout"].tap()
       let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
       XCTAssertTrue(confirm.waitForExistence(timeout: 5))
@@ -77,6 +79,7 @@ final class HymioUITests: XCTestCase {
     app.secureTextFields["login.password"].tap()
     app.secureTextFields["login.password"].typeText(password)
     app.buttons["login.submit"].tap()
+    openChat(app)
     let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
     XCTAssertTrue(editor.waitForExistence(timeout: 40))
     editor.tap()
@@ -88,7 +91,8 @@ final class HymioUITests: XCTestCase {
 
     let fold = app.descendants(matching: .any).matching(identifier: "trace.fold").firstMatch
     XCTAssertTrue(fold.waitForExistence(timeout: 180), app.debugDescription)
-    let worked = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已工作")).firstMatch
+    let worked = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已工作"))
+      .firstMatch
     XCTAssertTrue(worked.waitForExistence(timeout: 10), app.debugDescription)
     XCTAssertTrue(worked.label.count > "已工作 ".count, worked.label)
     // 收起时过程不在无障碍树里。
@@ -112,8 +116,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.buttons["我的账号"].waitForExistence(timeout: 3) {
-      app.buttons["我的账号"].tap()
+    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
+      app.tabBars.buttons["我的"].tap()
       app.buttons["account.logout"].tap()
       XCTAssertTrue(
         app.buttons.matching(identifier: "account.confirmLogout").firstMatch.waitForExistence(
@@ -128,7 +132,7 @@ final class HymioUITests: XCTestCase {
     expectation(for: NSPredicate(format: "hittable == true"), evaluatedWith: toggle)
     waitForExpectations(timeout: 10)
     toggle.tap()
-    XCTAssertTrue(app.staticTexts["很高兴，认识你。"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["想到什么，交给 Hymio。"].waitForExistence(timeout: 5))
     let name = app.textFields["login.username"]
     XCTAssertTrue(name.waitForExistence(timeout: 10))
     name.tap()
@@ -137,6 +141,7 @@ final class HymioUITests: XCTestCase {
     pass.tap()
     pass.typeText(password)
     app.buttons["login.submit"].tap()
+    openChat(app)
     let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
     XCTAssertTrue(editor.waitForExistence(timeout: 30), app.debugDescription)
     let code = "IOS" + UUID().uuidString.prefix(6)
@@ -156,6 +161,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(reply.waitForExistence(timeout: 90), app.debugDescription)
     app.terminate()
     app.launch()
+    openChat(app)
     let restored = app.staticTexts.matching(NSPredicate(format: "label == %@", String(code)))
       .firstMatch
     XCTAssertTrue(restored.waitForExistence(timeout: 30), app.debugDescription)
@@ -177,8 +183,8 @@ final class HymioUITests: XCTestCase {
     screenshot.name = "Hymio-iOS-chat"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    app.buttons["我的账号"].tap()
-    XCTAssertTrue(app.navigationBars["我的账号"].waitForExistence(timeout: 5))
+    app.tabBars.buttons["我的"].tap()
+    XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
     let account = XCTAttachment(screenshot: app.screenshot())
     account.name = "Hymio-iOS-account"
     account.lifetime = .keepAlways
@@ -195,6 +201,12 @@ final class HymioUITests: XCTestCase {
     app.buttons.matching(identifier: "account.confirmLogout").firstMatch.tap()
     XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 10))
   }
+  @MainActor private func openChat(_ app: XCUIApplication) {
+    let tab = app.tabBars.buttons["对话"]
+    XCTAssertTrue(tab.waitForExistence(timeout: 40), app.debugDescription)
+    tab.tap()
+  }
+
   private func cleanupAccount(username: String, password: String) {
     // This test account owns every device returned here; never select by another user's ID.
     let base = "http://127.0.0.1:8080/"

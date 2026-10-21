@@ -45,7 +45,7 @@ struct MessageRow: View {
               )
               .multilineTextAlignment(.leading)
               .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.top, 8)
+              .padding(.top, 4)
             } label: {
               HStack(spacing: 7) {
                 Image(systemName: "brain").symbolEffect(
@@ -103,6 +103,7 @@ struct MessageRow: View {
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
+      .environment(\.workProcessText, compact)
       .padding(compact || reasoningOnly ? 0 : 16)
       .background {
         if !compact && !message.content.isEmpty {
@@ -227,12 +228,12 @@ private struct UserMessageContent: View {
               ProtectedImage(source: source, thumbnail: true, account: account)
             }
           }
-        }.frame(height: 80)
+        }.frame(width: CGFloat(min(parts.images.count, 3)) * 88, height: 80)
       }
       if !parts.text.isEmpty {
-        MessageContent(content: parts.text, account: account)
+        MessageContent(content: parts.text, account: account, expands: false)
           .multilineTextAlignment(.leading)
       }
-    }.frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 }

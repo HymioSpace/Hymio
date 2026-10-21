@@ -175,12 +175,14 @@ export function MessageMarkdown({ content, login }: { content: string; login: Lo
 }
 
 export function MessageView({
+  activity = false,
   message,
   tools,
   login,
   approvals,
   onAction,
 }: {
+  activity?: boolean;
   message: Message;
   tools: ToolActivity[];
   login: LoginState;
@@ -232,34 +234,36 @@ export function MessageView({
             <ToolCalls message={message} tools={tools} approvals={approvals} />
           )}
         </div>
-        <div className="message-meta">
-          <span>
-            {message.role === 'assistant' ? 'Hymio' : '你'} ·{' '}
-            {new Date(message.time).toLocaleTimeString('zh-CN', {
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-            })}
-          </span>
-          {message.delivery && (
-            <span role="status">
-              {
-                { queued: '正在发送…', accepted: '已送达', failed: '发送失败，可重试' }[
-                  message.delivery
-                ]
-              }
+        {!activity && (
+          <div className="message-meta">
+            <span>
+              {message.role === 'assistant' ? 'Hymio' : '你'} ·{' '}
+              {new Date(message.time).toLocaleTimeString('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+              })}
             </span>
-          )}
-          {message.role === 'assistant' && message.content && !message.streaming && (
-            <IconButton
-              className="copy-message"
-              onClick={() => void copy()}
-              label={copied || '复制回复'}
-            >
-              {copied === '已复制' ? <Check size={13} /> : <Copy size={13} />}
-            </IconButton>
-          )}
-        </div>
+            {message.delivery && (
+              <span role="status">
+                {
+                  { queued: '正在发送…', accepted: '已送达', failed: '发送失败，可重试' }[
+                    message.delivery
+                  ]
+                }
+              </span>
+            )}
+            {message.role === 'assistant' && message.content && !message.streaming && (
+              <IconButton
+                className="copy-message"
+                onClick={() => void copy()}
+                label={copied || '复制回复'}
+              >
+                {copied === '已复制' ? <Check size={13} /> : <Copy size={13} />}
+              </IconButton>
+            )}
+          </div>
+        )}
         <span className="sr-only" role="status">
           {copied}
         </span>

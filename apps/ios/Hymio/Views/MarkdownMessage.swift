@@ -1,15 +1,32 @@
 import MarkdownUI
 import SwiftUI
 
+private struct WorkProcessTextKey: EnvironmentKey {
+  static let defaultValue = false
+}
+extension EnvironmentValues {
+  var workProcessText: Bool {
+    get { self[WorkProcessTextKey.self] }
+    set { self[WorkProcessTextKey.self] = newValue }
+  }
+}
+
 struct MessageContent: View {
   let content: String
   @ObservedObject var account: AccountService
+  var expands = true
+  @Environment(\.workProcessText) private var workProcessText
   @State private var sharedFile: SharedAttachment?
   @State private var attachmentError = ""
 
   var body: some View {
     Markdown(content.trimmingCharacters(in: .whitespacesAndNewlines), baseURL: account.backend)
-      .markdownTheme(.hymio)
+      .markdownTheme(
+        Theme.hymio.text {
+          FontSize(workProcessText ? 15 : 17)
+          ForegroundColor(workProcessText ? Brand.muted : Brand.ink)
+        }
+      )
       .markdownImageProvider(ConversationImages(account: account))
       .markdownInlineImageProvider(ConversationInlineImages(account: account))
       .textSelection(.enabled)
@@ -30,13 +47,21 @@ struct MessageContent: View {
             ? .systemAction : .discarded
         }
       )
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(maxWidth: expands ? .infinity : nil, alignment: .leading)
       .sheet(item: $sharedFile) { file in
-        AttachmentShare(url: file.url).onDisappear { try? FileManager.default.removeItem(at: file.url.deletingLastPathComponent()) }
+        AttachmentShare(url: file.url).onDisappear {
+          try? FileManager.default.removeItem(at: file.url.deletingLastPathComponent())
+        }
       }
-      .alert("文件暂不可用", isPresented: Binding(get: { !attachmentError.isEmpty }, set: { if !$0 { attachmentError = "" } })) {
+      .alert(
+        "文件暂不可用",
+        isPresented: Binding(
+          get: { !attachmentError.isEmpty }, set: { if !$0 { attachmentError = "" } })
+      ) {
         Button("关闭", role: .cancel) { attachmentError = "" }
-      } message: { Text(attachmentError) }
+      } message: {
+        Text(attachmentError)
+      }
   }
 }
 

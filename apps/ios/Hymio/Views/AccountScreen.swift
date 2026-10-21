@@ -3,11 +3,8 @@ import SwiftUI
 struct AccountScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
-  @Environment(\.dismiss) private var dismiss
   @State private var loggingOut = false
   @State private var diagnostics = false
-  @State private var deviceBusy = false
-  @State private var deviceError = ""
   @State private var modelOptions: [String] = []
   @State private var selectedModel = ""
   @State private var modelBusy = false
@@ -20,8 +17,13 @@ struct AccountScreen: View {
       } label: {
         Label("对话模型", systemImage: "slider.horizontal.3")
       }.pickerStyle(.menu).disabled(modelBusy || modelOptions.isEmpty)
-      if !modelError.isEmpty { Text(modelError).font(.caption).foregroundStyle(.secondary) }
-    } footer: { Text("保留对话，下次发送时生效。") }
+      if !modelError.isEmpty {
+        Text(modelError).font(.caption).foregroundStyle(.secondary)
+        Button("重新读取") { Task { await loadModels() } }
+      }
+    } footer: {
+      Text("保留对话，下次发送时生效。")
+    }
     .task { await loadModels() }
   }
   private func loadModels() async {
@@ -29,6 +31,7 @@ struct AccountScreen: View {
       let value = try await account.request("settings/models")
       modelOptions = value["models"].items.map { $0.text }
       selectedModel = value["selected"].text
+      modelError = ""
     } catch { modelError = "暂时无法读取模型设置" }
   }
   private func saveModel(_ model: String) {
@@ -48,9 +51,9 @@ struct AccountScreen: View {
       List {
         Section {
           HStack(spacing: 14) {
-            Companion(size: 48)
+            Companion(size: 64)
             VStack(alignment: .leading, spacing: 5) {
-              Text(account.session?.name ?? "Hymio").font(.headline)
+              Text(account.session?.displayName ?? "我的账号").font(.headline)
               Text("在不同设备上，继续同一段对话。").font(.caption).foregroundStyle(.secondary)
             }
           }.padding(.vertical, 6)
@@ -64,7 +67,10 @@ struct AccountScreen: View {
                   ? "desktopcomputer" : device["kind"].text == "ios" ? "iphone" : "globe"
               ).frame(width: 24).foregroundStyle(.secondary)
               VStack(alignment: .leading, spacing: 5) {
-                Text(device["name"].text).font(.subheadline.weight(.medium))
+                Text(
+                  device["kind"].text == "cloud_desktop"
+                    ? "云电脑" : device["kind"].text == "ios" ? "iPhone" : device["name"].text
+                ).font(.subheadline.weight(.medium))
                 Text(
                   device["online"].flag
                     ? "在线" : device["state"].text == "paused" ? "已暂停 · 使用时恢复" : "暂不可用"
@@ -88,34 +94,17 @@ struct AccountScreen: View {
             Text(client.devicesError).font(.footnote).foregroundStyle(Brand.muted)
             Button("重新读取") { Task { await client.loadDevices() } }
           }
-          if !client.devices.contains(where: {
-            $0["kind"].text == "cloud_desktop" && $0["online"].flag
-          }) {
-            Button {
-              deviceBusy = true
-              deviceError = ""
-              Task {
-                defer { deviceBusy = false }
-                do {
-                  _ = try await account.request("devices/ensure", body: .object([:]), timeout: 130)
-                  await client.loadDevices()
-                } catch { deviceError = error.localizedDescription }
-              }
-            } label: {
-              HStack {
-                Text("准备可用云电脑")
-                Spacer()
-                if deviceBusy { ProgressView() }
-              }
-            }.disabled(deviceBusy)
-          }
-          if !deviceError.isEmpty { Text(deviceError).font(.caption).foregroundStyle(.secondary) }
         } header: {
           Text("我的设备")
         } footer: {
           Text("iPhone 只用于对话。云电脑负责执行命令、浏览网页和操作桌面。")
         }
         Section {
+          NavigationLink {
+            TraceScreen(account: account, client: client)
+          } label: {
+            Label("工作记录", systemImage: "clock.arrow.circlepath")
+          }
           Button {
             diagnostics = true
           } label: {
@@ -128,12 +117,11 @@ struct AccountScreen: View {
           }.accessibilityIdentifier("account.logout")
         }
       }
-      .navigationTitle("我的账号").navigationBarTitleDisplayMode(.inline)
-      .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+      .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
       .task {
         while !Task.isCancelled {
           await client.loadDevices()
-          try? await Task.sleep(for: .seconds(15))
+          do { try await Task.sleep(for: .seconds(15)) } catch { return }
         }
       }
       .refreshable { await client.loadDevices() }
@@ -142,7 +130,6 @@ struct AccountScreen: View {
       ) {
         Button("退出登录", role: .destructive) {
           client.reset()
-          dismiss()
           Task { await account.logout() }
         }.accessibilityIdentifier("account.confirmLogout")
       }

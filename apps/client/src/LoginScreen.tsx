@@ -36,8 +36,8 @@ export function LoginScreen({ login }: { login: LoginState }) {
         <div className="login-companion">
           <Companion mood="idle" />
         </div>
-        <h1 id="login-heading">你好，我是 Hymio。</h1>
-        <p className="login-description">一个 Hymio，随时接着聊。</p>
+        <h1 id="login-heading">想到什么，交给 Hymio。</h1>
+        <p className="login-description">对话随时继续，交代的事也会继续推进。</p>
         {method === 'account' ? (
           <form
             className="account-form"
@@ -114,7 +114,7 @@ export function LoginScreen({ login }: { login: LoginState }) {
             </Button>
             {signupAllowed && (
               <p className="login-help">
-                {mode === 'signup' ? '已有账号？' : '第一次来？'}
+                {mode === 'signup' ? '已有账号？' : '还没有账号？'}
                 <button
                   type="button"
                   disabled={login.busy}
@@ -150,7 +150,6 @@ export function LoginScreen({ login }: { login: LoginState }) {
           </p>
         )}
       </section>
-      <footer className="login-footer">属于你的对话，随时继续。</footer>
     </main>
   );
 }

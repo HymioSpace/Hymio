@@ -1,4 +1,5 @@
 import hashlib
+import re
 import secrets
 import sqlite3
 import time
@@ -13,6 +14,21 @@ def digest(value):
 
 def token():
     return secrets.token_urlsafe(32)
+
+
+def display_name(claims):
+    for key in ("name", "preferred_username", "nickname"):
+        value = claims.get(key)
+        if (
+            isinstance(value, str)
+            and value.strip()
+            and not re.fullmatch(
+                r"[0-9a-fA-F]{32}|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+                value.strip(),
+            )
+        ):
+            return value.strip()[:160]
+    return "我的账号"
 
 
 class Unauthorized(Exception):
@@ -105,7 +121,7 @@ class SessionStore:
         db.execute(
             "INSERT INTO users VALUES(?,?,?,?) ON CONFLICT(issuer,subject) "
             "DO UPDATE SET name=excluded.name",
-            (uuid.uuid4().hex, issuer, subject, str(claims.get("name") or subject)),
+            (uuid.uuid4().hex, issuer, subject, display_name(claims)),
         )
         return db.execute(
             "SELECT user_id FROM users WHERE issuer=? AND subject=?", (issuer, subject)

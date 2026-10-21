@@ -1895,7 +1895,7 @@ a {
 
 /* 一次工作：用户消息在上，过程收成一行，最终回复留在下面。 */
 .trace-fold {
-  margin: -8px 0 20px;
+  margin: -8px 0 8px;
   max-width: min(640px, 100%);
 }
 .trace-fold > summary {
@@ -1936,7 +1936,7 @@ a {
   background: var(--subtle);
 }
 .trace-live {
-  margin: -8px 0 16px;
+  margin: -8px 0 8px;
   color: var(--muted);
   font-size: 12px;
 }
@@ -3258,5 +3258,11 @@ a {
   min-height: 44px;
 }
 .task-state.expired {
+  color: var(--muted);
+}
+
+.trace-fold-body .message-bubble {
+  font-size: 14px;
+  line-height: 1.65;
   color: var(--muted);
 }

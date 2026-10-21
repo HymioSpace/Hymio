@@ -33,6 +33,7 @@
 		AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D85FDC20A5009A0CDA661C; };
 		22BAD4A10E82A26B49A7DCD6 /* Turns.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6FBE11B38B83545FC62260 /* Turns.swift */; };
 		527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1419663CB9F728D5B1A10D48 /* TraceRow.swift */; };
+		BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31402 /* ProductShell.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +76,7 @@
 		C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TraceScreen.swift; path = Views/TraceScreen.swift; sourceTree = "<group>"; };
 		DE6FBE11B38B83545FC62260 /* Turns.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Turns.swift; path = Core/Turns.swift; sourceTree = "<group>"; };
 		1419663CB9F728D5B1A10D48 /* TraceRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TraceRow.swift; path = Views/TraceRow.swift; sourceTree = "<group>"; };
+		BDA902D5620B4EAE99A31402 /* ProductShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProductShell.swift; path = Views/ProductShell.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -151,6 +153,7 @@
 				69CFA0574482053C3DD45B96 /* AccountScreen.swift */,
 				A08D683071705B687119808D /* ChatScreen.swift */,
                 B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
+				BDA902D5620B4EAE99A31402 /* ProductShell.swift */,
 				14915AB0360238B6E30C3640 /* Companion.swift */,
 				1419663CB9F728D5B1A10D48 /* TraceRow.swift */,
 				9EF407C74ED7B6555E82B58A /* LoginScreen.swift */,
@@ -304,6 +307,7 @@
 				208550A64016FE008FF214B4 /* AccountScreen.swift in Sources */,
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
                 B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
+				BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */,
 				2C7DEF380E999F886E17F4CC /* Companion.swift in Sources */,
 				527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */,
 				77D9C0B959C7A3DE1B99ABD8 /* LoginScreen.swift in Sources */,

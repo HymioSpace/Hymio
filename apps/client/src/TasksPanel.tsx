@@ -54,10 +54,18 @@ function scheduleLabel(s: Schedule) {
       ? new Date(s.at!).toLocaleString()
       : `${s.mode === 'daily' ? '每天' : ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][s.weekday || 0]} ${s.time} · ${s.timezone}`;
 }
-export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () => void }) {
+export function TasksPanel({
+  login,
+  onClose,
+  initialSelected = '',
+}: {
+  login: LoginState;
+  onClose: () => void;
+  initialSelected?: string;
+}) {
   const [tasks, setTasks] = useState<Work[]>([]),
-    [selected, setSelected] = useState(''),
-    [filter, setFilter] = useState('all');
+    [selected, setSelected] = useState(initialSelected),
+    [filter, setFilter] = useState('active');
   const [editing, setEditing] = useState<Work | 'new' | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
@@ -152,19 +160,19 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
   const visible = tasks.filter(
     (t) =>
       filter === 'all' ||
+      (filter === 'scheduled' && ['scheduled', 'paused'].includes(status(t))) ||
       (filter === 'done'
-        ? status(t) === 'succeeded'
-        : !['succeeded', 'failed', 'expired', 'cancelled'].includes(status(t))),
+        ? ['succeeded', 'expired', 'cancelled'].includes(status(t))
+        : filter === 'active' && !['succeeded', 'expired', 'cancelled'].includes(status(t))),
   );
   return (
     <Sheet className="tasks-dialog" labelledBy="tasks-title" onClose={onClose}>
       <header className="tasks-header">
         <div>
-          <span className="tasks-eyebrow">A LITTLE FURTHER, EVERY DAY</span>
           <h2 id="tasks-title">
             交给 Hymio 的事<span className="tasks-count">{tasks.length}</span>
           </h2>
-          <p>聊天里交给我的事，进展和结果都在这里。</p>
+          <p>进展、下一步，还有带回来的结果。</p>
         </div>
         <IconButton label="关闭任务" onClick={onClose}>
           <X size={20} />
@@ -190,9 +198,9 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
             <div className="tasks-list-toolbar">
               <div className="tasks-filters" aria-label="筛选任务">
                 {[
-                  ['all', '全部'],
                   ['active', '待推进'],
-                  ['done', '已完成'],
+                  ['scheduled', '待开始'],
+                  ['done', '已有结果'],
                 ].map(([key, label]) => (
                   <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
                     {label}
@@ -227,39 +235,49 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
               </div>
             )}
             <div className="task-cards">
-              {visible.map((t) => {
-                const state = status(t);
-                return (
-                  <button
-                    className={`task-card ${selected === t.id ? 'selected' : ''}`}
-                    key={t.id}
-                    onClick={() => setSelected(t.id)}
-                  >
-                    <span className={`task-state-icon ${state}`}>
-                      {state === 'succeeded' ? (
-                        <Check size={16} />
-                      ) : state === 'running' ? (
-                        <Sparkles size={16} />
-                      ) : (
-                        <Clock3 size={16} />
-                      )}
-                    </span>
-                    <span className="task-card-copy">
-                      <span className="task-card-title">{t.title}</span>
-                      <span className="task-card-preview">
-                        {t.runs[0]?.result || t.runs[0]?.progress || t.objective}
+              {[...visible]
+                .sort((a, b) => {
+                  const rank = (v: Work) =>
+                    ['blocked', 'failed'].includes(status(v))
+                      ? 0
+                      : ['running', 'ready', 'delivering'].includes(status(v))
+                        ? 1
+                        : 2;
+                  return rank(a) - rank(b);
+                })
+                .map((t) => {
+                  const state = status(t);
+                  return (
+                    <button
+                      className={`task-card ${selected === t.id ? 'selected' : ''}`}
+                      key={t.id}
+                      onClick={() => setSelected(t.id)}
+                    >
+                      <span className={`task-state-icon ${state}`}>
+                        {state === 'succeeded' ? (
+                          <Check size={16} />
+                        ) : state === 'running' ? (
+                          <Sparkles size={16} />
+                        ) : (
+                          <Clock3 size={16} />
+                        )}
                       </span>
-                      <span className="task-card-meta">
-                        <span className={`task-state ${state}`}>{labels[state] || state}</span>
-                        <span>
-                          {t.source === 'conversation' ? '来自对话' : scheduleLabel(t.schedule)}
+                      <span className="task-card-copy">
+                        <span className="task-card-title">{t.title}</span>
+                        <span className="task-card-preview">
+                          {t.runs[0]?.result || t.runs[0]?.progress || t.objective}
+                        </span>
+                        <span className="task-card-meta">
+                          <span className={`task-state ${state}`}>{labels[state] || state}</span>
+                          <span>
+                            {t.source === 'conversation' ? '来自对话' : scheduleLabel(t.schedule)}
+                          </span>
                         </span>
                       </span>
-                    </span>
-                    <ChevronRight size={14} />
-                  </button>
-                );
-              })}
+                      <ChevronRight size={14} />
+                    </button>
+                  );
+                })}
             </div>
           </section>
           <section className="task-detail" aria-label="任务详情">
@@ -320,7 +338,9 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                   ) : (
                     <>
                       {task.source !== 'conversation' &&
-                        !['succeeded', 'failed', 'expired', 'cancelled'].includes(run?.status || '') && (
+                        !['succeeded', 'failed', 'expired', 'cancelled'].includes(
+                          run?.status || '',
+                        ) && (
                           <button
                             disabled={busy}
                             onClick={() => void change({ action: 'pause', task_id: task.id })}
