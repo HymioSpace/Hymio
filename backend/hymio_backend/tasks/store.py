@@ -303,7 +303,7 @@ class TaskStore:
             )
             if action != "resume":
                 db.execute(
-                    "UPDATE task_runs SET status='cancelled',finished_at=?,lease_until=0 "
+                    "UPDATE task_runs SET status='cancelled',finished_at=?,lease_until=0,notice='' "
                     f"WHERE task_id=? AND status IN {statuses}",
                     (time.time(), tid),
                 )
@@ -469,6 +469,8 @@ class TaskStore:
                     "UPDATE task_runs SET start_invocation_id=?,notice='' WHERE id=?",
                     (invocation_id, rid),
                 )
+            if notice is None:
+                db.execute("UPDATE task_runs SET notice='' WHERE id=?", (rid,))
             if notice:
                 db.execute(
                     "UPDATE task_runs SET notice=?,notice_sent=0,"
