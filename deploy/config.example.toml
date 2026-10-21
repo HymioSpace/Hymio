@@ -1,0 +1,21 @@
+# Copy to ~/.hymio/config.toml, or run hymio init.
+# This is the only file to copy to a NEW computer for a fresh installation.
+# Never commit your filled-in file. chmod 600 ~/.hymio/config.toml
+# Environment variables MINIMAX_API_KEY / E2B_API_KEY override these values.
+minimax_api_key = ""
+e2b_api_key = ""
+
+# MiniMax China API key: https://platform.minimax.cn/login
+# For an international key, use its matching API endpoint.
+minimax_api_base = "https://api.minimax.cn/v1"
+models = ["MiniMax-M2.7", "MiniMax-M3"]
+vision_model = "MiniMax-M3"
+
+# E2B key: https://console.e2b.dev/ — absent template is built automatically.
+e2b_template = "hymio-desktop"
+# Keep this on 8000, or choose 8001 if another application uses 8000.
+casdoor_port = 8000
+# off: this computer only; auto: also derive iPhone/LAN network settings.
+lan_host = "off"
+# Optional reusable signup codes; empty means local signup needs no invitation.
+invitation_codes = []

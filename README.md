@@ -59,14 +59,21 @@ Hymio's deployment layer starts the local backend, Casdoor and Oath; Nostalgia r
 
 ## Start here
 
-For a complete local login-enabled stack, complete the one-time setup in the
-[deployment guide](deploy/README.md), then run from the repository root:
+For a local stack, install Docker, uv, Node.js and pnpm, and install Oath from the adjacent
+[Oath checkout](https://github.com/HymioSpace/Oath). Then run from this repository:
 
 ```bash
 bash scripts/hymio-install
-hymio start
+hymio init                         # Hidden prompts: MiniMax API key + E2B API key
+hymio start --timeout 900
 # Desktop instead: --client desk; services only: --client none
 ```
+
+**One private file: `~/.hymio/config.toml`.** Edit it for model choices, optional invitation codes,
+Casdoor port or LAN access. Copy it to another computer for a fresh installation; internal
+credentials and Casdoor configuration initialize automatically. Existing accounts/history require
+a separate data migration. See the [setup and migration guide](deploy/README.md#first-run-one-private-configuration)
+for key links, required fields and compatibility with existing configurations.
 
 The launcher starts Casdoor, Backend and Oath before the chosen development client.
 `hymio status`, `hymio logs -f`, `hymio stop` and `hymio restart` manage the local stack. Stop leaves Oath/Casdoor and accepted Agent work running.

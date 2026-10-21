@@ -21,7 +21,7 @@ preferences = home / 'preferences.json'
 if not preferences.exists() and shutil.which('docker'):
     try:
         result = subprocess.run(
-            ['docker', 'ps', '--filter', 'publish=8000', '--format', '{{.Label "com.docker.compose.project"}}'],
+            ['docker', 'ps', '--filter', 'publish=8000', '--filter', 'label=com.docker.compose.service=casdoor', '--format', '{{.Label "com.docker.compose.project"}}'],
             capture_output=True, text=True, timeout=10, check=False,
         )
         projects = set(result.stdout.split())
@@ -32,6 +32,7 @@ if not preferences.exists() and shutil.which('docker'):
         preferences.chmod(0o600)
 print('Installed hymio. Keep this source checkout in place.')
 print('If not on PATH: uv tool update-shell, then reopen your terminal.')
-print('Use: hymio start --client web | hymio status | hymio logs -f')
+print('New computer: hymio init (MiniMax + E2B keys), then hymio start --timeout 900')
+print('Existing installation: hymio start | hymio status | hymio logs -f')
 print('Existing Casdoor data under hymio-auth-dev? Start with --auth-project hymio-auth-dev.')
 PY

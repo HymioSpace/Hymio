@@ -81,3 +81,5 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 原生双端交互卡片、流式展示缓冲与独立 Trace 页面见 [feature20](feature20-progressive-ui.md)。
 
 Model preferences and private attachment/media processing are owned by Hymio Backend; see [models and media](feature22-models-and-media.md).
+
+本地统一私有配置、自动身份初始化与新电脑部署见 [feature24](feature24-local-bootstrap.md)。

@@ -26,15 +26,30 @@ def options(args, root, previous):
         "oath_config": str(Path.home() / ".oath/oath.toml"),
         "auth_project": "hymio-auth",
         "deploy_config": str(root / "deploy/local.toml"),
+        "config": None,
     }
-    return {
-        key: (
-            str(getattr(args, key))
-            if getattr(args, key) is not None
-            else previous.get(key, value)
+    legacy = any(
+        getattr(args, k, None)
+        for k in ("backend_config", "oath_config", "auth_project", "deploy_config")
+    )
+    default_config = (
+        args.home.expanduser() / "config.toml"
+        if getattr(args, "home", None)
+        else Path.home() / ".hymio/config.toml"
+    )
+    if default_config.exists() and not legacy:
+        defaults["config"] = str(default_config.resolve())
+    if legacy:
+        previous = {**previous, "config": None}
+    settings = {}
+    for key, default in defaults.items():
+        explicit = getattr(args, key, None)
+        settings[key] = (
+            str(explicit) if explicit is not None else previous.get(key, default)
         )
-        for key, value in defaults.items()
-    }
+        if key == "config" and not settings[key] and not legacy:
+            settings[key] = default
+    return settings
 
 
 def start(home, root, args, state, restarting=False):
@@ -81,6 +96,12 @@ def start(home, root, args, state, restarting=False):
         str(home / "ready.json"),
     ]
     for key, value in settings.items():
+        if value is None or (
+            settings.get("config")
+            and key
+            in ("backend_config", "oath_config", "auth_project", "deploy_config")
+        ):
+            continue
         command.extend(["--" + key.replace("_", "-"), value])
     log = home / "hymio.log"
     with log.open("ab") as output:
@@ -131,7 +152,7 @@ def start(home, root, args, state, restarting=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("start", "stop", "restart", "status", "logs")
+        "command", choices=("init", "start", "stop", "restart", "status", "logs")
     )
     parser.add_argument("--home", type=Path, default=Path.home() / ".hymio")
     parser.add_argument("--client", choices=("web", "desk", "none"))
@@ -140,6 +161,16 @@ def main():
     )
     parser.add_argument(
         "--oath-config", type=lambda p: str(Path(p).expanduser().resolve())
+    )
+    parser.add_argument(
+        "--config",
+        type=lambda p: str(Path(p).expanduser().resolve()),
+        help="Single portable deployment configuration",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Initialize from environment variables",
     )
     parser.add_argument("--auth-project")
     parser.add_argument(
@@ -155,6 +186,17 @@ def main():
             raise ValueError("--timeout must be positive")
         home = args.home.expanduser().resolve()
         home.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if args.config and any(
+            (
+                args.backend_config,
+                args.oath_config,
+                args.auth_project,
+                args.deploy_config,
+            )
+        ):
+            raise ValueError(
+                "Use --config or legacy service/deployment overrides, not both"
+            )
         if args.command == "logs":
             log = home / "hymio.log"
             if not log.exists():
@@ -232,6 +274,25 @@ def main():
                 raise RuntimeError(
                     "Run bash scripts/hymio-install from the source checkout first"
                 )
+            if args.command == "init":
+                if alive(state):
+                    raise RuntimeError(
+                        "Stop the managed launcher before initializing a different configuration"
+                    )
+                subprocess.run(
+                    [
+                        sys.executable,
+                        str(root / "deploy/init.py"),
+                        "--config",
+                        args.config or str(home / "config.toml"),
+                        *(["--non-interactive"] if args.non_interactive else []),
+                    ],
+                    check=True,
+                )
+                settings = options(args, root, read(home / "preferences.json"))
+                settings["config"] = args.config or str(home / "config.toml")
+                save(home / "preferences.json", settings)
+                return
             start(home, root, args, state, restarting=args.command == "restart")
     except KeyboardInterrupt:
         print("\nUse hymio status to check background services.")

@@ -8,7 +8,14 @@ from e2b import Template
 parser = argparse.ArgumentParser()
 parser.add_argument("--key-file", type=Path, required=True)
 parser.add_argument("--name", default="hymio-desktop")
+parser.add_argument(
+    "--ensure", action="store_true", help="Build only if the template alias is absent"
+)
 args = parser.parse_args()
+key = args.key_file.read_text().strip()
+if args.ensure and Template.exists(args.name, api_key=key):
+    print("E2B template available: " + args.name)
+    raise SystemExit(0)
 template = (
     Template()
     .from_template("desktop")
@@ -19,4 +26,4 @@ template = (
         user="root",
     )
 )
-Template.build(template, alias=args.name, api_key=args.key_file.read_text().strip())
+Template.build(template, alias=args.name, api_key=key)

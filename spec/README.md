@@ -4,6 +4,7 @@
 
 | 编号 | 方案 | 状态 |
 | --- | --- | --- |
+| 24 | [Portable local deployment](feature24-local-bootstrap.md) | Implemented |
 | 01 | [导入与同步](feature01-context-ingress.md) | Draft |
 | 02 | [身份、Agent 与渠道](feature02-agent-channels.md) | Draft |
 | 03 | [Kit 注册、调用与跨端使用](feature03-kits.md) | Draft |

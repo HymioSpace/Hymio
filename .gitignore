@@ -111,3 +111,7 @@ xcuserdata/
 /deploy/local.toml
 /apps/ios/Config/Network.generated.xcconfig
 /backend/hymio-media.local.toml
+
+# Optional in-checkout unified deployment input and its generated runtime
+/deploy/config.toml
+/deploy/local-*/
