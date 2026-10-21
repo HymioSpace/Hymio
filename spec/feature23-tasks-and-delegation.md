@@ -25,7 +25,7 @@ flowchart LR
 Tasks are owned by user_id. They contain title, objective, success criteria, schedule and state.
 Runs contain admission time, execution status, findings, final result and an optional agent_id.
 Task states: active, paused, cancelled, archived. Run states: scheduled, delivering, ready,
-running, blocked, succeeded, failed, cancelled. No fabricated percentage represents progress.
+running, blocked, succeeded, failed, cancelled, expired. No fabricated percentage represents progress.
 A one-time task has one run; recurrence plans its next run after the active attempt terminates.
 
 CRUD, start, progress, finish and delegate use the same owner-scoped service for clients and tools.
@@ -99,7 +99,31 @@ matching delegation/application-event contract. Old runtime binaries cannot serv
 
 ## Presentation
 
+Completed turns keep all reasoning, including reasoning from the final step, inside the work disclosure. Only final answer content stays outside. This is a client projection: stored messages remain intact, streaming stays live, and reasoning-only endings do not create empty answer cards.
+
 Chat work disclosures use a compact, bordered process region with distinct summary/body styles.
+Reasoning uses the same plain disclosure row as tools, without a separate card or message metadata; details expand inline.
 Assistant answers sit on a subtle adaptive surface; process rows avoid repeated nested answer cards.
 Web Trace fills the available content width; JSON branches distinguish container depth and literal
 value types without relying only on color. Reduced motion and native Dynamic Type remain supported.
+
+## Reconciliation and conversation boundaries
+
+Task kind is `task` or `reminder`. A reminder completes when its execution produces a durable final
+reply, not when a phone acknowledges reading it. General work requires an explicit outcome; a final
+reply without a task outcome is reconciled to blocked, never inferred as successful.
+
+Each occurrence has a start deadline (`due_at + schedule.grace_seconds`, default 15 minutes).
+Scheduled, delivering and ready occurrences outside that window become expired transactionally;
+the next recurring occurrence is planned without replaying every missed occurrence. Start rechecks
+the deadline. Active work has an inactivity limit (`schedule.run_timeout_seconds`, default one hour)
+and becomes blocked if no progress is recorded. Expiry and missing closure produce durable,
+idempotent system notices. Each run receives at most one automatic reconciliation intervention,
+so missing model bookkeeping cannot create a wakeup loop. Later state changes remain visible in
+the task panel. Reconciliation runs without an attached client and survives restarts.
+
+A completed assistant answer closes its presentation segment even if later proactive execution
+reuses the same trace ID. Replay boundaries are client-specific and display a divider for unread
+assistant answers; they do not alter runtime trace identity. Failed local sends retain their original
+chronological position and offer explicit retry/remove actions. Retry preserves the command ID and
+payload, so an ambiguous network failure cannot duplicate an accepted user request.

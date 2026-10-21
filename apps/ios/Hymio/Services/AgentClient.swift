@@ -16,6 +16,7 @@ import UIKit
   private var loop: Task<Void, Never>?
   private var persistence: Task<Void, Never>?
   private var socket: URLSessionWebSocketTask?
+  private var replayAfter: Int?
   private var sent: Set<String> = []
   private var generation = UUID()
   private var owner = ""
@@ -106,6 +107,7 @@ import UIKit
         socket = ws
         sent = []
         ready = false
+        replayAfter = state.cursor > 0 ? state.cursor : nil
         ws.resume()
         try await send(
           Command(
@@ -260,6 +262,8 @@ import UIKit
       }
       phase = "正在同步进展"
     case "offline.end":
+      state.finishReplay(after: replayAfter)
+      replayAfter = nil
       ready = true
       phase = "随时在这里"
       error = ""
@@ -301,12 +305,51 @@ import UIKit
       }
     }
   }
-  func retryDelivery() {
+  var unread: (turnID: String, count: Int)? {
+    guard let after = state.unreadAfter, let through = state.unreadThrough else { return nil }
+    let messages = model.messages.filter {
+      $0.role == "assistant" && $0.eventSeq > after && $0.eventSeq <= through && !$0.content.isEmpty
+        && $0.calls.isEmpty && !$0.streaming
+    }
+    guard let first = messages.first,
+      let turn = model.turns.first(where: {
+        $0.final?.id == first.id || $0.activity.contains(where: { $0.id == first.id })
+          || $0.trailing.contains(where: { $0.id == first.id })
+      })
+    else { return nil }
+    return (turn.id, messages.count)
+  }
+  func markRead() {
     var next = state
-    next.rejected = []
+    next.unreadAfter = nil
+    next.unreadThrough = nil
+    do { try commit(next) } catch { self.error = error.localizedDescription }
+  }
+  func discardDelivery(_ messageID: String) {
+    let id = String(messageID.dropFirst("local:".count))
+    guard (state.rejected ?? []).contains(id), !(state.accepted ?? []).contains(id) else { return }
+    var next = state
+    next.pending.removeAll { $0.id == id }
+    next.rejected?.remove(id)
+    do { try commit(next) } catch { self.error = error.localizedDescription }
+  }
+  func retryDelivery(_ messageID: String? = nil) {
+    var next = state
+    let ids: Set<String> =
+      messageID.map { [String($0.dropFirst("local:".count))] } ?? (next.rejected ?? [])
+    next.rejected = (next.rejected ?? []).subtracting(ids)
+    next.accepted = (next.accepted ?? []).subtracting(ids)
+    error = ""
     do {
       try commit(next)
-      reconnect()
+      sent.subtract(ids)
+      if ready, let socket {
+        Task {
+          do { try await flush(socket) } catch { reconnect() }
+        }
+      } else {
+        reconnect()
+      }
     } catch { self.error = error.localizedDescription }
   }
   private func ack(_ ws: URLSessionWebSocketTask) async throws {

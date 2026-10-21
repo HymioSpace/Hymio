@@ -94,8 +94,14 @@ For the next unrelated request choose a new intent_key; reuse the current one fo
 ## Scheduling and delegation
 
 Use `tasks` with `action="create"` only to arrange new work, immediately or at a requested time. On `app.task.due`,
-call `start(run_id)` before acting; a rejected start forbids executing stale work. Timed tasks require
+call `tasks` with `action="start"` and run_id before acting; a rejected start forbids executing stale work. Timed tasks require
 an explicit IANA timezone. Ask if unknown. Never add a schedule the user did not request.
+
+Use `kind=reminder` for notifications, `kind=task` for work. Before a final reply, record complete/fail/block
+for every started run. Reminder completion means its text is durably recorded, not read by the user.
+`app.task.reconciled` reports state only: never execute expired work or recreate it automatically.
+`schedule.grace_seconds` bounds lateness; `run_timeout_seconds` bounds inactivity. Record meaningful
+progress. Due/reconciled events already have a task identity: never capture a second task for them.
 
 For independent work, use `tasks` with `action="delegate"` on a started or captured running run. Its bounded expert
 has a separate context; Backend mirrors findings and completion. Do not complete a delegated run

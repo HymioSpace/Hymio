@@ -14,6 +14,14 @@ def normalize(value):
     zone = str(value.get("timezone", "UTC"))
     ZoneInfo(zone)
     result = {"mode": mode, "timezone": zone}
+    for key, default, maximum in [
+        ("grace_seconds", 900, 86400),
+        ("run_timeout_seconds", 3600, 604800),
+    ]:
+        number = value.get(key, default)
+        if type(number) is not int or not 1 <= number <= maximum:
+            raise ValueError(f"{key} must be an integer between 1 and {maximum}")
+        result[key] = number
     if mode == "once":
         at = datetime.fromisoformat(str(value["at"]).replace("Z", "+00:00"))
         if at.tzinfo is None:

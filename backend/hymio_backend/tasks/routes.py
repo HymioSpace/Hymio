@@ -50,7 +50,9 @@ def task_routes(settings, sessions, service, bearer, body):
             elif action in {"pause", "resume", "cancel", "delete"}:
                 result = await asyncio.to_thread(store.control, uid, data["task_id"], action)
             elif action == "start":
-                result = await asyncio.to_thread(store.start, uid, data["run_id"])
+                result = await asyncio.to_thread(
+                    store.start, uid, data["run_id"], data.get("request_id") if internal else None
+                )
             elif action == "delegate":
                 result = await service.delegate(uid, data["run_id"])
             elif action in {"progress", "complete", "fail", "block"}:
@@ -69,6 +71,7 @@ def task_routes(settings, sessions, service, bearer, body):
                     data.get("note_id") or uuid.uuid4().hex,
                     phase=data.get("phase"),
                     next_step=data.get("next_step"),
+                    invocation_id=data.get("request_id") if internal else None,
                 )
             else:
                 raise ValueError("Unknown action")

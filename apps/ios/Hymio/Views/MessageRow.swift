@@ -7,6 +7,11 @@ struct MessageRow: View {
   var onAction: (String) async throws -> Void = { _ in }
   @ObservedObject var account: AccountService
   var compact = false
+  var onRetry: (String) -> Void = { _ in }
+  var onDiscard: (String) -> Void = { _ in }
+  private var reasoningOnly: Bool {
+    !message.reasoning.isEmpty && message.content.isEmpty && message.calls.isEmpty
+  }
   @State private var expanded = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
@@ -17,7 +22,13 @@ struct MessageRow: View {
           UserMessageContent(content: message.content, account: account)
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
-          if let delivery = message.delivery {
+          if message.delivery == "failed" {
+            HStack(spacing: 16) {
+              Label("未发送", systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
+              Button("重试") { onRetry(message.id) }
+              Button("移除", role: .destructive) { onDiscard(message.id) }
+            }.font(.caption).frame(minHeight: 44)
+          } else if let delivery = message.delivery {
             Text(["queued": "正在发送…", "accepted": "已送达", "failed": "发送失败，可重试"][delivery] ?? "")
               .font(.caption).foregroundStyle(.secondary)
           }
@@ -34,6 +45,7 @@ struct MessageRow: View {
               )
               .multilineTextAlignment(.leading)
               .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.top, 8)
             } label: {
               HStack(spacing: 7) {
                 Image(systemName: "brain").symbolEffect(
@@ -41,9 +53,7 @@ struct MessageRow: View {
                 Text(message.thinking ? "正在思考…" : "思考过程")
               }.font(.caption).foregroundStyle(.secondary)
             }.tint(Brand.muted)
-              .padding(11).background(
-                Brand.surface.opacity(0.8), in: RoundedRectangle(cornerRadius: 11)
-              )
+              .frame(minHeight: 44, alignment: .leading)
               .accessibilityIdentifier("message.reasoning")
           }
           if message.streaming && message.content.isEmpty && message.reasoning.isEmpty {
@@ -93,9 +103,9 @@ struct MessageRow: View {
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
-      .padding(compact ? 0 : 16)
+      .padding(compact || reasoningOnly ? 0 : 16)
       .background {
-        if !compact && (!message.content.isEmpty || !message.reasoning.isEmpty) {
+        if !compact && !message.content.isEmpty {
           RoundedRectangle(cornerRadius: 18).fill(Brand.mist.opacity(0.7))
         }
       }

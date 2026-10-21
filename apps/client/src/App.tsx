@@ -53,6 +53,16 @@ export default function App() {
     () => conversation(state.events, state.pending),
     [state.events, state.pending],
   );
+  const unreadMessages = model.messages.filter(
+    (m) =>
+      state.unread &&
+      m.role === 'assistant' &&
+      !m.streaming &&
+      !m.calls?.length &&
+      m.content &&
+      (m.eventSeq ?? 0) > state.unread.after &&
+      (m.eventSeq ?? 0) <= state.unread.through,
+  );
   const [connection, setConnection] = useState<Connection>({
     wsUrl: '',
     bizUrl: '',
@@ -475,18 +485,29 @@ export default function App() {
                 </div>
               )}
               {buildTurns(model.messages).map((turn) => (
-                <TraceBlock
-                  key={turn.id}
-                  turn={turn}
-                  tools={model.tools}
-                  login={login}
-                  approvals={model.approvals}
-                  onAction={async (text) => {
-                    following.current = true;
-                    setNearBottom(true);
-                    await client.message(text);
-                  }}
-                />
+                <div key={turn.id}>
+                  {unreadMessages[0] && turn.final?.id === unreadMessages[0].id && (
+                    <div className="unread-divider">
+                      <span />
+                      <button onClick={() => client.markRead()}>
+                        {unreadMessages.length} 条未读消息
+                      </button>
+                      <span />
+                    </div>
+                  )}
+                  <TraceBlock
+                    key={turn.id}
+                    turn={turn}
+                    tools={model.tools}
+                    login={login}
+                    approvals={model.approvals}
+                    onAction={async (text) => {
+                      following.current = true;
+                      setNearBottom(true);
+                      await client.message(text);
+                    }}
+                  />
+                </div>
               ))}
               {unattachedTools.length > 0 && (
                 <div className="work-summary">

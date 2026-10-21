@@ -6,6 +6,8 @@ struct TraceRow: View {
   let tools: [String: JSON]
   var approvals: [Approval] = []
   var onAction: (String) async throws -> Void = { _ in }
+  var onRetry: (String) -> Void = { _ in }
+  var onDiscard: (String) -> Void = { _ in }
   @ObservedObject var account: AccountService
   @State private var expanded = false
   /// 最新一条事件到达的时刻。用它把客户端的墙上时钟折回服务端，再让秒针自己走。
@@ -55,7 +57,7 @@ struct TraceRow: View {
   private func row(_ message: ChatMessage, compact: Bool = false) -> some View {
     MessageRow(
       message: message, tools: tools, approvals: approvals, onAction: onAction, account: account,
-      compact: compact
+      compact: compact, onRetry: onRetry, onDiscard: onDiscard
     )
     .id(message.id)
   }

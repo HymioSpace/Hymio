@@ -20,8 +20,9 @@ class TasksTool(Tool):
             "capture(title, objective, success_criteria, intent_key): records an already admitted running task, "
             "NEVER dispatches it again. Reuse the intent_key for the same outcome; use returned run_id for updates. "
             "For a quick task capture with status=succeeded and content=result. "
+            "Use kind=reminder for notifications; use task for work requiring explicit outcome. "
             "Create schedules NEW work; do not create a second run for work already underway. "
-            "For app.task.due call start(run_id) before acting; cancelled runs must not execute. "
+            "For app.task.due call action=start with run_id before acting; cancelled runs must not execute. "
             "Record progress, complete/fail/block with content, phase and next_step. Delegate a started run for independent asynchronous work. "
             "Schedule: mode now/once/daily/weekly, timezone IANA; once at ISO8601 with offset; daily/weekly time HH:MM, weekday Monday=0. "
             "Never poll in a loop; delegated completion arrives automatically.",
@@ -62,6 +63,7 @@ class TasksTool(Tool):
                             "next_step",
                         ]
                     },
+                    "kind": {"type": "string", "enum": ["task", "reminder"]},
                     "status": {
                         "type": "string",
                         "enum": ["running", "blocked", "succeeded"],
@@ -76,6 +78,16 @@ class TasksTool(Tool):
                             "timezone": {"type": "string"},
                             "at": {"type": "string"},
                             "time": {"type": "string"},
+                            "grace_seconds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 86400,
+                            },
+                            "run_timeout_seconds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 604800,
+                            },
                             "weekday": {"type": "integer", "minimum": 0, "maximum": 6},
                         },
                         "required": ["mode"],

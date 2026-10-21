@@ -45,11 +45,20 @@ struct ChatScreen: View {
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
             ForEach(client.model.turns) { turn in
+              if let unread = client.unread, unread.turnID == turn.id {
+                HStack(spacing: 12) {
+                  Rectangle().fill(Brand.line).frame(height: 1)
+                  Button("\(unread.count) 条未读消息") { client.markRead() }
+                    .font(.caption).foregroundStyle(.secondary).fixedSize().frame(minHeight: 44)
+                  Rectangle().fill(Brand.line).frame(height: 1)
+                }.accessibilityHint("点击标记为已读")
+              }
               TraceRow(
                 turn: turn, tools: client.model.terminals, approvals: client.model.approvals,
                 onAction: {
                   try await client.message($0)
-                }, account: account
+                }, onRetry: { client.retryDelivery($0) },
+                onDiscard: { client.discardDelivery($0) }, account: account
               ).id(turn.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in

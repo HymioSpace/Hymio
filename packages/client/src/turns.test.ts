@@ -141,3 +141,39 @@ test('durations read the way a person would say them', () => {
   assert.equal(formatDuration(7_260_000), '2 小时 1 分');
   assert.equal(formatDuration(null), '');
 });
+
+for (const content of ['最终答案', '']) {
+  test(`final reasoning belongs to work, including an otherwise empty turn (${content})`, () => {
+    const original = assistant('final', { content, reasoning: '核对结果' });
+    const [turn] = buildTurns([user('user'), original]);
+    assert.equal(turn.settled, true);
+    assert.equal(turn.activity.length, 1);
+    assert.equal(turn.activity[0].reasoning, '核对结果');
+    assert.equal(turn.activity[0].content, '');
+    assert.notEqual(turn.activity[0].id, turn.final?.id);
+    assert.equal(turn.final?.content ?? '', content);
+    assert.equal(turn.final?.reasoning ?? '', '');
+    assert.equal(turn.final === null, !content);
+    assert.equal(original.reasoning, '核对结果');
+    assert.equal(original.content, content);
+    const [live] = buildTurns([{ ...original, streaming: true }]);
+    assert.equal(live.settled, false);
+    assert.equal(live.activity[0].content, content);
+    assert.equal(live.activity[0].reasoning, '核对结果');
+  });
+}
+
+for (const trace of ['new', 't1', '']) {
+  test(`proactive reply keeps the previous final answer outside work (${trace})`, () => {
+    const turns = buildTurns([
+      user('u'),
+      assistant('a', { traceId: 't1', content: '之前的答案' }),
+      assistant('b', { traceId: trace, content: '提醒到了' }),
+    ]);
+    assert.equal(turns.length, 2);
+    assert.equal(turns[0].trace, 't1');
+    assert.equal(turns[0].final?.content, '之前的答案');
+    assert.equal(turns[1].final?.content, '提醒到了');
+    assert.deepEqual(turns[1].activity, []);
+  });
+}

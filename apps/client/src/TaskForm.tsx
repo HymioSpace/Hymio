@@ -28,6 +28,8 @@ export function TaskForm({
     ),
     [time, setTime] = useState(task?.schedule.time || '09:00'),
     [day, setDay] = useState(task?.schedule.weekday || 0);
+  const [kind, setKind] = useState(task?.kind || 'task');
+  const [grace, setGrace] = useState(task?.schedule.grace_seconds ?? 900);
   const [requestId] = useState(createIdentity);
   const zone = task?.schedule.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
@@ -40,11 +42,14 @@ export function TaskForm({
           request_id: requestId,
           ...(task ? { task_id: task.id } : {}),
           title,
+          kind,
           objective,
           success_criteria: criteria,
           schedule: {
             mode,
             timezone: zone,
+            grace_seconds: grace,
+            run_timeout_seconds: task?.schedule.run_timeout_seconds ?? 3600,
             ...(mode === 'once' ? { at: new Date(at).toISOString() } : {}),
             ...(['daily', 'weekly'].includes(mode) ? { time } : {}),
             ...(mode === 'weekly' ? { weekday: day } : {}),
@@ -57,6 +62,26 @@ export function TaskForm({
         返回任务
       </button>
       <h3>{task ? '调整这件事' : '想让 Hymio 做什么？'}</h3>
+      <label>
+        类型
+        <select value={kind} onChange={(e) => setKind(e.target.value as 'task' | 'reminder')}>
+          <option value="task">推进一件事</option>
+          <option value="reminder">提醒我</option>
+        </select>
+      </label>
+      <label>
+        允许迟到
+        <select value={grace} onChange={(e) => setGrace(Number(e.target.value))}>
+          {[...new Set([60, 300, 900, 3600, grace])]
+            .sort((a, b) => a - b)
+            .map((seconds) => (
+              <option key={seconds} value={seconds}>
+                {seconds / 60} 分钟内补执行
+              </option>
+            ))}
+        </select>
+        <small>超过后标记已过期，不再执行这一次。</small>
+      </label>
       <label>
         一个清楚的名字
         <input

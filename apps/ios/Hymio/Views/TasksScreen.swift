@@ -7,7 +7,7 @@ private func taskStatus(_ item: JSON) -> String {
 private func taskLabel(_ state: String) -> String {
   [
     "scheduled": "已安排", "delivering": "正在送达", "ready": "等待开始", "running": "进行中", "blocked": "需要关注",
-    "succeeded": "已完成", "failed": "未完成", "cancelled": "已取消", "paused": "已暂停",
+    "succeeded": "已完成", "failed": "未完成", "expired": "已过期", "cancelled": "已取消", "paused": "已暂停",
   ][state] ?? state
 }
 private func taskDate(_ stamp: Double) -> String {
@@ -37,7 +37,8 @@ struct TasksScreen: View {
     items.filter {
       filter == 0
         || (filter == 2
-          ? taskStatus($0) == "succeeded" : !["succeeded", "cancelled"].contains(taskStatus($0)))
+          ? taskStatus($0) == "succeeded"
+          : !["succeeded", "failed", "expired", "cancelled"].contains(taskStatus($0)))
     }
   }
   var body: some View {
@@ -253,7 +254,7 @@ private struct TaskDetailScreen: View {
               Button("重新安排", systemImage: "play") { Task { await action("resume") } }
             } else {
               if item["source"].text != "conversation",
-                !["succeeded", "failed", "cancelled"].contains(
+                !["succeeded", "failed", "expired", "cancelled"].contains(
                   item["runs"].items.first?["status"].text ?? "")
               {
                 Button("暂停日程", systemImage: "pause") { Task { await action("pause") } }
@@ -310,6 +311,8 @@ private struct TaskEditor: View {
   @State private var objective = ""
   @State private var criteria = ""
   @State private var mode = "now"
+  @State private var kind = "task"
+  @State private var grace = 900
   @State private var date = Date().addingTimeInterval(3600)
   @State private var weekday = 0
   @State private var requestID = UUID().uuidString
@@ -319,6 +322,10 @@ private struct TaskEditor: View {
     NavigationStack {
       Form {
         Section {
+          Picker("类型", selection: $kind) {
+            Text("推进一件事").tag("task")
+            Text("提醒我").tag("reminder")
+          }
           TextField("给这件事起个名字", text: $title)
           TextField("要做什么？背景、范围和你关心的重点", text: $objective, axis: .vertical).lineLimit(3...6)
           TextField("怎样算完成？", text: $criteria, axis: .vertical).lineLimit(2...4)
@@ -326,6 +333,11 @@ private struct TaskEditor: View {
           Text("想让 Hymio 做什么？")
         }
         Section {
+          Picker("允许迟到", selection: $grace) {
+            ForEach(Array(Set([60, 300, 900, 3600, grace])).sorted(), id: \.self) { seconds in
+              Text("\(seconds / 60) 分钟内补执行").tag(seconds)
+            }
+          }
           Picker("开始时间", selection: $mode) {
             Text("现在").tag("now")
             Text("选个时间").tag("once")
@@ -365,6 +377,10 @@ private struct TaskEditor: View {
         }
         .onAppear {
           if existing != .null {
+            kind = existing["kind"].text.isEmpty ? "task" : existing["kind"].text
+            grace =
+              existing["schedule"]["grace_seconds"].int > 0
+              ? existing["schedule"]["grace_seconds"].int : 900
             title = existing["title"].text
             objective = existing["objective"].text
             criteria = existing["success_criteria"].text
@@ -394,6 +410,11 @@ private struct TaskEditor: View {
     defer { busy = false }
     var schedule: [String: JSON] = [
       "mode": .string(mode), "timezone": .string(TimeZone.current.identifier),
+      "grace_seconds": .number(Double(grace)),
+      "run_timeout_seconds": .number(
+        Double(
+          existing["schedule"]["run_timeout_seconds"].int > 0
+            ? existing["schedule"]["run_timeout_seconds"].int : 3600)),
     ]
     if mode == "once" { schedule["at"] = .string(date.ISO8601Format()) }
     if ["daily", "weekly"].contains(mode) {
@@ -405,6 +426,7 @@ private struct TaskEditor: View {
     var body: [String: JSON] = [
       "action": .string(existing == .null ? "create" : "edit"),
       "request_id": .string(requestID), "title": .string(title),
+      "kind": .string(kind),
       "objective": .string(objective), "success_criteria": .string(criteria),
       "schedule": .object(schedule),
     ]

@@ -27,8 +27,19 @@ def initialize(db):
         db.execute("ALTER TABLE task_runs ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0")
 
     additions = {
-        "tasks": {"source": "TEXT NOT NULL DEFAULT 'manual'", "intent_key": "TEXT"},
+        "tasks": {
+            "source": "TEXT NOT NULL DEFAULT 'manual'",
+            "intent_key": "TEXT",
+            "kind": "TEXT NOT NULL DEFAULT 'task'",
+        },
         "task_runs": {
+            "expires_at": "REAL",
+            "heartbeat_at": "REAL",
+            "start_invocation_id": "TEXT",
+            "notice": "TEXT NOT NULL DEFAULT ''",
+            "notice_sent": "INTEGER NOT NULL DEFAULT 0",
+            "notice_version": "INTEGER NOT NULL DEFAULT 0",
+            "intervention_count": "INTEGER NOT NULL DEFAULT 0",
             "phase": "TEXT NOT NULL DEFAULT ''",
             "next_step": "TEXT NOT NULL DEFAULT ''",
             "progress": "TEXT NOT NULL DEFAULT ''",
@@ -51,3 +62,11 @@ def initialize(db):
         "UPDATE task_runs SET progress=result,result='' "
         "WHERE status IN ('running','blocked') AND progress='' AND result!=''"
     )
+
+    db.execute("UPDATE task_runs SET expires_at=due_at+900 WHERE expires_at IS NULL")
+    db.execute(
+        "UPDATE task_runs SET heartbeat_at=COALESCE(started_at,created_at) "
+        "WHERE heartbeat_at IS NULL"
+    )
+
+    db.execute("CREATE INDEX IF NOT EXISTS task_expiry ON task_runs(status,expires_at)")

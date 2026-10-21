@@ -32,6 +32,7 @@ const labels: Record<string, string> = {
   blocked: '需要关注',
   succeeded: '已完成',
   failed: '未完成',
+  expired: '已过期',
   cancelled: '已取消',
   paused: '已暂停',
   active: '已安排',
@@ -153,7 +154,7 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
       filter === 'all' ||
       (filter === 'done'
         ? status(t) === 'succeeded'
-        : !['succeeded', 'cancelled'].includes(status(t))),
+        : !['succeeded', 'failed', 'expired', 'cancelled'].includes(status(t))),
   );
   return (
     <Sheet className="tasks-dialog" labelledBy="tasks-title" onClose={onClose}>
@@ -319,7 +320,7 @@ export function TasksPanel({ login, onClose }: { login: LoginState; onClose: () 
                   ) : (
                     <>
                       {task.source !== 'conversation' &&
-                        !['succeeded', 'failed', 'cancelled'].includes(run?.status || '') && (
+                        !['succeeded', 'failed', 'expired', 'cancelled'].includes(run?.status || '') && (
                           <button
                             disabled={busy}
                             onClick={() => void change({ action: 'pause', task_id: task.id })}

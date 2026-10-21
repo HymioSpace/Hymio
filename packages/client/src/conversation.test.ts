@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { OathEvent, Data } from '@hymio/protocol';
-import { conversation, executionActivity } from './conversation.ts';
+import { replayBoundary, conversation, executionActivity } from './conversation.ts';
 
 const event = (seq: number, type: string, payload: Data): OathEvent => ({
   v: 2,
@@ -122,7 +122,7 @@ test('local messages render before events and exact echoed IDs replace them', ()
   const make = (id: string) => ({
     id,
     account: 'test',
-    at: 1,
+    at: Date.parse('2026-01-01T00:00:01Z'),
     command: {
       v: 2 as const,
       id,
@@ -175,4 +175,48 @@ test('a finalised reply is stamped when it landed, not when its first delta arri
     },
   ]);
   assert.equal(replayed.messages[0].time, result.messages[0].time);
+});
+
+test('a failed send stays before later proactive replies', () => {
+  const later = {
+    ...event(9, 'assistant.message', { step_id: 'reminder', content: '提醒' }),
+    occur_dt: '2026-01-01T02:00:00Z',
+  };
+  const pending = [
+    {
+      id: 'failed',
+      account: 'test',
+      at: Date.parse('2026-01-01T01:00:00Z'),
+      delivery: 'failed' as const,
+      command: {
+        v: 2 as const,
+        id: 'failed',
+        type: 'user.message',
+        payload: { content: 'hello', user_context: { hymio_message_id: 'failed' } },
+      },
+    },
+  ];
+  assert.deepEqual(
+    conversation([later], pending).messages.map((m) => m.id),
+    ['local:failed', 'assistant:reminder'],
+  );
+});
+
+test('snapshot statuses arriving after messages restore trace identity', () => {
+  const result = conversation([
+    event(1, 'assistant.message', { step_id: 's', content: 'done' }),
+    event(2, 'step.status', { step_id: 's', status: 'completed', trace_id: 'trace' }),
+  ]);
+  assert.equal(result.messages[0].traceId, 'trace');
+});
+
+test('unread boundary uses the pre-snapshot cursor and counts replies, not tool events', () => {
+  const reply = event(20, 'assistant.message', { step_id: 's', content: 'hello', tool_calls: [] });
+  assert.deepEqual(replayBoundary([reply], 10, 22), { after: 10, through: 22 });
+  assert.equal(replayBoundary([reply], 0, 22), undefined);
+  assert.equal(replayBoundary([event(20, 'tool.terminal', {})], 10, 22), undefined);
+  assert.deepEqual(replayBoundary([reply], 15, 22, { after: 10, through: 14 }), {
+    after: 10,
+    through: 22,
+  });
 });

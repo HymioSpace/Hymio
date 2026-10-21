@@ -4,6 +4,8 @@ export type Schedule = {
   at?: string;
   time?: string;
   weekday?: number;
+  grace_seconds?: number;
+  run_timeout_seconds?: number;
 };
 export type Run = {
   id: string;
@@ -30,6 +32,7 @@ export type Work = {
   success_criteria: string;
   state: string;
   source: string;
+  kind?: 'task' | 'reminder';
   schedule: Schedule;
   runs: Run[];
 };

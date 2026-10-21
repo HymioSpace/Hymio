@@ -2410,7 +2410,7 @@ a {
 }
 
 .reasoning-panel {
-  margin-bottom: 12px;
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.7;
@@ -3206,4 +3206,57 @@ a {
   .message-assistant > .message-body {
     padding: 14px 15px;
   }
+}
+
+.message-assistant.message-reasoning-only > .message-body {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.message-reasoning-only .message-bubble,
+.message-reasoning-only .message-meta {
+  display: none;
+}
+.reasoning-panel > summary {
+  min-height: 28px;
+  padding: 4px 0;
+  list-style: none;
+  line-height: 20px;
+}
+.reasoning-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.reasoning-panel[open] .reasoning-chevron {
+  transform: rotate(90deg);
+}
+.reasoning-panel[open] {
+  margin-bottom: 8px;
+}
+@media (pointer: coarse) {
+  .reasoning-panel > summary {
+    min-height: 44px;
+  }
+}
+.unread-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 20px 0;
+  color: var(--muted);
+}
+.unread-divider > span {
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+.unread-divider button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  min-height: 44px;
+}
+.task-state.expired {
+  color: var(--muted);
 }

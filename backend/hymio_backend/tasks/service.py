@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import time
 
@@ -97,7 +98,79 @@ class TaskService:
         finally:
             await asyncio.to_thread(self.store.sync_later, uid, rid)
 
+    async def reconcile_main(self, run):
+        uid, rid = run["user_id"], run["id"]
+        async with self.slots:
+            try:
+                result = await self.oath(
+                    uid, "/executions/get", {"invocation_id": run["start_invocation_id"]}
+                )
+                if result["status"] == "running":
+                    return
+                if (
+                    result["status"] == "completed"
+                    and run["kind"] == "reminder"
+                    and result["content"].strip()
+                ):
+                    await asyncio.to_thread(
+                        self.store.update_run,
+                        uid,
+                        rid,
+                        "succeeded",
+                        result["content"],
+                        "reconcile:reply",
+                    )
+                else:
+                    await asyncio.to_thread(
+                        self.store.update_run,
+                        uid,
+                        rid,
+                        "blocked",
+                        "执行已结束，尚未记录明确结果。\n" + result.get("content", "")[:6000],
+                        "reconcile:closure:"
+                        + hashlib.sha256(run["start_invocation_id"].encode()).hexdigest()[:16],
+                        notice="执行已结束，但尚未确认任务结果。请核对后 complete/fail/block；"
+                        "不要重复外部操作。",
+                    )
+            except (httpx.HTTPError, ValueError):
+                _log.debug("Main task reconciliation deferred")
+
+    async def notify(self, run):
+        async with self.slots:
+            try:
+                await self.oath(
+                    run["user_id"],
+                    "/events",
+                    {
+                        "type": "app.task.reconciled",
+                        "event_id": "task-reconciled:"
+                        + run["id"]
+                        + ":"
+                        + str(run["notice_version"]),
+                        "payload": {
+                            "task_id": run["task_id"],
+                            "run_id": run["id"],
+                            "status": run["status"],
+                            "notice": run["notice"],
+                            "instruction": "This is a status reconciliation, not a new task. "
+                            "Expired work must not execute. "
+                            "Never retry external effects without evidence. "
+                            "Inform the user when useful.",
+                        },
+                    },
+                )
+                await asyncio.to_thread(
+                    self.store.notice_sent, run["user_id"], run["id"], run["notice_version"]
+                )
+            except httpx.HTTPError:
+                _log.debug("Task reconciliation notice deferred")
+
     async def tick(self):
+        await asyncio.to_thread(self.store.reconcile_time)
+        main = await asyncio.to_thread(self.store.main_runs)
+        await asyncio.gather(*(self.reconcile_main(run) for run in main))
+        notices = await asyncio.to_thread(self.store.notices)
+        await asyncio.gather(*(self.notify(run) for run in notices))
         runs = await asyncio.to_thread(self.store.claim_due)
         await asyncio.gather(*(self.deliver_one(run) for run in runs))
         await self.reconcile()
@@ -110,7 +183,14 @@ class TaskService:
         try:
             # A cancellation between this read and delivery is rejected by tasks.start.
             current = await asyncio.to_thread(self.store.get, run["user_id"], run["task_id"])
-            if current["state"] != "active" or current["generation"] != run["generation"]:
+            occurrence = next((r for r in current["runs"] if r["id"] == run["id"]), None)
+            if (
+                current["state"] != "active"
+                or current["generation"] != run["generation"]
+                or not occurrence
+                or occurrence["status"] not in {"scheduled", "delivering"}
+                or time.time() > occurrence["expires_at"]
+            ):
                 return
             await self.oath(
                 run["user_id"],
@@ -122,9 +202,16 @@ class TaskService:
                         "task_id": run["task_id"],
                         "run_id": run["id"],
                         "title": run["task"]["title"],
-                        "instruction": "Call tasks.start with this run_id before acting. "
+                        "kind": run["task"]["kind"],
+                        "expires_at": run["expires_at"],
+                        "instruction": "Call tasks(action=start) with this run_id before acting. "
                         "If cancelled, do"
-                        " nothing. Record progress and final result using tasks.",
+                        " nothing. For a reminder: deliver the reminder text, "
+                        "then call tasks with action=complete "
+                        "with that text before the final reply. "
+                        "For other work: record progress and close with complete/fail/block "
+                        "before giving the final reply. "
+                        "Never leave a started run without a recorded outcome.",
                     },
                 },
             )
