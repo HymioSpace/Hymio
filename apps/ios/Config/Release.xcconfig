@@ -1,3 +1,7 @@
+HYMIO_APP_BUNDLE_IDENTIFIER = space.hymio.ios
+HYMIO_DEVELOPMENT_TEAM =
+#include? "LocalSigning.xcconfig"
+
 // Set your HTTPS origin and signing team in the ignored Local.xcconfig before archiving.
 HYMIO_BACKEND_URL = https:/$()/invalid.example
 #include? "Local.xcconfig"

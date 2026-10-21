@@ -1,0 +1,3 @@
+// Copy to ignored LocalSigning.xcconfig and keep personal signing values out of Git.
+HYMIO_APP_BUNDLE_IDENTIFIER = com.example.hymio
+HYMIO_DEVELOPMENT_TEAM =
