@@ -38,6 +38,8 @@ class LifecycleTests(unittest.TestCase):
                 "backend_config": str(root / "backend/hymio.toml"),
                 "oath_config": str(Path.home() / ".oath/oath.toml"),
                 "auth_project": "existing-auth",
+                "deploy_config": str(root / "deploy/local.toml"),
+                "config": None,
             }
             save(home / "ready.json", {"instance": "current"})
             args = argparse.Namespace(

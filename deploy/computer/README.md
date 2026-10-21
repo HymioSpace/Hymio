@@ -6,6 +6,11 @@ There is no local Docker computer provider. Docker still deploys Oath/login/appl
 
 ## Configure
 
+Unified local deployment reads `e2b_api_key` and optional `e2b_template` from
+`~/.hymio/config.toml`. `hymio start` checks the template alias and builds it only if absent.
+No separate key file or build command is needed. The manual steps below apply to legacy/cloud
+configuration or an intentional template rebuild.
+
 Store your E2B API key in `backend/private/e2b-api-key` (mode 600). Build a template:
 
 ```bash

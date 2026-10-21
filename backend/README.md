@@ -4,6 +4,10 @@ Product identity and application sessions, with standard OIDC login through Casd
 
 ## Run locally
 
+For a new installation, prefer [`hymio init` and `hymio start`](../deploy/README.md):
+one private input file supplies MiniMax/E2B credentials and Casdoor is configured automatically.
+The manual steps below remain available for existing deployments and custom identity providers.
+
 Requires Python 3.11+ and uv. Start Casdoor using the pinned deployment:
 
 ```bash

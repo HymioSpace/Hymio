@@ -2,6 +2,7 @@
 """Start the local Hymio development stack."""
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -26,8 +27,10 @@ from local_network import lan_address, load_network, prepare_lan, write_ios_netw
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(args, cwd=ROOT):
-    subprocess.run([str(arg) for arg in args], cwd=cwd, check=True, timeout=900)
+def run(args, cwd=ROOT, env=None):
+    subprocess.run(
+        [str(arg) for arg in args], cwd=cwd, env=env, check=True, timeout=900
+    )
 
 
 def wait_http(url, child=None, timeout=90):
@@ -56,12 +59,12 @@ def free_port(port):
             ) from error
 
 
-def prepare_devices(config, config_path, oath_config):
+def prepare_devices(config, config_path, oath_config, tools_dir=None):
     """Mount product tools without exposing the Oath host shell."""
     service_key = (
         config_path.parent / Path(config["service_token_file"]).expanduser()
     ).resolve()
-    target = ROOT / "extensions/tools/_connection.local"
+    target = (tools_dir or ROOT / "extensions/tools") / "_connection.local"
     fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as file:
         json.dump(
@@ -103,11 +106,10 @@ def prepare_devices(config, config_path, oath_config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", choices=("web", "desk", "none"), default="web")
+    parser.add_argument("--backend-config", type=Path)
+    parser.add_argument("--oath-config", type=Path)
     parser.add_argument(
-        "--backend-config", type=Path, default=ROOT / "backend/hymio.toml"
-    )
-    parser.add_argument(
-        "--oath-config", type=Path, default=Path.home() / ".oath/oath.toml"
+        "--config", type=Path, help="Single portable private deployment configuration"
     )
     parser.add_argument("--auth-project", default="hymio-auth")
     parser.add_argument(
@@ -117,6 +119,7 @@ def main():
     parser.add_argument("--ready-file", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     children = []
+    bootstrap_lock = None
     try:
         for command in (
             "docker",
@@ -141,10 +144,66 @@ def main():
             raise RuntimeError(
                 "Update Oath: this launcher requires --system-prompt support"
             )
+        unified = args.config
+        default_input = Path.home() / ".hymio/config.toml"
+        if (
+            not unified
+            and not args.backend_config
+            and not args.oath_config
+            and default_input.exists()
+        ):
+            unified = default_input
+        if unified and (args.backend_config or args.oath_config):
+            raise ValueError("Use --config or legacy service configs, not both")
+        managed = None
+        identity_compose = ROOT / "deploy/auth/compose.yaml"
+        credentials = None
+        tools_dir = ROOT / "extensions/tools"
+        oath_name = None
+        if unified:
+            from bootstrap_config import prepare, runtime_for
+            from bootstrap_identity import compose
+
+            unified = unified.expanduser().resolve()
+            runtime = runtime_for(unified)
+            runtime.mkdir(parents=True, mode=0o700, exist_ok=True)
+            bootstrap_lock = (runtime / "launch.lock").open("a")
+            try:
+                fcntl.flock(bootstrap_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError(
+                    "This configuration already has a running launcher"
+                ) from None
+            managed, runtime, credentials = prepare(unified)
+            # External keys are consumed here; only the Oath CLI gets the model import.
+            for key in ("MINIMAX_API_KEY", "E2B_API_KEY"):
+                os.environ.pop(key, None)
+            args.backend_config = runtime / "backend/hymio.toml"
+            args.oath_config = runtime / "oath/oath.toml"
+            args.deploy_config = runtime / "network.toml"
+            suffix = runtime.name.removeprefix("local-")
+            args.auth_project = "hymio-local-" + suffix
+            oath_name = "hymio-oath-" + suffix
+            tools_dir = runtime / "tools"
+            shutil.copytree(
+                ROOT / "extensions/tools",
+                tools_dir,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(
+                    "_connection.local", "__pycache__", "*.pyc"
+                ),
+            )
+            identity_compose = compose(runtime, managed, credentials)
+            print(
+                f"Unified configuration: {unified}. Generated runtime: {runtime}",
+                flush=True,
+            )
+        args.backend_config = args.backend_config or ROOT / "backend/hymio.toml"
+        args.oath_config = args.oath_config or Path.home() / ".oath/oath.toml"
         config_path = args.backend_config.expanduser().resolve()
         if not config_path.is_file():
             raise RuntimeError(
-                "Configure Casdoor and run backend/scripts/setup.py first; see deploy/README.md"
+                "Run hymio init first; legacy manual setup is documented in deploy/README.md"
             )
         config = tomllib.loads(config_path.read_text())
         if config.get("computer_provider", "e2b") != "e2b":
@@ -161,7 +220,7 @@ def main():
             raise RuntimeError(
                 'Set Backend host = "0.0.0.0" and port = 8080 for Docker access'
             )
-        if config.get("issuer") != "http://localhost:8000":
+        if not managed and config.get("issuer") != "http://localhost:8000":
             raise RuntimeError(
                 "This launcher requires local Casdoor at http://localhost:8000"
             )
@@ -240,6 +299,26 @@ def main():
         if args.client != "none":
             free_port(1420)
         run(["docker", "info"], cwd=ROOT)
+        if managed:
+            owned = subprocess.run(
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    str(identity_compose),
+                    "-p",
+                    args.auth_project,
+                    "ps",
+                    "-q",
+                    "casdoor",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=20,
+            )
+            if not owned.stdout.strip():
+                free_port(managed["casdoor_port"])
         run(
             [
                 "uv",
@@ -250,7 +329,29 @@ def main():
             ],
             cwd=ROOT / "backend",
         )
-        oath_config = prepare_devices(config, config_path, oath_config)
+        if managed:
+            run(
+                [
+                    "uv",
+                    "run",
+                    "--frozen",
+                    "--extra",
+                    "e2b",
+                    "python",
+                    ROOT / "deploy/computer/build_e2b.py",
+                    "--key-file",
+                    key_path,
+                    "--name",
+                    managed["e2b_template"],
+                    "--ensure",
+                ],
+                cwd=ROOT / "backend",
+            )
+        oath_config = prepare_devices(config, config_path, oath_config, tools_dir)
+        if managed:
+            from bootstrap_config import container_readable
+
+            container_readable(runtime, oath_config, tools_dir)
         if args.client != "none":
             run(["pnpm", "install", "--frozen-lockfile"], cwd=ROOT / "apps/client")
         run(
@@ -258,14 +359,18 @@ def main():
                 "docker",
                 "compose",
                 "-f",
-                ROOT / "deploy/auth/compose.yaml",
+                identity_compose,
                 "-p",
                 args.auth_project,
                 "up",
                 "-d",
             ]
         )
-        wait_http("http://localhost:8000/.well-known/openid-configuration")
+        wait_http(config["issuer"] + "/.well-known/openid-configuration")
+        if managed:
+            from bootstrap_identity import verify
+
+            verify(config["issuer"], credentials)
         backend = subprocess.Popen(
             [
                 "uv",
@@ -284,10 +389,16 @@ def main():
         )
         children.append(backend)
         wait_http("http://127.0.0.1:8080/health", backend)
+        oath_env = (
+            {**os.environ, "MINIMAX_API_KEY": managed["minimax_api_key"]}
+            if managed
+            else None
+        )
         run(
             [
                 "oath",
                 "start",
+                *(["--name", oath_name] if managed else []),
                 "--config",
                 oath_config,
                 "--system-prompt",
@@ -301,10 +412,11 @@ def main():
                     config_path.parent / Path(config["service_token_file"]).expanduser()
                 ).resolve(),
                 "--tool",
-                ROOT / "extensions/tools",
+                tools_dir,
                 "--skill",
                 ROOT / "extensions/skills",
-            ]
+            ],
+            env=oath_env,
         )
         if args.client != "none":
             children.append(
@@ -361,6 +473,8 @@ def main():
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
                 child.wait()
+        if bootstrap_lock is not None:
+            bootstrap_lock.close()
 
 
 if __name__ == "__main__":
