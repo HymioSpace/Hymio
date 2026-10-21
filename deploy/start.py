@@ -206,16 +206,18 @@ def main():
                 "Run hymio init first; legacy manual setup is documented in deploy/README.md"
             )
         config = tomllib.loads(config_path.read_text())
-        if config.get("computer_provider", "e2b") != "e2b":
-            raise RuntimeError(
-                "Only E2B cloud computers are supported; update hymio.toml"
-            )
-        key_file = config.get("e2b_key_file")
-        if not key_file:
-            raise RuntimeError("Set e2b_key_file in hymio.toml before starting")
-        key_path = (config_path.parent / Path(key_file).expanduser()).resolve()
-        if not key_path.is_file() or not key_path.read_text().strip():
-            raise RuntimeError("E2B key file is missing or empty")
+        provider = config.get("computer_provider", "e2b")
+        if provider not in ("daytona", "e2b", "device_api"):
+            raise RuntimeError("computer_provider must be daytona, device_api or e2b")
+        key_path = None
+        if provider == "e2b":
+            key_file = config.get("e2b_key_file")
+            if not key_file:
+                raise RuntimeError("Set e2b_key_file for the legacy E2B provider")
+            key_path = (config_path.parent / Path(key_file).expanduser()).resolve()
+            if not key_path.is_file() or not key_path.read_text().strip():
+                raise RuntimeError("E2B key file is missing or empty")
+        extras = ["--extra", "e2b"] if provider == "e2b" else []
         if config.get("host") != "0.0.0.0" or config.get("port", 8080) != 8080:
             raise RuntimeError(
                 'Set Backend host = "0.0.0.0" and port = 8080 for Docker access'
@@ -276,6 +278,7 @@ def main():
             "client_secret_file",
             "service_token_file",
             "e2b_key_file",
+            "daytona_key_file",
             "invitation_codes_file",
         ):
             if overlay.get(key):
@@ -284,14 +287,11 @@ def main():
                 )
         config_path = config_path.with_name("hymio-media.local.toml")
         from local_network import private_write
+        from bootstrap_config import toml
 
         private_write(
             config_path,
-            "\n".join(
-                f"{key} = {json.dumps(value, ensure_ascii=False)}"
-                for key, value in overlay.items()
-            )
-            + "\n",
+            toml(overlay),
         )
         config = overlay
         write_ios_network(ROOT, config["public_url"])
@@ -324,12 +324,11 @@ def main():
                 "uv",
                 "sync",
                 "--frozen",
-                "--extra",
-                "e2b",
+                *extras,
             ],
             cwd=ROOT / "backend",
         )
-        if managed:
+        if managed and provider == "e2b":
             run(
                 [
                     "uv",
@@ -376,8 +375,7 @@ def main():
                 "uv",
                 "run",
                 "--frozen",
-                "--extra",
-                "e2b",
+                *extras,
                 "python",
                 "-m",
                 "hymio_backend",

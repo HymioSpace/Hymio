@@ -19,7 +19,7 @@ hymio init
 hymio start --client web --timeout 900
 ```
 
-`hymio init` asks for **two keys**, with hidden input, and saves them in
+`hymio init` asks for **the MiniMax key**, with hidden input, and saves them in
 **`~/.hymio/config.toml`**, mode 600. This is the only file you edit or copy for a fresh
 installation on another computer. Its public template is [config.example.toml](config.example.toml).
 Open http://127.0.0.1:1420 and register your Hymio account after startup.
@@ -27,7 +27,9 @@ Open http://127.0.0.1:1420 and register your Hymio account after startup.
 | Input | Where to get it / what it does |
 | --- | --- |
 | `minimax_api_key` | Create a platform API key at [MiniMax China](https://platform.minimax.cn/login), with access/balance for your selected text and media APIs. A chat-app subscription is not an API credential. |
-| `e2b_api_key` | Get a key from the [E2B console](https://console.e2b.dev/). Template builds and computers use this account's quota/billing. |
+| `daytona_api_key` (cloud desktop) | Get a key from [Daytona](https://app.daytona.io/api), or supply `DAYTONA_API_KEY`. Optional for chat-only installations. |
+| `admin_user_ids` | Private list of Hymio product account IDs allowed to manage resources. Empty by default. See below. |
+| `e2b_api_key` (legacy E2B only) | Get a key from the [E2B console](https://console.e2b.dev/). Template builds and computers use this account's quota/billing. |
 | `models` (optional) | Settings choices; the first model is the default. Defaults to MiniMax-M2.7 / MiniMax-M3. Only list models your account can call. |
 | `vision_model` (optional) | Image/document understanding model; defaults to MiniMax-M3. Verify its API access separately from text generation. |
 | `minimax_api_base` (optional) | Defaults to `https://api.minimax.cn/v1`. International accounts need their matching endpoint and key. See [MiniMax API documentation](https://platform.minimax.cn/docs/api-reference/text-openai-api). |
@@ -42,7 +44,7 @@ for the local Web stack. Google sign-in remains an advanced manual identity-prov
 Initialization generates a separate Casdoor administrator password, Hymio organization, minimal
 username/password signup application, signing certificate and internal service credentials.
 You do **not** need to open Casdoor to create its organization/application. The model key is imported
-to Oath Vault. E2B credentials stay in Backend. Generated files live in `~/.hymio/local-<id>/`;
+to Oath Vault. Cloud provider credentials stay in Backend. Generated files live in `~/.hymio/local-<id>/`;
 the startup log prints this directory. `identity.json` there contains the initial private Casdoor
 administrator password (`built-in` / `admin`); do not share it or use it as a normal Hymio account.
 Casdoor is exposed only on loopback. Existing identity records/admin changes are preserved on restart.
@@ -50,16 +52,16 @@ Generated runtime directories are private (700). Selected files mounted into non
 containers are readable inside those containers; their private host ancestors prevent access
 by other host users. Do not recursively change generated file permissions.
 
-The first start may take several minutes to build Docker images, install dependencies and build
-the E2B desktop template. A CLI timeout leaves startup running; check `hymio logs -f` and
+The first start may take several minutes to build Docker images, install dependencies and optionally build
+the legacy E2B desktop template. A CLI timeout leaves startup running; check `hymio logs -f` and
 `hymio status` before starting another instance. An E2B authorization/network failure is an error,
-not a reason to repeatedly rebuild templates. You can change the two keys in the private input
+not a reason to repeatedly rebuild templates. You can change the keys in the private input
 file before retrying; a changed model key gets a new Vault alias automatically on restart. Old aliases remain in
 Vault for existing records; revoke obsolete keys at the provider when appropriate.
 
 ### Environment variables and custom locations
 
-`MINIMAX_API_KEY` and `E2B_API_KEY` override values in the file. For automation, export them
+`MINIMAX_API_KEY`, `DAYTONA_API_KEY` and `E2B_API_KEY` override values in the file. For automation, export them
 privately, then run `hymio init --non-interactive`. The init command saves the provided values
 in the private file so later restarts do not depend on that terminal's environment. Alternatively
 copy the example and leave its key fields empty when you intentionally supply the environment
@@ -155,6 +157,8 @@ and E2B environments remain running so accepted Agent work can continue. Closing
 does not stop a CLI-managed stack. Foreground `deploy/start.py` still uses Ctrl+C.
 A stale PID or unrelated process is never stopped; failed startup details are in `hymio logs`.
 The CLI preserves settings across restarts; it does not replace model/login/E2B credentials.
+`hymio doctor` shows the active configuration mode, the editable inputs, generated files,
+private credential location and service health without printing secrets.
 
 To stop **legacy** Docker services explicitly:
 
@@ -172,7 +176,7 @@ This local launcher does not deploy Nostalgia or connector services. See [featur
 
 ## Device environments
 
-The launcher mounts Hymio device tools/skills; cloud desktops are provisioned through E2B.
+The launcher mounts Hymio device tools/skills; cloud desktops are provisioned only after an administrator grants access.
 It writes a private `hymio-runtime.local.toml` beside the Oath config, disabling host Bash;
 your source Oath configuration is unchanged. See [computer environments](computer/README.md)
 for E2B configuration, device management and the end-to-end check.
@@ -256,3 +260,50 @@ Update both Oath and Hymio before starting. The Oath build must support `agent.s
 Uploads support images, PDF, DOCX, PPTX, XLS/XLSX, text/Markdown/CSV/HTML/JSON/XML/YAML and MP3/WAV/M4A/OGG/FLAC. Individual files are limited to 20 MiB, with eight attachments per message and 256 MiB per user. Video and arbitrary archives are not supported. Scanned PDFs may need OCR; empty extracted text is not a successful visual interpretation.
 
 For a second API provider, configure Oath `agent.model_providers.deepseek-flash` with `model`, `api_base`, `credential`, `import_env` and optional `extra_params`. Add `deepseek-flash` to Backend `model_options`. Export `DEEPSEEK_API_KEY` before the first start so Oath can seed its independent Vault alias; later starts read Vault. Media APIs continue to use the default MiniMax provider.
+
+## Cloud device API instead of E2B
+
+To use an existing VM, select `computer_provider = "device_api"`; an E2B key and template
+are not required. Add `device_api_targets` to your one private input file. Installation, restricted
+host API setup, account assignment and changing the server IP are documented in
+[Linux cloud computer](computer/LINUX.md#private-configuration). The host must already exist;
+Hymio does not automatically purchase or delete operator-managed VMs.
+
+
+## Cloud resources and administration
+
+New accounts receive **no cloud desktop or cloud phone**. Chat and attachments work without one.
+Daytona is the default desktop provider; the default API URL is `https://app.daytona.io/api`.
+Supply `daytona_api_key` in the private input file or export `DAYTONA_API_KEY` for startup.
+`daytona_api_url` and `daytona_snapshot` are optional overrides. Provider keys never enter clients
+or agent sandboxes. A default Daytona image is prepared with one shared desktop/browser/workspace.
+
+1. Start Hymio and register your administrator's normal product account.
+2. Find its product user ID in the private Backend SQLite database (`users` table), or the
+   authenticated `/auth/me` response. This is not a Casdoor administrator name or an API key.
+3. Add that ID to `admin_user_ids = ["YOUR_PRODUCT_USER_ID"]` in `~/.hymio/config.toml`, then
+   restart Hymio. Legacy deployments set this field in private `backend/hymio.toml` instead.
+4. Open the independent operator console at `/admin/` and sign in with that product account.
+   It is not linked from the user Web sidebar. Server authorization checks every read and change;
+   knowing the URL does not grant access.
+5. Search a registered user, choose a provider and click **开通云电脑**. On their next login or
+   device request, Hymio allocates or resumes that user's computer. Granting access itself
+   does not allocate a sandbox. Close access separately from releasing an existing environment.
+
+Global limits are **Daytona 10, E2B 20, 火山 ECS / device API 1**. These are physical allocation
+limits, not a limit on the number of grants. Reserved, stopped and uncertain environments count.
+Each user has at most one active cloud-computer grant. Switching providers while an allocation
+exists is rejected until that cloud computer is released, preventing accidental double binding.
+Removing permission prevents future operations but preserves files and capacity. **释放资源**
+requires confirmation and deletes hosted sandboxes; an operator-managed API VM is only detached
+and continues to exist and incur its provider's charges. Daytona auto-stops after 20 minutes idle;
+stopped sandboxes preserve files and still occupy a slot. No automatic deletion is configured.
+
+Creation timeouts retain their reservation. Use **核对分配** to recover the original stable sandbox
+identity; never retry by deleting database rows. In-flight or uncertain executions prevent unsafe
+release. If release is uncertain, its slot remains held until confirmed. Historical allocations
+are imported without granting access; over-limit legacy resources block new allocations and are
+not automatically destroyed. Cloud phones are visible as a reserved, disabled resource kind.
+
+The generated Caddy configuration serves the console at `/admin/` and routes `/admin/api/*`
+to Backend. Keep `admin_user_ids`, keys and database backups private.

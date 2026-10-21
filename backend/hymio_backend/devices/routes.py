@@ -6,6 +6,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from ..session_store import Unauthorized
+from .resources import ResourceCapacity, ResourceDenied
 from .service import DeviceService
 from .store import DeviceConflict
 
@@ -118,7 +119,12 @@ def device_routes(settings, sessions, bearer, body):
                     service.revoke, user_id, request.path_params["device_id"]
                 )
                 return JSONResponse(result)
-            devices = await asyncio.to_thread(store.list, user_id)
+            provider = await asyncio.to_thread(service.resources.provider, user_id)
+            devices = [
+                device
+                for device in await asyncio.to_thread(store.list, user_id)
+                if device["kind"] != "cloud_desktop" or device["provider"] == provider
+            ]
             described = await asyncio.gather(
                 *[asyncio.to_thread(service.describe, device) for device in devices]
             )
@@ -138,6 +144,10 @@ def device_routes(settings, sessions, bearer, body):
             )
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
+        except ResourceDenied:
+            return JSONResponse({"error":"resource_access_denied"},403)
+        except ResourceCapacity as error:
+            return JSONResponse({"error": str(error)}, 409)
         except DeviceConflict as error:
             return JSONResponse({"error": str(error)}, 409)
         except KeyError:

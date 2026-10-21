@@ -1,8 +1,17 @@
 # Copy to ~/.hymio/config.toml, or run hymio init.
 # This is the only file to copy to a NEW computer for a fresh installation.
 # Never commit your filled-in file. chmod 600 ~/.hymio/config.toml
-# Environment variables MINIMAX_API_KEY / E2B_API_KEY override these values.
+# Environment variables MINIMAX_API_KEY / DAYTONA_API_KEY / E2B_API_KEY override these values.
 minimax_api_key = ""
+computer_provider = "daytona"
+daytona_api_key = "" # Or export DAYTONA_API_KEY
+daytona_api_url = "https://app.daytona.io/api"
+daytona_snapshot = ""
+# Product user IDs, never display names. No administrator is assigned automatically.
+admin_user_ids = []
+# Operator-assigned targets; see deploy/computer/LINUX.md. One host per product user.
+device_api_targets = []
+# Legacy compatibility only; not needed for device APIs.
 e2b_api_key = ""
 
 # MiniMax China API key: https://platform.minimax.cn/login

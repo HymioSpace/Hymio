@@ -23,7 +23,12 @@ class Settings:
     invitation_codes_file: Path | None = None
     host: str = "127.0.0.1"
     port: int = 8080
-    computer_provider: str = "e2b"
+    computer_provider: str = "daytona"
+    daytona_key_file: Path | None = None
+    daytona_api_url: str = "https://app.daytona.io/api"
+    daytona_snapshot: str = ""
+    admin_user_ids: tuple[str, ...] = ()
+    device_api_targets: tuple[dict, ...] = ()
     e2b_key_file: Path | None = None
     e2b_template: str = "hymio-desktop"
     model_options: tuple[str, ...] = ("MiniMax-M2.7", "MiniMax-M3")
@@ -48,22 +53,48 @@ class Settings:
         if data.get("invitation_codes_file"):
             file = Path(data["invitation_codes_file"]).expanduser()
             data["invitation_codes_file"] = file if file.is_absolute() else path.parent / file
-        for key in ("vault_role_id_file", "vault_secret_id_file"):
+        for key in ("vault_role_id_file", "vault_secret_id_file", "daytona_key_file"):
             if data.get(key):
                 file = Path(data[key]).expanduser()
                 data[key] = file if file.is_absolute() else path.parent / file
         data["model_options"] = tuple(data.get("model_options", ("MiniMax-M2.7", "MiniMax-M3")))
+        from .devices.api_provider import targets_from_config
+
+        if data.get("device_api_targets"):
+            data["device_api_targets"] = tuple(
+                vars(target)
+                for target in targets_from_config(data["device_api_targets"], path.parent)
+            )
+        if not isinstance(data.get("admin_user_ids", ()), (list, tuple)):
+            raise ValueError("admin_user_ids must be a list of product user IDs")
+        data["admin_user_ids"] = tuple(data.get("admin_user_ids", ()))
         result = cls(**data)
         if not result.model_options or any(
             not isinstance(m, str) or not m.strip() or len(m) > 128 for m in result.model_options
         ):
             raise ValueError("model_options must contain model identifiers")
-        if result.computer_provider != "e2b":
-            raise ValueError("Only the e2b computer provider is supported")
+        if result.computer_provider not in ("daytona", "device_api", "e2b"):
+            raise ValueError("computer_provider must be daytona, device_api or e2b")
         if result.computer_provider == "e2b" and not result.e2b_key_file:
             raise ValueError("e2b requires e2b_key_file")
-        if result.e2b_key_file and not result.e2b_key_file.read_text().strip():
+        if (
+            result.computer_provider == "e2b"
+            and result.e2b_key_file
+            and not result.e2b_key_file.read_text().strip()
+        ):
             raise ValueError("Missing E2B credential")
+        if any(not isinstance(v, str) or not v for v in result.admin_user_ids):
+            raise ValueError("admin_user_ids must contain product user IDs")
+        endpoint = urlsplit(result.daytona_api_url)
+        if (
+            endpoint.scheme != "https"
+            or not endpoint.hostname
+            or endpoint.username
+            or endpoint.password
+            or endpoint.query
+            or endpoint.fragment
+        ):
+            raise ValueError("daytona_api_url must be HTTPS")
         if result.invitation_codes_file and result.login_method != "account":
             raise ValueError("Invitation registration requires account login")
         if result.login_method not in ("account", "google"):

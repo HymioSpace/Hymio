@@ -1,7 +1,6 @@
 """Generate a private LAN overlay without editing source configuration."""
 
 import ipaddress
-import json
 import os
 import socket
 import tomllib
@@ -79,12 +78,7 @@ def prepare_lan(root, config, config_path, address):
     target = config_path.with_name("hymio-lan.local.toml")
     if target.resolve() == config_path.resolve():
         raise ValueError("Use the source Backend config, not its generated LAN overlay")
-    private_write(
-        target,
-        "\n".join(
-            f"{key} = {json.dumps(value, ensure_ascii=False)}"
-            for key, value in overlay.items()
-        )
-        + "\n",
-    )
+    from bootstrap_config import toml
+
+    private_write(target, toml(overlay))
     return overlay, target

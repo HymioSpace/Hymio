@@ -2,6 +2,7 @@
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import subprocess
@@ -149,10 +150,42 @@ def start(home, root, args, state, restarting=False):
     )
 
 
+def doctor(home):
+    state = read(home / "state.json")
+    settings = state.get("settings", {})
+    unified = bool(settings.get("config"))
+    print(f"Configuration mode: {'unified' if unified else 'legacy'}")
+    if unified:
+        path = Path(settings["config"]).expanduser()
+        print(f"Editable input: {path}")
+        runtime = path.parent / "local-" + hashlib.sha256(
+            str(path.resolve()).encode()
+        ).hexdigest()[:10]
+        print(f"Generated Backend config: {runtime / 'backend/hymio.toml'} (do not edit)")
+        print(f"Generated Oath config: {runtime / 'oath/oath.toml'} (do not edit)")
+        print(f"Private credentials: {runtime / 'backend/private'} (do not copy separately)")
+    else:
+        print(f"Editable Backend config: {settings.get('backend_config', 'not recorded')}")
+        print(f"Editable Oath config: {settings.get('oath_config', 'not recorded')}")
+        print(
+            "Editable network overlay: "
+            + str(settings.get("deploy_config", "not recorded"))
+        )
+        print("Generated Backend overlay: backend/hymio-media.local.toml (do not edit)")
+        print("Migration: create ~/.hymio/config.toml for future unified installs;")
+        print("existing accounts, history and identity data require a separate migration.")
+    print(f"Manager state: {home / 'state.json'}")
+    print(f"Launch log: {home / 'hymio.log'}")
+    backend, web = health(settings.get("client", "web"))
+    print(f"Backend health: {'ready' if backend else 'unavailable'}")
+    print(f"Client health: {'ready' if web else 'unavailable'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("init", "start", "stop", "restart", "status", "logs")
+        "command",
+        choices=("init", "start", "stop", "restart", "status", "logs", "doctor"),
     )
     parser.add_argument("--home", type=Path, default=Path.home() / ".hymio")
     parser.add_argument("--client", choices=("web", "desk", "none"))
@@ -206,6 +239,9 @@ def main():
                 ["tail", *(["-f"] if args.follow else []), "-n", "100", str(log)],
                 check=True,
             )
+            return
+        if args.command == "doctor":
+            doctor(home)
             return
         if args.command == "status":
             state = read(home / "state.json")

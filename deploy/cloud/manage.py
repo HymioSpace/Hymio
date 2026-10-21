@@ -30,8 +30,8 @@ def generate(path):
         else config.resolve()
     )
     backend = tomllib.loads((config / "hymio.toml").read_text())
-    if backend.get("computer_provider") != "e2b":
-        raise ValueError("Cloud deployment requires E2B; Docker socket is not mounted")
+    if backend.get("computer_provider") not in ("daytona", "e2b", "device_api"):
+        raise ValueError("Cloud computer_provider must be daytona, device_api or e2b")
     if backend.get("host") != "0.0.0.0" or backend.get("port", 8080) != 8080:
         raise ValueError("Backend must listen on 0.0.0.0:8080 inside the container")
     if backend.get("database") != "/data/hymio.sqlite":
@@ -70,13 +70,20 @@ def generate(path):
     if web == api:
         routes = (
             f"{web} {{\n{private_routes}"
-            " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/* /tasks /attachments /attachments/* /settings/*\n"
+            " handle /admin/api/* {\n  reverse_proxy backend:8080\n }\n"
+            " handle_path /admin/* {\n  root * /srv/admin\n"
+            "  try_files {path} /index.html\n  file_server\n }\n"
+            " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/* "
+            "/tasks /attachments /attachments/* /settings/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )
     else:
         routes = (
-            f"{web} {{\n{web_routes}}}\n"
+            f"{web} {{\n handle /admin/api/* {{\n  reverse_proxy backend:8080\n }}\n"
+            " handle_path /admin/* {\n  root * /srv/admin\n"
+            "  try_files {path} /index.html\n  file_server\n }\n"
+            f" handle {{\n{web_routes} }}\n}}\n"
             f"{api} {{\n{private_routes} reverse_proxy backend:8080\n}}\n"
         )
     if agent:

@@ -32,6 +32,12 @@ Web/Desktop accepts screenshot paste in the composer as well as file selection. 
 
 Images and common PDF/Office/text documents are supported initially. Common audio files are transcribed through MiniMax ASR. Arbitrary archives, executables and video are rejected. `multimodal_understand` uses MiniMax M3 for images and MarkItDown for documents. Conversion runs in a disposable process with a fixed deadline, bounded archive expansion and bounded Markdown output. Document content is untrusted input. Empty extraction does not imply a scanned PDF was understood.
 
+Media IDs share one tool-facing input but retain provenance. The resolver accepts user attachment
+IDs and device screenshot IDs owned by the same product user; the latter no longer requires a
+download and re-upload. Responses identify whether each item came from `attachment` or
+`device_screenshot`. Unknown IDs return a specific not-found error before model dispatch, while
+transport failures remain explicitly pending/unknown.
+
 ## Image creation
 
 The `image-creation` Skill directs `image_generate`: text prompt, aspect ratio and optional owned character reference. MiniMax image-01 currently offers character-reference generation, not arbitrary pixel editing. Generated base64 output is normalized and saved as a private attachment; clients render its stable URL across devices.

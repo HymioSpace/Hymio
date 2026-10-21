@@ -4,6 +4,8 @@
 
 | 编号 | 方案 | 状态 |
 | --- | --- | --- |
+| 27 | [Resource access and administration](feature27-resource-administration.md) | Implemented |
+| 26 | [Cloud and custom device providers](feature26-device-providers.md) | Implementing |
 | 25 | [Personal home and platform navigation](feature25-personal-home.md) | Implemented |
 | 24 | [Portable local deployment](feature24-local-bootstrap.md) | Implemented |
 | 01 | [导入与同步](feature01-context-ingress.md) | Draft |

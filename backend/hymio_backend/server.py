@@ -16,6 +16,7 @@ from starlette.routing import Route, WebSocketRoute
 from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .devices.admin import admin_routes
 from .devices.routes import device_routes
 from .devices.service import DeviceService
 from .media.routes import media_routes
@@ -216,8 +217,16 @@ def build_app(settings, *, provider=None):
 
     routes = (
         task_routes(settings, store, tasks, bearer, body)
-        + media_routes(settings, store, bearer, body, media)
+        + media_routes(
+            settings,
+            store,
+            bearer,
+            body,
+            media,
+            device_media=channel_devices.store.read_media_record,
+        )
         + device_routes(settings, store, bearer, body)
+        + admin_routes(settings, store, bearer, body)
         + [
             WebSocketRoute("/agent/ws", agent_socket),
             Route("/health", endpoint),

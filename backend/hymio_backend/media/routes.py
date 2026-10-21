@@ -3,7 +3,7 @@ import hmac
 import io
 import json
 from pathlib import Path
-from urllib.parse import quote, unquote
+from urllib.parse import quote, unquote, urlsplit
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.responses import JSONResponse, Response
@@ -26,7 +26,16 @@ def normalize_image(content):
         return output.getvalue()
 
 
-def media_routes(settings, sessions, bearer, body, store):
+def media_identifier(value):
+    """Accept an ID or one of Hymio's authenticated media URLs."""
+    path = urlsplit(value).path if "://" in value or value.startswith("/") else value
+    for marker in ("/devices/media/", "/attachments/"):
+        if path.startswith(marker):
+            return unquote(path.removeprefix(marker))
+    return value
+
+
+def media_routes(settings, sessions, bearer, body, store, device_media=None):
     provider = MiniMaxMedia(settings)
     slots = asyncio.Semaphore(4)
 
@@ -103,14 +112,44 @@ def media_routes(settings, sessions, bearer, body, store):
                         + quote(row["name"], safe="")
                     },
                 )
-            identifiers = data.get("attachment_ids", [])
+            identifiers = data.get("media_ids", data.get("attachment_ids", []))
+            if "media_ids" in data and "attachment_ids" in data:
+                identifiers = list(
+                    dict.fromkeys(
+                        [
+                            *data.get("media_ids", []),
+                            *data.get("attachment_ids", []),
+                        ]
+                    )
+                )
             if (
                 not isinstance(identifiers, list)
                 or len(identifiers) > 8
                 or any(not isinstance(i, str) for i in identifiers)
             ):
                 raise ValueError("Invalid attachments")
-            rows = [await asyncio.to_thread(store.read, user, i) for i in identifiers]
+            rows = []
+            for identifier in identifiers:
+                identifier = media_identifier(identifier)
+                try:
+                    row = await asyncio.to_thread(store.read, user, identifier)
+                    row["source"] = "attachment"
+                except LookupError:
+                    row = (
+                        await asyncio.to_thread(device_media, user, identifier)
+                        if device_media
+                        else None
+                    )
+                    if row is None:
+                        raise LookupError("Attachment or device media not found")
+                    row = {
+                        **row,
+                        "name": "device-screenshot.png",
+                        "mime": "image/png",
+                        "size": len(row["content"]),
+                        "source": "device_screenshot",
+                    }
+                rows.append(row)
             operation = path.rsplit("/", 1)[-1]
             question = data.get("prompt", "Describe the attachment.")
             if not isinstance(question, str) or not 1 <= len(question) <= 4000:
@@ -148,6 +187,7 @@ def media_routes(settings, sessions, bearer, body, store):
                             sections.append(
                                 {
                                     "attachment_id": row["id"],
+                                    "source": row["source"],
                                     "transcript": clipped,
                                     "truncated": len(clipped) < len(transcript),
                                 }
@@ -161,6 +201,7 @@ def media_routes(settings, sessions, bearer, body, store):
                             sections.append(
                                 {
                                     "attachment_id": row["id"],
+                                    "source": row["source"],
                                     "name": row["name"],
                                     "markdown": clipped,
                                     "truncated": len(clipped) < len(markdown),
@@ -174,7 +215,19 @@ def media_routes(settings, sessions, bearer, body, store):
                             )
                     if images:
                         answer = await asyncio.to_thread(provider.understand, images, question)
-                        sections.append({"analysis": answer})
+                        sections.append(
+                            {
+                                "analysis": answer,
+                                "media": [
+                                    {
+                                        "attachment_id": row["id"],
+                                        "source": row["source"],
+                                        "mime": row["mime"],
+                                    }
+                                    for row in images
+                                ],
+                            }
+                        )
                     result = {"content": sections}
                 elif operation == "generate":
                     image = await asyncio.to_thread(

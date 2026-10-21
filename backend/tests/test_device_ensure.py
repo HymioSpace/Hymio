@@ -49,6 +49,9 @@ class EnsureTests(unittest.TestCase):
         )
         self.sessions = SessionStore(self.settings)
         self.service = DeviceService(self.settings, self.sessions)
+        with self.sessions.transaction() as db:
+            db.execute("INSERT INTO users VALUES('alice','synthetic','alice','Alice')")
+        self.service.resources.grant("test-admin", "alice", "e2b", True)
         self.cloud = Cloud()
         self.service.providers["e2b"] = self.cloud
 

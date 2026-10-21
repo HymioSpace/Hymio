@@ -74,6 +74,7 @@ def shell(command, cwd, timeout):
 
 
 def browser(args, timeout):
+    from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
@@ -143,10 +144,20 @@ def browser(args, timeout):
             )
             connected.close()
             return result
+        navigation_error = None
         if action == "navigate" or action == "new_tab" and args.get("url"):
             if not args["url"].startswith(("https://", "http://")):
                 raise ValueError("Expected HTTP(S) URL")
-            page.goto(args["url"], wait_until="domcontentloaded", timeout=timeout * 1000)
+            try:
+                page.goto(
+                    args["url"],
+                    wait_until="domcontentloaded",
+                    timeout=min(timeout, 15) * 1000,
+                )
+            except PlaywrightError as error:
+                # A blocked or reset request is a page outcome, not proof that the
+                # device command is still running. Return the error page for inspection.
+                navigation_error = str(error)[:500]
         elif action == "click":
             page.locator(args["selector"]).click()
         elif action == "fill":
@@ -166,6 +177,8 @@ def browser(args, timeout):
             title=page.title(),
             text=page.locator("body").inner_text()[:16000],
         )
+        if navigation_error:
+            result["navigation_error"] = navigation_error
         result["elements"] = page.locator("a,button,input,textarea,select").evaluate_all("""nodes =>
             nodes.slice(0,80).map((node,index) => {
               node.setAttribute('data-hymio-id', String(index));

@@ -13,6 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 FIELDS = {
     "minimax_api_key",
     "e2b_api_key",
+    "daytona_api_key",
+    "daytona_api_url",
+    "daytona_snapshot",
+    "admin_user_ids",
+    "computer_provider",
+    "device_api_targets",
     "minimax_api_base",
     "models",
     "vision_model",
@@ -44,6 +50,8 @@ def toml(data):
                 + ", ".join(json.dumps(k) + " = " + value(v) for k, v in item.items())
                 + " }"
             )
+        if isinstance(item, (list, tuple)):
+            return "[" + ", ".join(value(v) for v in item) + "]"
         return json.dumps(item, ensure_ascii=False)
 
     return "\n".join(f"{key} = {value(item)}" for key, item in data.items()) + "\n"
@@ -61,15 +69,51 @@ def load(path):
         raise ValueError(
             "Unknown unified configuration fields; compare deploy/config.example.toml"
         )
-    for field in FIELDS - {"models", "casdoor_port", "invitation_codes"}:
+    for field in FIELDS - {
+        "models",
+        "casdoor_port",
+        "invitation_codes",
+        "device_api_targets",
+        "admin_user_ids",
+    }:
         if field in source and not isinstance(source[field], str):
             raise ValueError(f"{field} must be text")
+    source.setdefault(
+        "computer_provider", "e2b" if source.get("e2b_api_key") else "daytona"
+    )
+    if source["computer_provider"] not in ("daytona", "device_api", "e2b"):
+        raise ValueError("computer_provider must be daytona, device_api or e2b")
+    source.setdefault("admin_user_ids", [])
+    if not isinstance(source["admin_user_ids"], list) or any(
+        not isinstance(x, str) or not x for x in source["admin_user_ids"]
+    ):
+        raise ValueError("admin_user_ids must be a list of product user IDs")
+    source["daytona_api_key"] = os.environ.get(
+        "DAYTONA_API_KEY", source.get("daytona_api_key", "")
+    ).strip()
+    source.setdefault("daytona_api_url", "https://app.daytona.io/api")
+    source.setdefault("daytona_snapshot", "")
+    source.setdefault("device_api_targets", [])
+    if not isinstance(source["device_api_targets"], list):
+        raise TypeError("device_api_targets must be an array of target tables")
+    # Resolve paths here so generated service files preserve the original input base.
+    sys_path = str(ROOT / "backend")
+    import sys
+
+    if sys_path not in sys.path:
+        sys.path.insert(0, sys_path)
+    from hymio_backend.devices.target_config import targets_from_config
+
+    source["device_api_targets"] = [
+        vars(t) for t in targets_from_config(source["device_api_targets"], path.parent)
+    ]
     for field, env in (
         ("minimax_api_key", "MINIMAX_API_KEY"),
         ("e2b_api_key", "E2B_API_KEY"),
     ):
         source[field] = os.environ.get(env, source.get(field, "")).strip()
-        if not source[field] or any(c in source[field] for c in "\r\n"):
+        required = field != "e2b_api_key" or source["computer_provider"] == "e2b"
+        if (required and not source[field]) or any(c in source[field] for c in "\r\n"):
             raise ValueError(f"Set {field} in {path} or export {env}")
     source.setdefault("minimax_api_base", "https://api.minimax.cn/v1")
     endpoint = urlsplit(source["minimax_api_base"])
@@ -164,6 +208,7 @@ def prepare(path):
         ("casdoor-client-secret", credentials["client_secret"]),
         ("oath-auth-token", credentials["service_token"]),
         ("e2b-api-key", settings["e2b_api_key"]),
+        ("daytona-api-key", settings["daytona_api_key"]),
         ("invitation-codes", "\n".join(settings["invitation_codes"])),
     ):
         private_write(backend_dir / "private" / name, data + "\n")
@@ -176,6 +221,12 @@ def prepare(path):
         model_options=settings["models"],
         vision_model=settings["vision_model"],
         e2b_template=settings["e2b_template"],
+        computer_provider=settings["computer_provider"],
+        daytona_key_file="./private/daytona-api-key",
+        daytona_api_url=settings["daytona_api_url"],
+        daytona_snapshot=settings["daytona_snapshot"],
+        admin_user_ids=settings["admin_user_ids"],
+        device_api_targets=settings["device_api_targets"],
     )
     if settings["invitation_codes"]:
         backend["invitation_codes_file"] = "./private/invitation-codes"

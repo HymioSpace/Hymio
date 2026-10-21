@@ -23,6 +23,7 @@ Kit 同时提供 Agent 可调用操作和用户体验。业务数据与约束归
 
 ```text
 apps/client/       Web 前端 + Tauri 桌面壳
+apps/admin/        独立运营管理台，不与用户端导航耦合
 apps/chrome/       浏览器插件
 apps/ios/          iOS 平台实现
 packages/ui/       Web 共用组件、设计 tokens 和资源

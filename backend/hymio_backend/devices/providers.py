@@ -4,6 +4,7 @@ import json
 import shlex
 import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 
 CONTROLLER = Path(__file__).with_name("desktop_controller.py").read_text()
@@ -60,7 +61,20 @@ def controller_program(request, expires_at=None):
     )
 
 
+@dataclass(frozen=True)
+class DeviceProfile:
+    """Public execution metadata; never contains provider credentials or addresses."""
+
+    capabilities: tuple[str, ...] = ("bash", "browser", "computer")
+    workspace: str | None = "~/workspace"
+    resolution: tuple[int, int] = (1280, 800)
+    preserves_files_on_revoke: bool = False
+    replace_missing: bool = True
+
+
 class ComputerProvider(ABC):
+    profile = DeviceProfile()
+
     @abstractmethod
     def provision(self, device): ...
 

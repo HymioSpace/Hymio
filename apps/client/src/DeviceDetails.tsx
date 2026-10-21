@@ -73,7 +73,9 @@ export function DeviceDetails({
           {device.state === 'missing'
             ? '重试连接'
             : device.state === 'online'
-              ? '暂停电脑'
+              ? device.provider === 'device_api'
+                ? '暂停自动操作'
+                : '暂停电脑'
               : '继续运行'}
         </button>
         <button
@@ -84,7 +86,7 @@ export function DeviceDetails({
                 device.state === 'missing'
                   ? '移除失效设备记录？历史执行记录仍会保留。'
                   : device.preserves_files_on_revoke
-                    ? '解除并停止云电脑？文件仍保留。'
+                    ? '解除绑定？服务器和文件会保留。'
                     : '解除会销毁云电脑及文件，确认已备份？',
               )
             )
