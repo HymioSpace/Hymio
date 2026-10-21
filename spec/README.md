@@ -4,10 +4,6 @@
 
 | 编号 | 方案 | 状态 |
 | --- | --- | --- |
-| 27 | [Resource access and administration](feature27-resource-administration.md) | Implemented |
-| 26 | [Cloud and custom device providers](feature26-device-providers.md) | Implementing |
-| 25 | [Personal home and platform navigation](feature25-personal-home.md) | Implemented |
-| 24 | [Portable local deployment](feature24-local-bootstrap.md) | Implemented |
 | 01 | [导入与同步](feature01-context-ingress.md) | Draft |
 | 02 | [身份、Agent 与渠道](feature02-agent-channels.md) | Draft |
 | 03 | [Kit 注册、调用与跨端使用](feature03-kits.md) | Draft |
@@ -15,18 +11,26 @@
 | 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
 | 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：目录与边界 |
 | 07 | [Web / Desktop Client MVP](feature07-client-mvp.md) | Implemented |
-| 21 | [应用 Prompt 与云电脑恢复](feature21-prompt-computer-recovery.md) | Implemented |
-| 09 | [本机统一启动](feature09-local-start.md) | Implemented |
 | 08 | [登录与 Oath 身份接入](feature08-login-auth.md) | Implemented |
-| 13 | [会话快照与历史分页](feature13-conversation-history.md) | Implemented |
-| 12 | [本机命令行](feature12-command-line.md) | Implemented |
+| 09 | [本机统一启动](feature09-local-start.md) | Implemented |
+| 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：多 Provider 设备执行 |
 | 11 | [单机云部署](feature11-cloud-deployment.md) | Implemented：部署入口；公网验收待部署 |
-| 10 | [多设备与执行环境](feature10-multi-device.md) | Implemented：E2B Desktop |
+| 12 | [本机命令行](feature12-command-line.md) | Implemented |
+| 13 | [会话快照与历史分页](feature13-conversation-history.md) | Implemented |
 | 14 | [iOS MVP](feature14-ios-mvp.md) | Implemented：SwiftUI、同账号持续对话与前台恢复 |
+| 15 | [统一设计与组件](feature15-unified-design.md) | Implemented |
 | 16 | [单入口与局域网真机体验](feature16-lan-entry.md) | Implemented：单入口、LAN 启动与配置 |
 | 17 | [App 响应与状态反馈](feature17-app-responsiveness.md) | Implemented |
 | 18 | [Trace 与设备可用性](feature18-trace-devices.md) | Implemented |
-| 15 | [统一设计与组件](feature15-unified-design.md) | Implemented |
+| 19 | [单域名云端部署](feature19-cloud-single-entry.md) | Implemented |
+| 20 | [Progressive agent UI](feature20-progressive-ui.md) | Implemented |
+| 21 | [应用 Prompt 与云电脑恢复](feature21-prompt-computer-recovery.md) | Implemented |
+| 22 | [Models and media](feature22-models-and-media.md) | Implemented |
+| 23 | [Tasks and delegation](feature23-tasks-and-delegation.md) | Implemented |
+| 24 | [Portable local deployment](feature24-local-bootstrap.md) | Implemented |
+| 25 | [Personal home and platform navigation](feature25-personal-home.md) | Implemented |
+| 26 | [Cloud and custom device providers](feature26-cloud-device-providers.md) | Implementing |
+| 27 | [Resource access and administration](feature27-resource-access-administration.md) | Implemented |
 
 
 ## 设计与实现
@@ -49,7 +53,8 @@
 
 ## 下一步
 
-当前先完成 Web/Tauri Client MVP；产品身份体系、Context、连接器和 Kit 后续逐步接入。客户端技术栈与工作区见 feature07，产品后端采用 Python/Starlette/SQLite，通过 OIDC 接入 Casdoor，见 feature08。
+当前云电脑已具备 Daytona、兼容 E2B 和运维托管 Linux API 三种 Provider，并有独立资源管理台。
+下一步补齐火山云手机生命周期、Android 交互能力、自助设备接入，以及 Context collector/Nostalgia 的正式集成。
 
 - [Models and media](feature22-models-and-media.md): model preferences, private attachments, multimodal understanding and image creation.
 

@@ -1,4 +1,4 @@
-# Cloud and custom device providers
+# Feature 26 — Cloud and custom device providers
 
 Status: Implementing. Provider metadata, replacement isolation and operator-assigned Linux HTTPS API execution are implemented.
 Volcengine lifecycle APIs, Android execution and self-service custom host enrollment are not yet implemented.
@@ -11,7 +11,8 @@ Public cloud is the intended default; a user may opt into a personally owned Mac
 A device's provider is infrastructure, not its user identity or its input channel.
 
 Daytona is the default hosted desktop; an operator-managed VM (including ECS) can instead run
-the host-side HTTPS API. Access and quotas follow feature 27.
+the host-side HTTPS API. Access and quotas follow
+[feature 27](feature27-resource-access-administration.md).
 Android provider integration and self-service custom host enrollment follow separately.
 E2B remains a compatibility implementation during migration, not the target default. Operator-managed ECS access is verified; automatic Volcengine provisioning is not implemented. No automatic provider migration, resource purchase or deletion occurs.
 

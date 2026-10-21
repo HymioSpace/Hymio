@@ -85,6 +85,10 @@ Model preferences and private attachment/media processing are owned by Hymio Bac
 
 本地统一私有配置、自动身份初始化与新电脑部署见 [feature24](feature24-local-bootstrap.md)。
 
+Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
+[feature26](feature26-cloud-device-providers.md)；独立管理台、用户授权、配额和资源释放见
+[feature27](feature27-resource-access-administration.md)。
+
 ## 产品入口
 
 iOS 使用此刻、对话、任务、我的四个原生页签；Web 使用有文字标签的侧栏，任务和账号保持宽屏面板。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
