@@ -35,11 +35,21 @@ Each installation has its own delivery cursor. Backgrounding the app disconnects
 
 For a LAN Debug build, set `lan_host = "auto"` in the ignored repository file `deploy/local.toml`, then run `hymio restart --client web`. The launcher derives ignored `Config/Network.generated.xcconfig` from that single network configuration; do not edit the generated file. Debug uses it; Release does not. Signing settings stay unchanged. Select your Team in Xcode → Signing & Capabilities; there is no need to enter the same Team ID twice.
 
-For a remote deployment, copy `Config/Local.example.xcconfig` to ignored `Config/Local.xcconfig` and set your backend URL and bundle identifier. Local.xcconfig overrides the generated LAN endpoint in Debug as well. Remove its backend override to return to automatic LAN configuration. Do not enter keys or credentials there.
+For a remote deployment, copy `Config/Local.example.xcconfig` to ignored
+`Config/Local.xcconfig` and set the backend URL. Copy
+`Config/LocalSigning.example.xcconfig` to ignored `Config/LocalSigning.xcconfig` and
+set the bundle identifier and development team. Keeping signing overrides in this
+separate file prevents Xcode from writing personal values into the committed project.
+Remove the backend override to return to automatic LAN configuration. Do not enter
+keys or credentials in either file.
 
 ```xcconfig
 HYMIO_BACKEND_URL = https:/$()/your-domain.example
-PRODUCT_BUNDLE_IDENTIFIER = your.unique.hymio
+```
+
+```xcconfig
+HYMIO_APP_BUNDLE_IDENTIFIER = your.unique.hymio
+HYMIO_DEVELOPMENT_TEAM = YOUR_TEAM_ID
 ```
 
 For a local phone test you can use a LAN HTTP address in a **Debug** build; the server must be reachable from the phone. Release accepts HTTPS/WSS only. The backend public URL must be reachable. Login advertises chat at that same host’s `/agent/ws` and business APIs at `/oath-biz`; Oath upstream addresses stay internal.
@@ -52,7 +62,9 @@ The app uses only system encryption (TLS, Keychain and file protection). Verify 
 
 1. Connect the iPhone to the Mac by USB, unlock it and trust the Mac.
 2. In Xcode Settings → Apple Accounts, sign in with your developer account.
-3. Open `Hymio.xcodeproj`; in Hymio → Signing & Capabilities, enable automatic signing, choose your team and a unique bundle identifier.
+3. Copy `Config/LocalSigning.example.xcconfig` to ignored
+   `Config/LocalSigning.xcconfig`, then set your Team ID and unique bundle identifier there.
+   Open `Hymio.xcodeproj` and keep automatic signing enabled.
 4. Enable Developer Mode on the phone under Settings → Privacy & Security, following the restart prompt.
 5. Select the iPhone as the run destination and press Run (⌘R). This installs a development build without TestFlight or App Store publication.
 
@@ -80,8 +92,8 @@ Archive checks the configured HTTPS backend before building. After changing an e
 ## TestFlight distribution
 
 1. Deploy and verify the [HTTPS Backend](../../deploy/cloud/README.md). In ignored
-   `Config/Local.xcconfig`, configure its HTTPS origin and your own bundle identifier.
-   Keep Team IDs/signing overrides private; never commit Xcode's personal signing edits.
+   `Config/Local.xcconfig`, configure its HTTPS origin. Put your bundle identifier and
+   Team ID in ignored `Config/LocalSigning.xcconfig`; never commit personal signing values.
 2. Create the matching App in App Store Connect. Sign into Xcode's Apple Accounts and
    select your Team with automatic signing. Choose **Any iOS Device (arm64)**.
 3. Set Version and a new Build number in Xcode. Info.plist derives these from

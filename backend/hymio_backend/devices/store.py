@@ -3,6 +3,8 @@ import json
 import time
 import uuid
 
+from .resources import ResourceStore
+
 
 class DeviceConflict(ValueError):
     pass
@@ -18,8 +20,10 @@ class DeviceStore:
                     kind TEXT NOT NULL, provider TEXT NOT NULL, provider_ref TEXT NOT NULL,
                     generation INTEGER NOT NULL DEFAULT 1, revoked_at REAL,
                     created_at REAL NOT NULL, last_seen REAL NOT NULL DEFAULT 0);
-                CREATE UNIQUE INDEX IF NOT EXISTS one_cloud_desktop
-                    ON devices(user_id,kind) WHERE revoked_at IS NULL AND kind='cloud_desktop';
+                DROP INDEX IF EXISTS one_cloud_desktop;
+                CREATE UNIQUE INDEX IF NOT EXISTS one_provider_desktop
+                    ON devices(user_id,kind,provider)
+                    WHERE revoked_at IS NULL AND kind='cloud_desktop';
                 CREATE UNIQUE INDEX IF NOT EXISTS one_mac
                     ON devices(user_id,kind) WHERE revoked_at IS NULL AND kind='mac';
                 CREATE UNIQUE INDEX IF NOT EXISTS channel_binding
@@ -60,6 +64,8 @@ class DeviceStore:
                     if name not in existing:
                         db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
             self._channel_policy(db)
+
+        self.resources = ResourceStore(sessions)
 
     def _channel_policy(self, db):
         db.execute(
@@ -107,12 +113,14 @@ class DeviceStore:
         with self.transaction() as db:
             row = db.execute(
                 "SELECT * FROM devices WHERE user_id=? AND kind='cloud_desktop' "
-                "AND revoked_at IS NULL",
-                (user_id,),
+                "AND provider=? AND revoked_at IS NULL",
+                (user_id, provider),
             ).fetchone()
             if row:
+                ResourceStore.reserve(db, dict(row))
                 return dict(row)
             device_id = uuid.uuid4().hex
+            ResourceStore.reserve(db, {"id": device_id, "user_id": user_id, "provider": provider})
             db.execute(
                 "INSERT INTO devices(id,user_id,name,kind,provider,provider_ref,created_at) "
                 "VALUES(?,?,?,'cloud_desktop',?,'',?)",
@@ -196,7 +204,7 @@ class DeviceStore:
     def replace_missing(self, user_id, device_id):
         with self.transaction() as db:
             row = db.execute(
-                "SELECT id FROM devices WHERE user_id=? AND id=? AND revoked_at IS NULL",
+                "SELECT * FROM devices WHERE user_id=? AND id=? AND revoked_at IS NULL",
                 (user_id, device_id),
             ).fetchone()
             if not row:
@@ -207,10 +215,24 @@ class DeviceStore:
             )
             new_id = uuid.uuid4().hex
             db.execute(
+                "UPDATE resource_allocations SET state='released' WHERE device_id=?", (device_id,)
+            )
+            ResourceStore.reserve(
+                db, {"id": new_id, "user_id": user_id, "provider": row["provider"]}
+            )
+            db.execute(
                 "INSERT INTO devices(id,user_id,name,kind,provider,provider_ref,created_at,"
                 "replaces_device_id) "
-                "VALUES(?,?,'E2B cloud desktop','cloud_desktop','e2b','',?,?)",
-                (new_id, user_id, time.time(), device_id),
+                "VALUES(?,?,?,?,?,'',?,?)",
+                (
+                    new_id,
+                    user_id,
+                    row["name"],
+                    row["kind"],
+                    row["provider"],
+                    time.time(),
+                    device_id,
+                ),
             )
         return self.get(user_id, new_id)
 
@@ -371,13 +393,17 @@ class DeviceStore:
         return media_id
 
     def read_media(self, user_id, media_id):
+        row = self.read_media_record(user_id, media_id)
+        if row is None:
+            raise KeyError("media_not_found")
+        return row["content"]
+
+    def read_media_record(self, user_id, media_id):
         with self.transaction() as db:
             row = db.execute(
-                "SELECT content FROM device_media WHERE user_id=? AND id=?", (user_id, media_id)
+                "SELECT * FROM device_media WHERE user_id=? AND id=?", (user_id, media_id)
             ).fetchone()
-            if not row:
-                raise KeyError("media_not_found")
-            return row[0]
+        return dict(row) if row else None
 
     def expired_execution(self, user_id, device_id):
         with self.transaction() as db:

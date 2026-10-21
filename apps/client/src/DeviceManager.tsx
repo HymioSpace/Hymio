@@ -88,7 +88,13 @@ export function DeviceManager({ login }: { login: LoginState }) {
       const binding = await deviceRequest(login, '/ensure', {});
       if (binding.device?.device_id) setExpanded(binding.device.device_id);
       if (binding.action === 'unavailable')
-        setError('云服务暂时无法连接，原环境会保留，稍后自动重试。');
+        setError(
+          binding.error === 'resource_access_denied'
+            ? '云电脑尚未开通，请联系管理员。'
+            : binding.error === 'resource_capacity_exhausted'
+              ? '云电脑名额已满，请联系管理员。'
+              : '云服务暂时无法连接，原环境会保留，稍后自动重试。',
+        );
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -189,7 +195,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
               onClick={() => {
                 if (
                   window.confirm(
-                    `解除 ${device.name}？${device.capabilities.length ? (device.preserves_files_on_revoke ? '云电脑将停止运行，文件保留。' : '云电脑将销毁，请先备份文件。') : '此设备将停止心跳同步。'}`,
+                    `解除 ${device.name}？${device.capabilities.length ? (device.preserves_files_on_revoke ? '仅解除绑定，服务器和文件保留。' : '云电脑将销毁，请先备份文件。') : '此设备将停止心跳同步。'}`,
                   )
                 )
                   void action(`/${device.device_id}/revoke`);
@@ -213,7 +219,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
           />
         ))}
       {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
-        <p className="dialog-note">当前没有可用云电脑。对话不受影响；执行环境由服务端管理。</p>
+        <p className="dialog-note">当前没有云电脑。需要使用时，请联系管理员开通；对话不受影响。</p>
       )}
       <p className="dialog-note">云电脑可执行命令、浏览网页和操作桌面。手机仅用于对话。</p>
       {screen && (

@@ -30,8 +30,8 @@ Web and the Tauri desktop app share one frontend. Chrome can reuse shared web co
 A user has one ongoing agent conversation across clients. Closing a client does not end work accepted by Oath; reconnecting clients receive persisted progress. Context and Kit data are shared through their service APIs.
 
 Account settings now manage devices and a cloud desktop. Bash, browser DOM automation and desktop
-controls share one E2B cloud environment, with an explicit execution device and independent message
-delivery cursors per client window. The execution environment is hosted by E2B.
+controls share one configured cloud environment, with an explicit execution device and independent message
+delivery cursors per client window. Cloud desktops support Daytona, legacy E2B and operator-managed Linux ECS over HTTPS API. New users have no cloud resources until an administrator grants access; see [resource administration](deploy/README.md#cloud-resources-and-administration).
 See the [computer environment guide](deploy/computer/README.md) for setup and current limits.
 Conversations open from a recent snapshot, with earlier messages loaded on demand and live events delivered from the snapshot checkpoint.
 Cloud desktops can be paused and resumed from device settings. Recent operations are queryable
@@ -42,6 +42,7 @@ without replaying commands, and browser tools support explicit tabs and navigati
 | Directory | Responsibility |
 | --- | --- |
 | [apps/client](apps/client/README.md) | Shared web frontend and Tauri desktop shell |
+| [apps/admin](apps/admin) | Standalone operator console for cloud resources and future operations |
 | [apps/chrome](apps/chrome/README.md) | Browser extension, page capture and background tasks |
 | [apps/ios](apps/ios/README.md) | iOS client and native platform capabilities |
 | [packages](packages/README.md) | Shared UI, A2UI rendering, protocols and client communication |
@@ -52,6 +53,8 @@ without replaying commands, and browser tools support explicit tabs and navigati
 | [spec](spec/README.md) | Architecture and feature designs |
 
 Apps and services may build and release independently. Sharing a repository does not require sharing platform-specific UI or deploying every module as a separate service.
+The operator console is a separate application at `/admin/`; it is not part of the user Web
+navigation and can evolve independently from the product clients.
 
 ## Runtime and context
 
@@ -66,7 +69,7 @@ For a local stack, install Docker, uv, Node.js and pnpm, and install Oath from t
 
 ```bash
 bash scripts/hymio-install
-hymio init                         # Hidden prompts: MiniMax API key + E2B API key
+hymio init                         # Hidden prompt: MiniMax API key; configure your cloud host separately
 hymio start --timeout 900
 # Desktop instead: --client desk; services only: --client none
 ```
@@ -79,6 +82,7 @@ for key links, required fields and compatibility with existing configurations.
 
 The launcher starts Casdoor, Backend and Oath before the chosen development client.
 `hymio status`, `hymio logs -f`, `hymio stop` and `hymio restart` manage the local stack. Stop leaves Oath/Casdoor and accepted Agent work running.
+`hymio doctor` prints which configuration files are editable inputs and which are generated.
 
 ### Client only
 
@@ -103,7 +107,7 @@ Shared development conventions live in `spec/README.md`. Local `AGENTS.md`, cred
 
 ## Cloud hosting
 
-Use the [cloud deployment guide](deploy/cloud/README.md) for static Web, containerized Backend and automatic HTTPS. E2B hosts user computers; Oath and OIDC remain independent services. The first deployment uses one Backend instance with persistent SQLite storage.
+Use the [cloud deployment guide](deploy/cloud/README.md) for static Web, containerized Backend and automatic HTTPS. Cloud computers use the configured provider; Oath and OIDC remain independent services. The first deployment uses one Backend instance with persistent SQLite storage.
 
 ### Progressive interaction surfaces
 

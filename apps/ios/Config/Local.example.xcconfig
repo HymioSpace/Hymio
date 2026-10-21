@@ -1,3 +1,2 @@
 HYMIO_BACKEND_URL = https:/$()/hymio.example.com
-// Select your Team in Xcode → Signing & Capabilities.
-PRODUCT_BUNDLE_IDENTIFIER = com.example.hymio
+// Signing and bundle overrides live in the separate ignored LocalSigning.xcconfig.

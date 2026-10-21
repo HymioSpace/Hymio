@@ -87,6 +87,7 @@ xcuserdata/
 
 # Private iOS deployment and signing overrides
 /apps/ios/Config/Local.xcconfig
+/apps/ios/Config/LocalSigning.xcconfig
 *.xcresult/
 
 # Apple build and distribution artifacts
@@ -111,6 +112,7 @@ xcuserdata/
 /deploy/local.toml
 /apps/ios/Config/Network.generated.xcconfig
 /backend/hymio-media.local.toml
+/deploy/cli/uv.lock
 
 # Optional in-checkout unified deployment input and its generated runtime
 /deploy/config.toml

@@ -37,8 +37,16 @@ class CloudEntryTests(unittest.TestCase):
                 self.assertIn("/agent/*", caddy)
                 self.assertIn("/devices/*", caddy)
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
+                self.assertIn("handle /admin/api/*", caddy)
+                self.assertIn("handle_path /admin/*", caddy)
+                self.assertIn("root * /srv/admin", caddy)
                 self.assertLess(
-                    caddy.index("handle @backend"), caddy.index("try_files")
+                    caddy.index("handle /admin/api/*"),
+                    caddy.index("handle_path /admin/*"),
+                )
+                self.assertLess(
+                    caddy.index("handle @backend"),
+                    caddy.index("try_files", caddy.index("handle @backend")),
                 )
                 self.assertIn("handle @private {\n  respond 404", caddy)
             finally:

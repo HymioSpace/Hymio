@@ -1,9 +1,10 @@
 # Single-host cloud deployment
 
-One HTTPS entry serves Web, login, chat, business APIs and authenticated media. Caddy,
-Backend and optionally Casdoor run in Compose; Oath remains independently managed with
-its CLI. Cloud computers run on E2B, not on this host. This supports one Backend instance,
-not horizontal scaling or a complete infrastructure provisioner.
+One HTTPS entry serves Web, the independent `/admin/` operator console, login, chat, business
+APIs and authenticated media. Caddy, Backend and optionally Casdoor run in Compose; Oath remains
+independently managed with its CLI. Cloud computers use the configured provider and never run as
+containers on this host. This supports one Backend instance, not horizontal scaling or a complete
+infrastructure provisioner.
 
 ## 1. Prepare the host and private files
 
@@ -23,6 +24,7 @@ Keep configuration outside the checkout:
       casdoor-client-secret
       internal-service-token
       e2b-api-key
+      daytona-api-key
       invitation-codes
     oath/
       vault-role-id
@@ -34,6 +36,11 @@ Use mode 600 for secret/config files. Backend and Oath application containers us
 into Backend must be traversable. Keep model import credentials and identity administrator
 credentials separately readable by the host administrator only. Do not put them in an image,
 checkout, client config, `.env` or shell history.
+
+The cloud Oath worker and tools run as UID 10001. Skill directories must be traversable and
+`SKILL.md` files readable by that UID. A root-only file makes container health pass while every
+Agent step fails during context assembly. Keep private connection files mode 600 and owned by
+the runtime UID.
 
 Copy `backend/hymio.example.toml` to `/opt/hymio/config/hymio.toml`, retaining its identity
 and secret-file settings. For the shared Docker-network setup, use:
@@ -160,6 +167,9 @@ config path when changing configuration. Changing the Web public address require
 (`start`); editing invitation codes does not. Stop preserves volumes, stops managed Casdoor
 if enabled, and leaves Oath, externally managed identity and E2B computers running.
 
+The operator console is available at `https://WEB_DOMAIN/admin/` and is never shown in the user
+Web navigation. `/admin/api/*` is server-authorized; knowing the route does not grant access.
+
 Verify wrong-code rejection, signup/login/logout, two-account isolation, two chat turns,
 WSS reconnect/history, and a cloud-computer command. `/health` proves process liveness,
 not that the model, identity or E2B works. Do not use a production account in automated tests.
@@ -169,6 +179,8 @@ Use your host service manager to start Docker, run Oath's bootstrap/unseal flow,
 credential ownership, and bring up the generated Hymio Compose stack in that order.
 Keep the host bootstrap's private inputs outside the repository. This repository does not
 yet install a host boot service automatically. Test this recovery path on your deployment.
+See the [configuration map](../CONFIGURATION.md) and
+[Agent diagnostics guide](../TROUBLESHOOTING.md) for source ownership and log commands.
 
 Back up Backend, Oath, Casdoor and Caddy volumes and private configuration separately.
 Use SQLite's backup API for live databases; copying the database without its WAL can lose

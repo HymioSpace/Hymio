@@ -23,6 +23,7 @@ Kit 同时提供 Agent 可调用操作和用户体验。业务数据与约束归
 
 ```text
 apps/client/       Web 前端 + Tauri 桌面壳
+apps/admin/        独立运营管理台，不与用户端导航耦合
 apps/chrome/       浏览器插件
 apps/ios/          iOS 平台实现
 packages/ui/       Web 共用组件、设计 tokens 和资源
@@ -83,6 +84,10 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 Model preferences and private attachment/media processing are owned by Hymio Backend; see [models and media](feature22-models-and-media.md).
 
 本地统一私有配置、自动身份初始化与新电脑部署见 [feature24](feature24-local-bootstrap.md)。
+
+Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
+[feature26](feature26-cloud-device-providers.md)；独立管理台、用户授权、配额和资源释放见
+[feature27](feature27-resource-access-administration.md)。
 
 ## 产品入口
 

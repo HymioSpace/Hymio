@@ -1,3 +1,7 @@
+HYMIO_APP_BUNDLE_IDENTIFIER = space.hymio.ios
+HYMIO_DEVELOPMENT_TEAM =
+#include? "LocalSigning.xcconfig"
+
 // Debug talks to the local deployment: the LAN address `hymio start` generates,
 // or loopback when it has not generated one. `Local.xcconfig` belongs to Release —
 // it carries the public origin, and including it here would point Debug at it.

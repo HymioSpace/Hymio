@@ -1,3 +1,15 @@
+# Computer providers
+
+New hosted deployments default to Daytona. Configure private credentials and administrator
+access in [resource administration](../README.md#cloud-resources-and-administration).
+Bash, Chromium and desktop automation share one sandbox per authorized user.
+
+Alternatively use an operator-assigned cloud Linux host over HTTPS API:
+[installation, enrollment and IP changes](LINUX.md). Bash, browser and desktop control share
+one unprivileged environment. No E2B key or Docker device is needed for this provider.
+
+The following E2B instructions are retained for existing deployments only.
+
 # E2B personal computers
 
 One personal agent can use several devices. Web/iPhone/Mac are conversation channels;
@@ -27,7 +39,7 @@ e2b_key_file = "./private/e2b-api-key"
 e2b_template = "hymio-desktop"
 ```
 
-Start with the [launcher](../README.md) and sign in. Hymio automatically prepares and binds
+Start with the [launcher](../README.md), sign in, and have an administrator grant E2B access. Hymio automatically prepares and binds
 your cloud computer; the Agent also ensures availability before listing execution devices.
 Provisioning uses your own E2B account. The API key stays in Backend, never in tool arguments,
 model context or sandbox environment. Backend does not need a Docker socket.

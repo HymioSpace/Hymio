@@ -4,13 +4,17 @@ import base64
 import time
 import uuid
 
+from .api_provider import APIComputer, targets_from_config
+from .daytona_provider import DaytonaComputer
 from .providers import (
+    DeviceProfile,
     DispatchRejected,
     E2BComputer,
     ProviderUnavailable,
     ProvisionRejected,
     provider_failure,
 )
+from .resources import ResourceDenied
 from .store import DeviceConflict, DeviceStore
 from .validation import validate
 
@@ -19,13 +23,34 @@ class DeviceService:
     def __init__(self, settings, sessions):
         self.settings = settings
         self.store = DeviceStore(sessions)
+        self.resources = self.store.resources
         self.providers = {}
-        if settings.e2b_key_file:
+        import os
+
+        key_file = getattr(settings, "daytona_key_file", None)
+        if (key_file and key_file.is_file() and key_file.read_text().strip()) or os.environ.get(
+            "DAYTONA_API_KEY"
+        ):
+            self.providers["daytona"] = DaytonaComputer(
+                getattr(settings, "daytona_key_file", None),
+                getattr(settings, "daytona_api_url", "https://app.daytona.io/api"),
+                getattr(settings, "daytona_snapshot", ""),
+            )
+        targets = targets_from_config(getattr(settings, "device_api_targets", ()))
+        if targets:
+            self.providers["device_api"] = APIComputer(targets)
+        import importlib.util
+
+        if (
+            settings.e2b_key_file
+            and settings.e2b_key_file.is_file()
+            and importlib.util.find_spec("e2b_desktop")
+        ):
             self.providers["e2b"] = E2BComputer(settings.e2b_key_file, settings.e2b_template)
 
     def provider(self, device):
         if device["provider"] not in self.providers:
-            raise ValueError("provider_not_configured")
+            raise ProviderUnavailable("provider_not_configured")
         return self.providers[device["provider"]]
 
     def physical(self, device):
@@ -39,6 +64,12 @@ class DeviceService:
 
     def describe(self, device):
         channel = device["provider"] == "channel"
+        configured = self.providers.get(device["provider"])
+        profile = (
+            getattr(configured, "profile", DeviceProfile())
+            if configured is not None
+            else DeviceProfile(capabilities=())
+        )
         provider_error = None
         try:
             physical = (
@@ -72,15 +103,21 @@ class DeviceService:
             "provider_state": physical,
             "provider_error": provider_error,
             "online": state == "online",
-            "capabilities": [] if channel else ["bash", "browser", "computer"],
-            "workspace": None if channel else "~/workspace",
-            "resolution": {"width": 1280, "height": 800},
-            "preserves_files_on_revoke": False,
+            "capabilities": []
+            if channel or self.resources.provider(device["user_id"]) != device["provider"]
+            else list(profile.capabilities),
+            "workspace": None if channel else profile.workspace,
+            "resolution": {"width": profile.resolution[0], "height": profile.resolution[1]},
+            "preserves_files_on_revoke": profile.preserves_files_on_revoke,
             "replaces_device_id": device.get("replaces_device_id"),
         }
 
     def provision(self, user_id):
-        device = self.store.create(user_id, self.settings.computer_provider)
+        provider_name = self.resources.provider(user_id)
+        if provider_name is None:
+            raise ResourceDenied("resource_access_denied")
+        self.provider({"provider": provider_name})
+        device = self.store.create(user_id, provider_name)
         if not device["provider_ref"]:
             prior = self.store.provision_record(user_id, device["id"])
             if prior and prior["status"] in {"running", "outcome_unknown"}:
@@ -92,6 +129,7 @@ class DeviceService:
                 if not reference:
                     raise DeviceConflict("provision_outcome_unknown")
                 self.store.set_ref(user_id, device["id"], reference)
+                self.resources.mark(device["id"], "allocated")
                 self.store.release_expired_execution(user_id, device["id"], lock)
                 return self.describe(self.store.get(user_id, device["id"]))
             invocation = "provision:" + device["id"] + ":" + uuid.uuid4().hex
@@ -107,7 +145,9 @@ class DeviceService:
                         self.provider(device).stop({**device, "provider_ref": reference})
                         raise
                     self.store.finish(user_id, invocation, {"status": "succeeded"})
+                    self.resources.mark(device["id"], "allocated")
                 except ProvisionRejected as error:
+                    self.resources.mark(device["id"], "released")
                     self.store.finish(
                         user_id,
                         invocation,
@@ -115,6 +155,7 @@ class DeviceService:
                     )
                     raise
                 except Exception:
+                    self.resources.mark(device["id"], "outcome_unknown")
                     self.store.finish(
                         user_id, invocation, {"status": "outcome_unknown"}, release=False
                     )
@@ -122,6 +163,24 @@ class DeviceService:
         return self.describe(self.store.get(user_id, device["id"]))
 
     def ensure_available(self, user_id, *, wake=False):
+        provider_name = self.resources.provider(user_id)
+        if provider_name is None:
+            return {
+                "action": "unavailable",
+                "error": "resource_access_denied",
+                "notice": "Cloud devices are available only after administrator approval.",
+            }
+        preferred = self.providers.get(provider_name)
+        if (
+            preferred is not None
+            and hasattr(preferred, "assigned")
+            and not preferred.assigned(user_id)
+        ):
+            return {
+                "action": "unavailable",
+                "error": "device_not_assigned",
+                "notice": "No cloud computer has been assigned to this account.",
+            }
         recovery = self.store.recovery(user_id)
         if recovery and recovery["retry_at"] > time.time():
             return {
@@ -138,7 +197,12 @@ class DeviceService:
             }
         try:
             device = next(
-                (d for d in self.store.list(user_id) if d["kind"] == "cloud_desktop"), None
+                (
+                    d
+                    for d in self.store.list(user_id)
+                    if d["kind"] == "cloud_desktop" and d["provider"] == provider_name
+                ),
+                None,
             )
             action = "created" if device is None else "reused"
             if device and device["provider_ref"]:
@@ -146,6 +210,13 @@ class DeviceService:
                 if self.store.reconcile_control(user_id, device["id"], physical):
                     device = self.store.get(user_id, device["id"])
                 if physical == "missing":
+                    profile = getattr(self.provider(device), "profile", DeviceProfile())
+                    if not profile.replace_missing:
+                        return {
+                            "action": "recovery_required",
+                            "device": self.describe(device),
+                            "notice": "Original device is missing; automatic replacement disabled.",
+                        }
                     device = self.store.replace_missing(user_id, device["id"])
                     action = "replaced"
                 elif physical == "offline":
@@ -222,6 +293,10 @@ class DeviceService:
         selected = self.store.get(user_id, device_id)
         if selected["provider"] == "channel":
             raise ValueError("device_is_not_controllable")
+        self.resources.require(user_id, selected["provider"])
+        profile = getattr(self.provider(selected), "profile", DeviceProfile())
+        if capability not in profile.capabilities:
+            raise ValueError("device_capability_not_supported")
         device, known = self.store.claim(user_id, device_id, invocation_id, request, timeout + 5)
         if known is not None:
             return known
@@ -289,6 +364,7 @@ class DeviceService:
                     raise ValueError("image_too_large")
                 media_id = self.store.media(user_id, device_id, image)
                 payload["screenshot"] = {
+                    "attachment_id": media_id,
                     "media_id": media_id,
                     "url": "/devices/media/" + media_id,
                     "mime_type": "image/png",
@@ -324,12 +400,14 @@ class DeviceService:
             }
             return self.store.finish(user_id, invocation_id, result, release=False)
 
-    def control(self, user_id, device_id, action):
+    def control(self, user_id, device_id, action, *, administrator=False):
         device = self.store.get(user_id, device_id)
         if device["provider"] == "channel" or not device["provider_ref"]:
             raise ValueError("not_a_provisioned_computer")
         if action not in ("pause", "resume"):
             raise ValueError("invalid_control")
+        if not administrator:
+            self.resources.require(user_id, device["provider"])
         desired = "paused" if action == "pause" else "active"
         provider = self.provider(device)
         if device["control_state"] == desired and provider.state(device) == (
@@ -346,12 +424,57 @@ class DeviceService:
         return self.describe(self.store.get(user_id, device_id))
 
     def revoke(self, user_id, device_id):
-        device = self.store.get(user_id, device_id)
-        self.store.revoke(user_id, device_id)
-        stopped = True
-        if device["provider"] != "channel" and device["provider_ref"]:
-            try:
-                self.provider(device).stop(device)
-            except Exception:
-                stopped = False
-        return {"revoked": True, "stopped": stopped}
+        with self.store.transaction() as db:
+            row = db.execute(
+                "SELECT * FROM devices WHERE id=? AND user_id=?", (device_id, user_id)
+            ).fetchone()
+            if row is None:
+                raise KeyError("device_not_found")
+            device = dict(row)
+            if device["provider"] == "channel":
+                db.execute(
+                    "UPDATE devices SET revoked_at=?,generation=generation+1 WHERE id=?",
+                    (time.time(), device_id),
+                )
+                return {"revoked": True, "stopped": True}
+            lock = db.execute(
+                "SELECT * FROM device_locks WHERE device_id=?", (device_id,)
+            ).fetchone()
+            if lock and (
+                lock["deadline"] > time.time()
+                or not lock["invocation_id"].startswith("control:release:")
+            ):
+                raise DeviceConflict("device_busy_or_outcome_unknown")
+            if not device["provider_ref"]:
+                record = db.execute(
+                    "SELECT state FROM resource_allocations WHERE device_id=?", (device_id,)
+                ).fetchone()
+                if record and record["state"] != "released":
+                    raise DeviceConflict("provision_requires_recovery")
+            control_id = "control:release:" + uuid.uuid4().hex
+            db.execute(
+                "INSERT OR REPLACE INTO device_locks VALUES(?,?,?,?)",
+                (device_id, user_id, control_id, time.time() + 120),
+            )
+            db.execute(
+                "UPDATE devices SET revoked_at=?,generation=generation+1 WHERE id=?",
+                (time.time(), device_id),
+            )
+        self.resources.mark(device_id, "releasing")
+        try:
+            provider = self.provider(device)
+            outcome = (
+                provider.stop(device)
+                if device["provider_ref"] and provider.state(device) != "missing"
+                else None
+            )
+        except Exception:
+            self.resources.mark(device_id, "release_unknown")
+            return {"revoked": True, "stopped": False}
+        self.resources.mark(device_id, "released")
+        with self.store.transaction() as db:
+            db.execute(
+                "DELETE FROM device_locks WHERE device_id=? AND invocation_id=?",
+                (device_id, control_id),
+            )
+        return {"revoked": True, "stopped": None if outcome == "detached" else True}

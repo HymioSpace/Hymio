@@ -105,7 +105,9 @@ class BootstrapTests(unittest.TestCase):
             patch.dict(os.environ, {}, clear=True),
         ):
             path = Path(root) / "config.toml"
-            path.write_text('minimax_api_key = "synthetic-private"\n')
+            path.write_text(
+                'computer_provider = "e2b"\nminimax_api_key = "synthetic-private"\n'
+            )
             with self.assertRaisesRegex(ValueError, "E2B_API_KEY") as error:
                 load(path)
             self.assertNotIn("synthetic-private", str(error.exception))
