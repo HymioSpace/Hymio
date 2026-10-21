@@ -68,7 +68,7 @@ struct ProductShell: View {
   @Environment(\.scenePhase) private var scene
   var body: some View {
     TabView(selection: $selected) {
-      Tab("今日", systemImage: "house.fill", value: ProductTab.today) {
+      Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
         HomeScreen(account: account, client: client, board: board, selected: $selected)
       }
       Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
@@ -227,7 +227,7 @@ struct HomeScreen: View {
 
         }.padding(.horizontal, 22).padding(.bottom, 28).frame(maxWidth: 680)
           .frame(maxWidth: .infinity)
-      }.background(Brand.surface).navigationTitle("今日").navigationBarTitleDisplayMode(.inline)
+      }.background(Brand.surface).navigationTitle("此刻").navigationBarTitleDisplayMode(.inline)
         .refreshable { await board.refresh(account) }
     }
   }

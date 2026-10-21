@@ -357,7 +357,7 @@ export default function App() {
             onClick={() => navigate('home')}
           >
             <Home size={19} />
-            <span>今日</span>
+            <span>此刻</span>
           </button>
           <button
             className={`rail-button ${page === 'chat' && !debug ? 'active' : ''}`}

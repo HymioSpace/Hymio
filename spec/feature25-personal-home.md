@@ -7,7 +7,7 @@ attention, what changed and one thing currently moving forward. Conversation rem
 single continuous destination. Tasks and account controls have clear places; Trace is a
 secondary inspection route, not primary navigation.
 
-iOS uses four native tabs (Today, Conversation, Tasks, Account) with separate navigation
+iOS uses four native tabs (Now, Conversation, Tasks, Account) with separate navigation
 stacks and one shared connection. Web uses a labelled sidebar and a wider home composition;
 it retains its persistent conversation and focused task inspector. No memory/preferences or
 inspiration controls are shown before their behavior exists.
