@@ -1,6 +1,7 @@
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  Flag,
   ArrowUp,
   ArrowDown,
   SlidersHorizontal,
@@ -29,6 +30,7 @@ import {
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
 import { Settings } from './Settings';
+import { TasksPanel } from './TasksPanel';
 import { useLogin } from './useLogin';
 import { TraceBlock } from './TraceBlock';
 import { TracePage } from './TracePage';
@@ -51,11 +53,22 @@ export default function App() {
     () => conversation(state.events, state.pending),
     [state.events, state.pending],
   );
+  const unreadMessages = model.messages.filter(
+    (m) =>
+      state.unread &&
+      m.role === 'assistant' &&
+      !m.streaming &&
+      !m.calls?.length &&
+      m.content &&
+      (m.eventSeq ?? 0) > state.unread.after &&
+      (m.eventSeq ?? 0) <= state.unread.through,
+  );
   const [connection, setConnection] = useState<Connection>({
     wsUrl: '',
     bizUrl: '',
     credential: '',
   });
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [settings, setSettings] = useState(false),
     [debug, changeDebug] = useState(window.location.hash === '#/trace'),
     [draft, setDraft] = useState(() => sessionStorage.getItem('hymio.draft') || ''),
@@ -371,6 +384,14 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <button
+              className="icon-button"
+              aria-label="打开任务"
+              title="交给 Hymio 的事"
+              onClick={() => setTasksOpen(true)}
+            >
+              <Flag size={18} />
+            </button>
+            <button
               className={`connection-pill ${connected ? 'online' : ''}`}
               onClick={() => setSettings(true)}
               aria-label="我的账号与连接状态"
@@ -464,18 +485,29 @@ export default function App() {
                 </div>
               )}
               {buildTurns(model.messages).map((turn) => (
-                <TraceBlock
-                  key={turn.id}
-                  turn={turn}
-                  tools={model.tools}
-                  login={login}
-                  approvals={model.approvals}
-                  onAction={async (text) => {
-                    following.current = true;
-                    setNearBottom(true);
-                    await client.message(text);
-                  }}
-                />
+                <div key={turn.id}>
+                  {unreadMessages[0] && turn.final?.id === unreadMessages[0].id && (
+                    <div className="unread-divider">
+                      <span />
+                      <button onClick={() => client.markRead()}>
+                        {unreadMessages.length} 条未读消息
+                      </button>
+                      <span />
+                    </div>
+                  )}
+                  <TraceBlock
+                    key={turn.id}
+                    turn={turn}
+                    tools={model.tools}
+                    login={login}
+                    approvals={model.approvals}
+                    onAction={async (text) => {
+                      following.current = true;
+                      setNearBottom(true);
+                      await client.message(text);
+                    }}
+                  />
+                </div>
               ))}
               {unattachedTools.length > 0 && (
                 <div className="work-summary">
@@ -735,6 +767,7 @@ export default function App() {
           onRetry={() => void act(() => client.command('step.retry', {}))}
         />
       )}
+      {tasksOpen && <TasksPanel login={login} onClose={() => setTasksOpen(false)} />}
       {settings && <Settings login={login} onClose={() => setSettings(false)} />}
     </div>
   );

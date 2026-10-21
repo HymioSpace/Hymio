@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { Check, Copy, BrainCircuit } from 'lucide-react';
+import { Check, Copy, BrainCircuit, ChevronRight } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
@@ -164,6 +164,16 @@ const markdownComponents = {
   a: AttachmentLink,
 };
 
+export function MessageMarkdown({ content, login }: { content: string; login: LoginState }) {
+  return (
+    <ImageLogin.Provider value={login}>
+      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {content}
+      </Markdown>
+    </ImageLogin.Provider>
+  );
+}
+
 export function MessageView({
   message,
   tools,
@@ -179,14 +189,23 @@ export function MessageView({
 }) {
   const { state: copied, copy } = useCopy(message.content);
   const reasoning = useBufferedText(message.reasoning || '', !!message.streaming);
+  const reasoningOnly =
+    message.role === 'assistant' &&
+    !!message.reasoning &&
+    !message.content &&
+    !message.calls?.length;
   return (
-    <article className={`message message-${message.role}`} data-testid={`message-${message.role}`}>
+    <article
+      className={`message message-${message.role}${reasoningOnly ? ' message-reasoning-only' : ''}`}
+      data-testid={`message-${message.role}`}
+    >
       <div className="message-body">
         {message.reasoning && (
           <details className="reasoning-panel">
             <summary>
               <BrainCircuit size={13} />
-              {message.thinking ? '正在思考…' : '思考过程'}
+              <span>{message.thinking ? '正在思考…' : '思考过程'}</span>
+              <ChevronRight size={12} className="reasoning-chevron" />
             </summary>
             <div>{reasoning.text}</div>
           </details>

@@ -36,6 +36,7 @@ class CloudEntryTests(unittest.TestCase):
                 self.assertEqual(caddy.count("app.example.com"), 1)
                 self.assertIn("/agent/*", caddy)
                 self.assertIn("/devices/*", caddy)
+                self.assertIn("/tasks", caddy.split("handle @backend")[0])
                 self.assertLess(
                     caddy.index("handle @backend"), caddy.index("try_files")
                 )

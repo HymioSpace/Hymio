@@ -11,7 +11,7 @@ export interface Turn {
   user: Message | null;
   /** 最终回复：始终展开。 */
   final: Message | null;
-  /** 最终回复之前的思考、正文和工具调用，收进折叠块。 */
+  /** 全部思考、最终回复之前的正文和工具调用，收进折叠块。 */
   activity: Message[];
   /** 最终回复之后仍在流式的内容，保持展开。 */
   trailing: Message[];
@@ -50,16 +50,29 @@ export function buildTurns(messages: Message[]): Turn[] {
     const trace = message.traceId || '';
     // 同一条 trace 的事件即使被后开的 trace 打断过，也还归回原来那次工作。
     const known = trace ? byTrace.get(trace) : undefined;
-    if (known) {
+    const closed = known?.items.at(-1);
+    if (
+      known &&
+      !(closed && isFinal(closed) && message.role === 'assistant' && message.id !== closed.id)
+    ) {
       known.items.push(message);
       continue;
     }
-    if (!open || message.role === 'user' || (trace && open.trace)) {
+    const previous = open?.items.at(-1);
+    if (
+      !open ||
+      message.role === 'user' ||
+      (trace && open.trace) ||
+      (previous && isFinal(previous) && message.role === 'assistant' && message.id !== previous.id)
+    ) {
       open = { trace, items: [] };
       drafts.push(open);
     }
     open.items.push(message);
-    if (trace && !byTrace.has(trace)) byTrace.set(trace, open);
+    if (trace) {
+      open.trace = trace;
+      byTrace.set(trace, open);
+    }
   }
   return drafts.map((draft: Draft, index: number) => {
     const { items } = draft;
@@ -75,14 +88,20 @@ export function buildTurns(messages: Message[]): Turn[] {
     // 没有最终回复的trace，只有在它后面又开了新 trace、且自己不再流式时才算结束。
     const settled =
       finalAt >= 0 ? finalAt === items.length - 1 : index < drafts.length - 1 && !streaming;
+    let final = finalAt >= 0 ? items[finalAt] : null;
+    const activity = items
+      .slice(0, finalAt < 0 ? undefined : finalAt)
+      .filter((m) => m.role === 'assistant');
+    if (final?.reasoning?.trim()) {
+      activity.push({ ...final, id: `${final.id}:reasoning`, content: '', thinking: false });
+      final = final.content.trim() ? { ...final, reasoning: '', thinking: false } : null;
+    }
     return {
       id: items[0].id,
       trace: draft.trace,
       user: items.find((m) => m.role === 'user') || null,
-      final: finalAt >= 0 ? items[finalAt] : null,
-      activity: items
-        .slice(0, finalAt < 0 ? undefined : finalAt)
-        .filter((m) => m.role === 'assistant'),
+      final,
+      activity,
       trailing: finalAt < 0 ? [] : items.slice(finalAt + 1),
       startedAt: at(items[0].time),
       latestAt: at(last?.time),

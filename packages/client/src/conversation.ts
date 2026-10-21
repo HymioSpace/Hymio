@@ -13,6 +13,7 @@ export interface Message {
   calls?: Data[];
   reasoning?: string;
   thinking?: boolean;
+  eventSeq?: number;
   delivery?: 'queued' | 'accepted' | 'failed';
 }
 export interface Approval {
@@ -107,6 +108,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       // 定稿时间才是这条回复的时间。快照回放会丢掉已完结 step 的增量，
       // 不跟着改的话，实时流和刷新后的历史会算出两套时长。
       message.time = event.occur_dt;
+      message.eventSeq = event.event_seq;
       message.streaming = false;
       message.thinking = false;
       if (typeof p.reasoning === 'string') message.reasoning = p.reasoning;
@@ -152,6 +154,8 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       pauseNotice = '已暂停自动续行，工具结果已保留。发送消息后继续。';
     if (event.event_type === 'agent.resumed') pauseNotice = '';
     if (event.event_type === 'step.status') {
+      const existing = assistants.get(step);
+      if (existing && str(p.trace_id)) existing.traceId = str(p.trace_id);
       steps.set(step, {
         id: step,
         status: str(p.status),
@@ -180,13 +184,15 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       echoed.has(p.id)
     )
       continue;
-    messages.push({
+    const local: Message = {
       id: `local:${p.id}`,
       role: 'user',
       content: str(p.command.payload.content),
       time: new Date(p.at).toISOString(),
       delivery: p.delivery || 'queued',
-    });
+    };
+    const position = messages.findIndex((m) => Date.parse(m.time) > p.at);
+    messages.splice(position < 0 ? messages.length : position, 0, local);
     if (p.delivery !== 'failed') pauseNotice = '';
   }
   const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
@@ -220,4 +226,25 @@ export function executionActivity(events: OathEvent[], runtime?: Data, runtimeTh
     toolsRunning,
     busy: toolsRunning || ['prepared', 'running'].includes(model.latestStep?.status || ''),
   };
+}
+
+export function replayBoundary(
+  events: OathEvent[],
+  after: number,
+  through: number,
+  previous?: { after: number; through: number },
+) {
+  if (
+    after <= 0 ||
+    !events.some(
+      (e) =>
+        e.event_seq > after &&
+        e.event_seq <= through &&
+        e.event_type === 'assistant.message' &&
+        str(e.payload.content).trim() &&
+        !list(e.payload.tool_calls).length,
+    )
+  )
+    return previous;
+  return { after: Math.min(previous?.after ?? after, after), through };
 }

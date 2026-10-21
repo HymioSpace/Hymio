@@ -6,6 +6,12 @@ struct MessageRow: View {
   var approvals: [Approval] = []
   var onAction: (String) async throws -> Void = { _ in }
   @ObservedObject var account: AccountService
+  var compact = false
+  var onRetry: (String) -> Void = { _ in }
+  var onDiscard: (String) -> Void = { _ in }
+  private var reasoningOnly: Bool {
+    !message.reasoning.isEmpty && message.content.isEmpty && message.calls.isEmpty
+  }
   @State private var expanded = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   var body: some View {
@@ -16,7 +22,13 @@ struct MessageRow: View {
           UserMessageContent(content: message.content, account: account)
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
-          if let delivery = message.delivery {
+          if message.delivery == "failed" {
+            HStack(spacing: 16) {
+              Label("未发送", systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
+              Button("重试") { onRetry(message.id) }
+              Button("移除", role: .destructive) { onDiscard(message.id) }
+            }.font(.caption).frame(minHeight: 44)
+          } else if let delivery = message.delivery {
             Text(["queued": "正在发送…", "accepted": "已送达", "failed": "发送失败，可重试"][delivery] ?? "")
               .font(.caption).foregroundStyle(.secondary)
           }
@@ -29,16 +41,20 @@ struct MessageRow: View {
             DisclosureGroup {
               BufferedProse(
                 source: message.reasoning, streaming: message.streaming, account: account,
-                plain: true)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                plain: true
+              )
+              .multilineTextAlignment(.leading)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.top, 8)
             } label: {
               HStack(spacing: 7) {
                 Image(systemName: "brain").symbolEffect(
                   .pulse, isActive: message.thinking && !reduceMotion)
                 Text(message.thinking ? "正在思考…" : "思考过程")
               }.font(.caption).foregroundStyle(.secondary)
-            }.tint(.secondary).accessibilityIdentifier("message.reasoning")
+            }.tint(Brand.muted)
+              .frame(minHeight: 44, alignment: .leading)
+              .accessibilityIdentifier("message.reasoning")
           }
           if message.streaming && message.content.isEmpty && message.reasoning.isEmpty {
             HStack(spacing: 8) {
@@ -55,22 +71,25 @@ struct MessageRow: View {
           }
           if !message.calls.isEmpty {
             DisclosureGroup(isExpanded: $expanded) {
-              ForEach(Array(message.calls.enumerated()), id: \.offset) { i, call in
-                let tool = tools[String(message.id.dropFirst("assistant:".count)) + "-\(i)"]
-                VStack(alignment: .leading, spacing: 8) {
-                  HStack {
-                    Label(toolName(call["name"].text), systemImage: toolIcon(call["name"].text))
-                    Spacer()
-                    ToolOutcomeLabel(outcome: toolOutcome(index: i))
-                  }.font(.caption)
-                  Text(call["arguments"].pretty).font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                  if let tool {
-                    Text(tool.pretty).font(.system(.caption2, design: .monospaced)).textSelection(
-                      .enabled)
-                  }
-                }.padding(12).background(Brand.mist, in: RoundedRectangle(cornerRadius: 12))
-              }
+              VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(message.calls.enumerated()), id: \.offset) { i, call in
+                  let tool = tools[String(message.id.dropFirst("assistant:".count)) + "-\(i)"]
+                  VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                      Label(toolName(call["name"].text), systemImage: toolIcon(call["name"].text))
+                      Spacer()
+                      ToolOutcomeLabel(outcome: toolOutcome(index: i))
+                    }.font(.caption)
+                    Text(call["arguments"].pretty).font(.system(.caption, design: .monospaced))
+                      .textSelection(.enabled)
+                    if let tool {
+                      Text(tool.pretty).font(.system(.caption2, design: .monospaced)).textSelection(
+                        .enabled)
+                    }
+                  }.padding(12).background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Brand.line))
+                }
+              }.padding(.top, 8)
             } label: {
               HStack {
                 Label(
@@ -83,7 +102,14 @@ struct MessageRow: View {
             }.tint(.secondary)
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
-      }.accessibilityElement(children: .contain).accessibilityIdentifier("message.assistant")
+      }
+      .padding(compact || reasoningOnly ? 0 : 16)
+      .background {
+        if !compact && !message.content.isEmpty {
+          RoundedRectangle(cornerRadius: 18).fill(Brand.mist.opacity(0.7))
+        }
+      }
+      .accessibilityElement(children: .contain).accessibilityIdentifier("message.assistant")
     }
   }
   private var summaryOutcome: String {

@@ -48,3 +48,5 @@
 当前先完成 Web/Tauri Client MVP；产品身份体系、Context、连接器和 Kit 后续逐步接入。客户端技术栈与工作区见 feature07，产品后端采用 Python/Starlette/SQLite，通过 OIDC 接入 Casdoor，见 feature08。
 
 - [Models and media](feature22-models-and-media.md): model preferences, private attachments, multimodal understanding and image creation.
+
+- [Tasks and delegation](feature23-tasks-and-delegation.md): conversational intentions, milestones, optional schedules, bounded experts and Web/iOS task panels.

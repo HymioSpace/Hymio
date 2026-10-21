@@ -105,8 +105,21 @@ public struct ConversationState: Codable, Sendable {
   public var pending: [Command] = []
   public var accepted: Set<String>?
   public var rejected: Set<String>?
+  public var unreadAfter: Int?
+  public var unreadThrough: Int?
   public var clientID = "hymio-ios-" + UUID().uuidString
   public init() {}
+  public mutating func finishReplay(after: Int?) {
+    guard let after, after > 0,
+      events.contains(where: {
+        $0.event_seq > after && $0.event_seq <= cursor && $0.event_type == "assistant.message"
+          && !$0.payload["content"].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          && $0.payload["tool_calls"].items.isEmpty
+      })
+    else { return }
+    unreadAfter = min(unreadAfter ?? after, after)
+    unreadThrough = cursor
+  }
   public mutating func snapshot(
     _ events: [Event], checkpoint: Int, before: Int?, hasMore: Bool, user: String
   ) throws {

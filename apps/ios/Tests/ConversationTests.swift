@@ -112,4 +112,35 @@ final class ConversationTests: XCTestCase {
     XCTAssertThrowsError(try state.append(event(5, "user.message", [:]), user: "alice"))
   }
 
+  func testFailedSendKeepsItsPositionBeforeLaterReminder() {
+    var pending = Command(type: "user.message", payload: .object(["content": .string("hello")]))
+    pending.createdAt = "2026-01-01T01:00:00Z"
+    let later = Event(
+      user_id: "alice", event_seq: 9, event_type: "assistant.message",
+      payload: .object(["step_id": .string("reminder"), "content": .string("提醒")]),
+      occur_dt: "2026-01-01T02:00:00Z")
+    let model = Conversation(events: [later], pending: [pending], rejected: [pending.id])
+    XCTAssertEqual(model.messages.map(\.id), ["local:\(pending.id)", "assistant:reminder"])
+    XCTAssertEqual(model.messages.first?.delivery, "failed")
+    XCTAssertEqual(model.messages.last?.eventSeq, 9)
+  }
+
+  func testUnreadBoundarySurvivesSnapshotReplacingReplay() throws {
+    var state = ConversationState()
+    let reply = Event(
+      user_id: "alice", event_seq: 20, event_type: "assistant.message",
+      payload: .object(["step_id": .string("s"), "content": .string("reminder")]))
+    try state.snapshot([reply], checkpoint: 22, before: nil, hasMore: false, user: "alice")
+    state.finishReplay(after: 10)
+    XCTAssertEqual(state.unreadAfter, 10)
+    XCTAssertEqual(state.unreadThrough, 22)
+    let restored = try JSONDecoder().decode(
+      ConversationState.self, from: JSONEncoder().encode(state))
+    XCTAssertEqual(restored.unreadAfter, 10)
+    var fresh = ConversationState()
+    try fresh.snapshot([reply], checkpoint: 22, before: nil, hasMore: false, user: "alice")
+    fresh.finishReplay(after: nil)
+    XCTAssertNil(fresh.unreadAfter)
+  }
+
 }

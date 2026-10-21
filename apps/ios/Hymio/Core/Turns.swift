@@ -9,7 +9,7 @@ public struct Turn: Identifiable {
   public var user: ChatMessage?
   /// 最终回复：始终展开。
   public var final: ChatMessage?
-  /// 最终回复之前的思考、正文和工具调用，收进折叠块。
+  /// 全部思考、最终回复之前的正文和工具调用，收进折叠块。
   public var activity: [ChatMessage]
   /// 最终回复之后仍在流式的内容，保持展开。
   public var trailing: [ChatMessage]
@@ -61,18 +61,27 @@ public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
   for message in messages {
     let trace = message.trace
     // 同一条 trace 的事件即使被后开的 trace 打断过，也还归回原来那次工作。
-    if !trace.isEmpty, let index = byTrace[trace] {
+    if !trace.isEmpty, let index = byTrace[trace],
+      !(drafts[index].items.last.map {
+        isFinal($0) && message.role == "assistant" && message.id != $0.id
+      } ?? false)
+    {
       drafts[index].items.append(message)
       continue
     }
-    if drafts.isEmpty || message.role == "user"
+    let closed =
+      drafts.last?.items.last.map {
+        isFinal($0) && message.role == "assistant" && message.id != $0.id
+      } ?? false
+    if drafts.isEmpty || message.role == "user" || closed
       || (!trace.isEmpty && !drafts[drafts.count - 1].trace.isEmpty)
     {
       drafts.append(Draft(trace: trace, items: [message]))
     } else {
       drafts[drafts.count - 1].items.append(message)
     }
-    if !trace.isEmpty, byTrace[trace] == nil {
+    if !trace.isEmpty {
+      drafts[drafts.count - 1].trace = trace
       byTrace[trace] = drafts.count - 1
     }
   }
@@ -93,12 +102,25 @@ public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
     let settled =
       finalAt >= 0 ? finalAt == items.count - 1 : index < drafts.count - 1 && !streaming
     let head = finalAt < 0 ? items.count : finalAt
+    var final: ChatMessage? = finalAt >= 0 ? items[finalAt] : nil
+    var activity = items[0..<head].filter { $0.role == "assistant" }
+    if var answer = final, !answer.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      var reasoning = answer
+      reasoning.id += ":reasoning"
+      reasoning.content = ""
+      reasoning.thinking = false
+      activity.append(reasoning)
+      answer.reasoning = ""
+      answer.thinking = false
+      final = answer.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : answer
+    }
     return Turn(
       id: items[0].id,
       trace: draft.trace,
       user: items.first { $0.role == "user" },
-      final: finalAt >= 0 ? items[finalAt] : nil,
-      activity: items[0..<head].filter { $0.role == "assistant" },
+      final: final,
+      activity: activity,
       trailing: finalAt < 0 ? [] : Array(items[(finalAt + 1)...]),
       startedAt: TurnClock.date(items[0].time),
       latestAt: last.flatMap { TurnClock.date($0.time) },

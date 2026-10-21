@@ -70,7 +70,7 @@ def generate(path):
     if web == api:
         routes = (
             f"{web} {{\n{private_routes}"
-            " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/* /attachments /attachments/* /settings/*\n"
+            " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/* /tasks /attachments /attachments/* /settings/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )

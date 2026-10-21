@@ -12,6 +12,7 @@ public struct ChatMessage: Identifiable {
   public var calls: [JSON] = []
   public var reasoning = ""
   public var thinking = false
+  public var eventSeq = 0
   public var delivery: String?
 }
 public struct Approval: Identifiable {
@@ -50,8 +51,15 @@ public struct Conversation {
         failure = ""
         pauseNotice = ""
       }
-      messages.append(message)
+      let sentAt = TurnClock.date(message.time)
+      let position =
+        messages.firstIndex {
+          guard let sentAt, let other = TurnClock.date($0.time) else { return false }
+          return other > sentAt
+        } ?? messages.endIndex
+      messages.insert(message, at: position)
     }
+    rebuildIndices()
   }
   /// 一次工作为单位的消息序列，界面按它来折叠过程。
   public var turns: [Turn] { buildTurns(messages) }
@@ -71,7 +79,9 @@ public struct Conversation {
         rebuildIndices()
       }
       messages.append(
-        ChatMessage(id: "user:\(e.id)", role: "user", content: p["content"].text, time: e.occur_dt))
+        ChatMessage(
+          id: "user:\(e.id)", role: "user", content: p["content"].text, time: e.occur_dt,
+          eventSeq: e.event_seq))
       working = true
       failure = ""
     case "assistant.delta"
@@ -81,7 +91,8 @@ public struct Conversation {
         messages.append(
           ChatMessage(
             id: "assistant:\(step)", role: "assistant", content: "", time: e.occur_dt,
-            streaming: true, attempt: p["attempt"].int, trace: traces[step] ?? ""))
+            streaming: true, attempt: p["attempt"].int, trace: traces[step] ?? "",
+            eventSeq: e.event_seq))
       }
       let i = indices[step]!
       guard messages[i].streaming else { return }
@@ -110,6 +121,7 @@ public struct Conversation {
             trace: traces[key] ?? ""))
       }
       let i = indices[key]!
+      messages[i].eventSeq = e.event_seq
       messages[i].content = p["content"].text
       if p["reasoning"] != .null { messages[i].reasoning = p["reasoning"].text }
       messages[i].streaming = false
@@ -137,7 +149,10 @@ public struct Conversation {
       pauseNotice = ""
     case "step.status":
       let status = p["status"].text
-      if !step.isEmpty, !p["trace_id"].text.isEmpty { traces[step] = p["trace_id"].text }
+      if !step.isEmpty, !p["trace_id"].text.isEmpty {
+        traces[step] = p["trace_id"].text
+        if let i = indices[step] { messages[i].trace = p["trace_id"].text }
+      }
       working = ["prepared", "running", "queued"].contains(status)
       if ["completed", "failed", "paused", "cancelled"].contains(status), let i = indices[step] {
         messages[i].streaming = false

@@ -16,9 +16,10 @@ function Node({ value, label, depth = 0 }: { value: unknown; label?: string; dep
   if (item.value !== null && typeof item.value === 'object' && depth < 30) {
     const entries = Object.entries(item.value);
     return (
-      <details className="json-node" open={depth < 2}>
+      <details className={`json-node json-depth-${Math.min(depth, 2)}`} open={depth < 2}>
         <summary>
           {label !== undefined && <b>{label}: </b>}
+          <span className="json-kind">{Array.isArray(item.value) ? '[ ]' : '{ }'}</span>
           <span className="json-type">
             {Array.isArray(item.value) ? `Array (${entries.length})` : `Object (${entries.length})`}
             {item.encoded ? ' · JSON 字符串' : ''}
@@ -35,7 +36,7 @@ function Node({ value, label, depth = 0 }: { value: unknown; label?: string; dep
   return (
     <div className="json-leaf">
       {label !== undefined && <b>{label}: </b>}
-      <span className={typeof value === 'string' ? 'json-string' : 'json-literal'}>
+      <span className={`json-${value === null ? 'null' : typeof value}`}>
         {typeof value === 'string' ? value : (JSON.stringify(value) ?? 'undefined')}
       </span>
     </div>

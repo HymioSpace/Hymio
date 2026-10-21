@@ -82,7 +82,9 @@ oath start --config /opt/hymio/config/oath.toml \
 
 Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
 and the same service token, following the [deployment guide](../README.md).
-Use an Oath release with `--system-prompt` and `max_tool_only_steps` support. Keep the
+Use a matching Oath release with `--system-prompt`, `max_tool_only_steps`, subagent APIs and
+application-event admission support. Tasks and delegated-result reconciliation start with
+Backend; they need no additional cron container or public port. Keep the
 role, style and skill guidance in the versioned Markdown file; do not put changing device
 state or user data in it. Restart after updating instructions. The runtime's tool-only limit
 defaults to 100; its independent run step/time limits may stop work sooner.
@@ -187,7 +189,10 @@ For iPhone distribution, follow the [iOS/TestFlight guide](../../apps/ios/README
 
 ### Media model access
 
-Deploy the model-selection Oath release before enabling model settings. Set the same IDs in Backend `model_options` and Oath `agent.selectable_models`; all choices currently share the same provider endpoint/credential. Set Oath `tool_timeout_seconds = 150` for media operations.
+Deploy the model-selection Oath release before enabling model settings. Set the same IDs in Backend `model_options` and Oath `agent.selectable_models`; choices without an override use the default provider. For another provider, configure the
+corresponding `agent.model_providers.<choice>` entry with its model, API base, Vault credential
+alias and one-time import environment name. Do not send text requests to a different provider
+using the default provider's credential. Set Oath `tool_timeout_seconds = 150` for media operations.
 
 Backend media calls reuse the main provider's Vault alias. Set `media_api_base`, `media_credential`, `vision_model`, `vault_url`, `vault_role_id_file` and `vault_secret_id_file` in the private Backend configuration. Place AppRole identity files under the private configuration directory already mounted at `/config`; use container paths in TOML. Do not publish them in the image or repository, and do not put the model key in an environment variable.
 

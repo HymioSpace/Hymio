@@ -113,6 +113,37 @@ It writes a private `hymio-runtime.local.toml` beside the Oath config, disabling
 your source Oath configuration is unchanged. See [computer environments](computer/README.md)
 for E2B configuration, device management and the end-to-end check.
 
+## Update an existing local installation
+
+After the changes are merged, update both reviewed checkouts. Keep local changes and private
+configuration safe before switching branches; do not reset the checkout to update it.
+
+```bash
+# From Hymio's root, with Oath beside it:
+git -C ../Oath switch main
+git -C ../Oath pull --ff-only
+git switch main
+git pull --ff-only
+# Rerun installers if their CLI code changed:
+(cd ../Oath && bash scripts/oath-install)
+bash scripts/hymio-install
+hymio restart --client web --timeout 240
+hymio status
+curl --fail http://127.0.0.1:8080/health
+```
+
+Do not rerun account setup or overwrite existing TOML files for a routine update. Preserve
+Casdoor/Oath volumes, Backend SQLite and private configuration. The launcher's dependency
+sync/build steps apply the checked-out code. Existing model credentials remain in Vault.
+A newly added provider may require a one-time credential import as described below.
+
+Task capture, schedules and delegated-result reconciliation start with Backend. No extra cron
+job, queue service or public port is required. Deploy the matching Oath subagent/application-event
+contract first; old runtime binaries cannot execute these features. Sign in, send a concrete
+request and open Tasks to verify an outcome; `/health` alone does not verify model execution.
+For iOS, rebuild/run the app in Xcode to pick up native UI changes; restarting services cannot
+update an already installed app or TestFlight build.
+
 ## Cloud deployment
 
 For Linux servers, use the separate [cloud deployment entry](cloud/README.md): containerized
@@ -157,3 +188,5 @@ The settings screen uses Backend's `model_options` (first item is the default). 
 Update both Oath and Hymio before starting. The Oath build must support `agent.selectable_models`. The launcher uses a 150-second tool deadline for media calls and writes an ignored `backend/hymio-media.local.toml` overlay. Normal files and photos upload through the authenticated Backend; they do not require an E2B computer.
 
 Uploads support images, PDF, DOCX, PPTX, XLS/XLSX, text/Markdown/CSV/HTML/JSON/XML/YAML and MP3/WAV/M4A/OGG/FLAC. Individual files are limited to 20 MiB, with eight attachments per message and 256 MiB per user. Video and arbitrary archives are not supported. Scanned PDFs may need OCR; empty extracted text is not a successful visual interpretation.
+
+For a second API provider, configure Oath `agent.model_providers.deepseek-flash` with `model`, `api_base`, `credential`, `import_env` and optional `extra_params`. Add `deepseek-flash` to Backend `model_options`. Export `DEEPSEEK_API_KEY` before the first start so Oath can seed its independent Vault alias; later starts read Vault. Media APIs continue to use the default MiniMax provider.

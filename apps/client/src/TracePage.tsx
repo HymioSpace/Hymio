@@ -272,21 +272,23 @@ export function TracePage({
             ) : (
               <>
                 <p className="panel-caption">当前用户的实际执行记录</p>
-                {traces.map((t) => (
-                  <button
-                    className="trace-card"
-                    key={t.trace_id}
-                    onClick={() => void select(t.trace_id)}
-                  >
-                    <div>
-                      <code>{t.trace_id.slice(0, 12)}…</code>
-                      <ChevronRight size={15} />
-                    </div>
-                    <p>
-                      {t.step_count} steps<span>{ms(t.duration_ms)}</span>
-                    </p>
-                  </button>
-                ))}
+                <div className="trace-catalog">
+                  {traces.map((t) => (
+                    <button
+                      className="trace-card"
+                      key={t.trace_id}
+                      onClick={() => void select(t.trace_id)}
+                    >
+                      <div>
+                        <code>{t.trace_id.slice(0, 12)}…</code>
+                        <ChevronRight size={15} />
+                      </div>
+                      <p>
+                        {t.step_count} steps<span>{ms(t.duration_ms)}</span>
+                      </p>
+                    </button>
+                  ))}
+                </div>
                 {loading && !traces.length && (
                   <div className="panel-empty" role="status">
                     <LoaderCircle size={20} className="spin" />

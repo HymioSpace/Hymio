@@ -74,3 +74,11 @@ For Google:
 Google credentials belong only in Casdoor's private database. Backend retains its Casdoor client credentials; these are different OAuth clients. Gmail mailbox authorization is separate from account login.
 
 References: [Casdoor Google setup](https://casdoor.ai/docs/provider/oauth/google/), [Google Web OAuth](https://developers.google.com/identity/protocols/oauth2/web-server).
+
+## Tasks
+
+Backend starts a durable task scheduler with its normal service lifecycle. No extra process or
+cron setup is required. The authenticated `/tasks` API and the `tasks` Oath extension share task
+state, scheduled runs and progress records. Deploy with an Oath build supporting `/events` and
+`/subagents/*`, using the existing remote identity verifier. See
+[task design](../spec/feature23-tasks-and-delegation.md) for admission and cancellation rules.

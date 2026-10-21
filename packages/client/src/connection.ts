@@ -10,6 +10,7 @@ import {
   type ConversationPage,
 } from '@hymio/protocol';
 import { storage, type Pending } from './storage';
+import { replayBoundary } from './conversation';
 export const createIdentity = () =>
   crypto.randomUUID?.() ??
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
@@ -29,6 +30,7 @@ export interface ClientState {
   events: OathEvent[];
   pending: Pending[];
   error: string;
+  unread?: { after: number; through: number };
   replay?: { after: number; through: number; received: number };
   runtime?: Data;
   runtimeThrough?: number;
@@ -56,6 +58,7 @@ export class OathClient {
   private sent = new Set<string>();
   private saving = new Set<string>();
   private ready = false;
+  private replayAfter = 0;
   private replaced = false;
   private pingAt = 0;
   private clientId = `hymio-${createIdentity()}`;
@@ -77,6 +80,9 @@ export class OathClient {
   private update(patch: Partial<ClientState>) {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach((fn) => fn());
+  }
+  markRead() {
+    this.update({ unread: undefined });
   }
   allowTakeover() {
     this.replaced = false;
@@ -108,6 +114,7 @@ export class OathClient {
       pending: [],
       userId: '',
       replay: undefined,
+      unread: undefined,
       history: undefined,
       latency: undefined,
     });
@@ -137,7 +144,14 @@ export class OathClient {
     this.sent.clear();
     this.sourceDeviceId = '';
     this.cursor = 0;
-    this.update({ events: [], pending: [], userId: '', error: '', replay: undefined });
+    this.update({
+      events: [],
+      pending: [],
+      userId: '',
+      error: '',
+      replay: undefined,
+      unread: undefined,
+    });
   }
   private open() {
     if (!this.config) return;
@@ -185,6 +199,7 @@ export class OathClient {
             this.seen = new Set(events.map((e) => e.event_seq));
             this.cursor = snapshot?.checkpoint || 0;
             while (this.seen.has(this.cursor + 1)) this.cursor++;
+            this.replayAfter = this.cursor;
             this.update({ userId: frame.user_id, events, pending, phase: 'syncing' });
           } else if (frame.type === 'conversation.snapshot') {
             const snapshot = this.validatePage(frame);
@@ -248,7 +263,15 @@ export class OathClient {
             this.ephemeral('event.ack', { cursor: this.cursor });
             this.ready = true;
             this.retries = 0;
-            this.update({ phase: 'connected' });
+            this.update({
+              phase: 'connected',
+              unread: replayBoundary(
+                this.state.events,
+                this.replayAfter,
+                this.cursor,
+                this.state.unread,
+              ),
+            });
             this.flush();
             this.status();
             clearInterval(this.heartbeat);

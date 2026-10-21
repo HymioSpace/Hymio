@@ -6,29 +6,43 @@ struct TraceRow: View {
   let tools: [String: JSON]
   var approvals: [Approval] = []
   var onAction: (String) async throws -> Void = { _ in }
+  var onRetry: (String) -> Void = { _ in }
+  var onDiscard: (String) -> Void = { _ in }
   @ObservedObject var account: AccountService
   @State private var expanded = false
   /// 最新一条事件到达的时刻。用它把客户端的墙上时钟折回服务端，再让秒针自己走。
   @State private var anchored = Date()
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(alignment: .leading, spacing: 25) {
       if let user = turn.user { row(user) }
       if turn.foldable {
-        DisclosureGroup(isExpanded: $expanded) {
-          VStack(alignment: .leading, spacing: 25) {
-            ForEach(turn.activity) { row($0) }
+        VStack(alignment: .leading, spacing: 0) {
+          Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { expanded.toggle() }
+          } label: {
+            HStack(spacing: 9) {
+              Image(systemName: "checkmark.circle").foregroundStyle(Brand.blue)
+              Text(worked(Date())).fontWeight(.medium).foregroundStyle(Brand.ink)
+              Text("工作过程").foregroundStyle(Brand.muted)
+              Spacer(minLength: 4)
+              Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                .rotationEffect(.degrees(expanded ? 90 : 0)).foregroundStyle(Brand.muted)
+            }.font(.caption).padding(.horizontal, 14).frame(minHeight: 46)
+              .contentShape(Rectangle())
+          }.buttonStyle(.plain)
+            .accessibilityIdentifier("trace.fold")
+            .accessibilityValue(expanded ? "已展开" : "已收起")
+            .accessibilityHint("展开或收起中间步骤，不影响最终回复")
+          if expanded {
+            Divider().padding(.horizontal, 14)
+            VStack(alignment: .leading, spacing: 14) {
+              ForEach(turn.activity) { row($0, compact: true) }
+            }.padding(14)
           }
-          .padding(.leading, 14)
-        } label: {
-          Label {
-            Text(worked(Date()))
-          } icon: {
-            Image(systemName: "chevron.right").font(.caption2)
-          }
-        }
-        .tint(.secondary)
-        .accessibilityIdentifier("trace.fold")
+        }.background(Brand.mist.opacity(0.65), in: RoundedRectangle(cornerRadius: 16))
+          .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.line.opacity(0.8)))
       } else {
         if !turn.activity.isEmpty { live }
         ForEach(turn.activity) { row($0) }
@@ -40,16 +54,17 @@ struct TraceRow: View {
     .onChange(of: turn.latestAt) { _, _ in anchored = Date() }
   }
 
-  private func row(_ message: ChatMessage) -> some View {
+  private func row(_ message: ChatMessage, compact: Bool = false) -> some View {
     MessageRow(
-      message: message, tools: tools, approvals: approvals, onAction: onAction, account: account
+      message: message, tools: tools, approvals: approvals, onAction: onAction, account: account,
+      compact: compact, onRetry: onRetry, onDiscard: onDiscard
     )
     .id(message.id)
   }
 
   private var live: some View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
-      Text(worked(context.date))
+      Label(worked(context.date), systemImage: "circle.dotted")
         .font(.caption).foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("trace.live")

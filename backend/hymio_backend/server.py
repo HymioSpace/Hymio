@@ -2,7 +2,7 @@ import asyncio
 import hmac
 import json
 import re
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from urllib.parse import urlsplit
 
 import httpx
@@ -22,6 +22,11 @@ from .media.routes import media_routes
 from .media.store import MediaStore
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
+from .tasks.credentials import PREFIX
+from .tasks.credentials import verify as verify_service
+from .tasks.routes import task_routes
+from .tasks.service import TaskService
+from .tasks.store import TaskStore
 
 
 def bearer(request):
@@ -29,11 +34,11 @@ def bearer(request):
     return header[7:] if header.startswith("Bearer ") else ""
 
 
-async def body(request):
+async def body(request, *, limit=16384):
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
-        if len(raw) > 16384:
+        if len(raw) > limit:
             raise ValueError("Request too large")
     value = json.loads(raw)
     if not isinstance(value, dict):
@@ -50,13 +55,20 @@ def text(data, key):
 
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
+    tasks = TaskService(settings, TaskStore(store))
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
 
     @asynccontextmanager
     async def lifespan(app):
-        yield
+        scheduler = asyncio.create_task(tasks.run())
+        try:
+            yield
+        finally:
+            scheduler.cancel()
+            with suppress(asyncio.CancelledError):
+                await scheduler
         await upstream.aclose()
         if hasattr(oidc, "http"):
             oidc.http.close()
@@ -160,9 +172,13 @@ def build_app(settings, *, provider=None):
                 expected = settings.service_token_file.read_text().strip()
                 if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
                     raise Unauthorized()
-                return JSONResponse(
-                    await asyncio.to_thread(store.verify, text(await body(request), "credential"))
+                credential = text(await body(request), "credential")
+                verified = (
+                    await asyncio.to_thread(verify_service, settings, credential)
+                    if credential.startswith(PREFIX)
+                    else await asyncio.to_thread(store.verify, credential)
                 )
+                return JSONResponse(verified)
             identity = await asyncio.to_thread(store.verify, bearer(request))
             if path == "/auth/me":
                 return JSONResponse(identity)
@@ -198,7 +214,8 @@ def build_app(settings, *, provider=None):
         await relay_agent(websocket, settings, store, channel_devices, media)
 
     routes = (
-        media_routes(settings, store, bearer, body, media)
+        task_routes(settings, store, tasks, bearer, body)
+        + media_routes(settings, store, bearer, body, media)
         + device_routes(settings, store, bearer, body)
         + [
             WebSocketRoute("/agent/ws", agent_socket),

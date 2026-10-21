@@ -22,7 +22,7 @@ flowchart LR
 
 ## Model selection
 
-`model_options` is the deployer's allowlist, ordered with the default first. A persisted user preference is shared across clients. Backend injects the selection when forwarding a user message; clients cannot select credentials or endpoints. Oath independently restricts IDs with `agent.selectable_models`, freezes the model in each step, and preserves it for tool continuations and recovery. Current choices share one provider endpoint and Vault credential.
+`model_options` is the deployer's allowlist, ordered with the default first. A persisted user preference is shared across clients. Backend injects the selection when forwarding a user message; clients cannot select credentials or endpoints. Oath independently restricts IDs with `agent.selectable_models`, freezes the model in each step, and preserves it for tool continuations and recovery. Choices may use independent Oath `agent.model_providers` entries. Each entry selects its endpoint, model ID, parameters and Vault alias. Media APIs continue to use their separately configured provider.
 
 ## Attachments
 

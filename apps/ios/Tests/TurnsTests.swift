@@ -58,6 +58,56 @@ final class TurnsTests: XCTestCase {
     XCTAssertEqual(formatDuration(traceElapsed(turn, serverNow: Date())), "40 秒")
   }
 
+  func testFinalReasoningBelongsToWorkWithoutChangingStoredMessages() {
+    for content in ["最终答案", ""] {
+      var original = ChatMessage(id: "final", role: "assistant", content: content, time: start)
+      original.reasoning = "核对结果"
+      let turn = buildTurns([original])[0]
+      XCTAssertTrue(turn.foldable)
+      XCTAssertEqual(turn.activity.count, 1)
+      XCTAssertEqual(turn.activity[0].reasoning, "核对结果")
+      XCTAssertEqual(turn.activity[0].content, "")
+      XCTAssertNotEqual(turn.activity[0].id, turn.final?.id)
+      XCTAssertEqual(turn.final?.content ?? "", content)
+      XCTAssertEqual(turn.final?.reasoning ?? "", "")
+      XCTAssertEqual(turn.final == nil, content.isEmpty)
+      XCTAssertEqual(original.reasoning, "核对结果")
+      original.streaming = true
+      let live = buildTurns([original])[0]
+      XCTAssertFalse(live.foldable)
+      XCTAssertEqual(live.activity[0].content, content)
+      XCTAssertEqual(live.activity[0].reasoning, "核对结果")
+    }
+  }
+
+  func testProactiveReplyPreservesPreviousFinalAnswer() {
+    for trace in ["new", "t1", ""] {
+      let model = Conversation(events: [
+        event(1, "user.message", ["content": .string("你好")]),
+        step(2, "s1", "prepared", "t1"),
+        call(3, "s1", "之前的答案", []),
+        step(4, "s2", "prepared", trace),
+        call(5, "s2", "提醒到了", []),
+      ])
+      XCTAssertEqual(model.turns.count, 2)
+      XCTAssertEqual(model.turns[0].trace, "t1")
+      XCTAssertEqual(model.turns[0].final?.content, "之前的答案")
+      XCTAssertEqual(model.turns[1].final?.content, "提醒到了")
+      XCTAssertTrue(model.turns[1].activity.isEmpty)
+    }
+  }
+
+  func testSnapshotStatusAfterMessageRestoresTrace() {
+    let model = Conversation(events: [
+      event(1, "user.message", ["content": .string("你好")]),
+      call(2, "s1", "答案", []), step(3, "s1", "completed", "t1"),
+      call(4, "s2", "提醒", []), step(5, "s2", "completed", "t2"),
+    ])
+    XCTAssertEqual(model.messages.filter { $0.role == "assistant" }.map(\.trace), ["t1", "t2"])
+    XCTAssertEqual(model.turns.count, 2)
+    XCTAssertEqual(model.turns[0].final?.content, "答案")
+  }
+
   func testToolCallsNeverEndTheTrace() {
     let model = Conversation(events: [
       event(1, "user.message", ["content": .string("查一下")]),
