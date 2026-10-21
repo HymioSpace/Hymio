@@ -21,9 +21,9 @@ struct LoginScreen: View {
           Spacer()
         }.padding(.top, 58)
         VStack(alignment: .leading, spacing: 10) {
-          Text(signup ? "很高兴，认识你。" : "回来啦。")
+          Text("想到什么，交给 Hymio。")
             .font(.system(.largeTitle, design: .rounded, weight: .medium)).tracking(-1)
-          Text("一个 Hymio，随时接着聊。")
+          Text("对话随时继续，交代的事也会继续推进。")
             .font(.subheadline).foregroundStyle(Brand.muted)
         }
         VStack(spacing: 0) {
@@ -97,12 +97,13 @@ struct LoginScreen: View {
             password = ""
             account.error = ""
           } label: {
-            Text(signup ? "已有账号？登录" : "第一次来？创建账号").font(.subheadline)
+            HStack(spacing: 4) {
+              Text(signup ? "已有账号？" : "还没有账号？").foregroundStyle(Brand.muted)
+              Text(signup ? "登录" : "创建账号").foregroundStyle(Brand.blue).underline()
+            }.font(.subheadline).frame(minHeight: 44)
           }
           .frame(maxWidth: .infinity).accessibilityIdentifier("login.toggle")
         }
-        Text("与桌面和网页版使用同一账号。\n关闭 App 后，云端已接纳的工作仍会继续。")
-          .font(.footnote).foregroundStyle(Brand.muted).lineSpacing(5).padding(.top, 18)
       }.padding(.horizontal, 30).padding(.bottom, 32).frame(maxWidth: 520)
     }
     .background(Brand.surface).foregroundStyle(Brand.ink)

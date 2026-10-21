@@ -34,6 +34,20 @@ class SessionTests(unittest.TestCase):
         code, _ = self.store.finish(state, {"iss": self.settings.issuer, "sub": subject})
         return self.store.exchange(handle, code)
 
+    def test_display_name_uses_verified_username_instead_of_subject_uuid(self):
+        claims = {
+            "iss": self.settings.issuer,
+            "sub": "a" * 32,
+            "name": "a" * 32,
+            "preferred_username": "sample_user",
+        }
+        first = self.store.create_session(claims)
+        self.assertEqual(first["name"], "sample_user")
+        refreshed = self.store.refresh(first["refresh_token"])
+        self.assertEqual(refreshed["name"], "sample_user")
+        fallback = self.store.create_session({"iss": self.settings.issuer, "sub": "b" * 32})
+        self.assertEqual(fallback["name"], "我的账号")
+
     def test_client_endpoints_use_the_public_backend(self):
         result = self.login()
         self.assertEqual(result["oath_ws"], "wss://hymio.example/agent/ws")

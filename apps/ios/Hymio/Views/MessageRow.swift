@@ -7,6 +7,7 @@ struct MessageRow: View {
   var onAction: (String) async throws -> Void = { _ in }
   @ObservedObject var account: AccountService
   var compact = false
+  var showsTime = true
   var onRetry: (String) -> Void = { _ in }
   var onDiscard: (String) -> Void = { _ in }
   private var reasoningOnly: Bool {
@@ -22,6 +23,10 @@ struct MessageRow: View {
           UserMessageContent(content: message.content, account: account)
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
+          if showsTime, let date = TurnClock.date(message.time) {
+            Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
+              .foregroundStyle(Brand.muted).monospacedDigit()
+          }
           if message.delivery == "failed" {
             HStack(spacing: 16) {
               Label("未发送", systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
@@ -45,7 +50,7 @@ struct MessageRow: View {
               )
               .multilineTextAlignment(.leading)
               .frame(maxWidth: .infinity, alignment: .leading)
-              .padding(.top, 8)
+              .padding(.top, 4)
             } label: {
               HStack(spacing: 7) {
                 Image(systemName: "brain").symbolEffect(
@@ -101,8 +106,15 @@ struct MessageRow: View {
               }.font(.caption).foregroundStyle(.secondary)
             }.tint(.secondary)
           }
+          if showsTime && !compact && !message.streaming && !reasoningOnly,
+            let date = TurnClock.date(message.time)
+          {
+            Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
+              .foregroundStyle(Brand.muted).monospacedDigit()
+          }
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
+      .environment(\.workProcessText, compact)
       .padding(compact || reasoningOnly ? 0 : 16)
       .background {
         if !compact && !message.content.isEmpty {
@@ -227,12 +239,12 @@ private struct UserMessageContent: View {
               ProtectedImage(source: source, thumbnail: true, account: account)
             }
           }
-        }.frame(height: 80)
+        }.frame(width: CGFloat(min(parts.images.count, 3)) * 88, height: 80)
       }
       if !parts.text.isEmpty {
-        MessageContent(content: parts.text, account: account)
+        MessageContent(content: parts.text, account: account, expands: false)
           .multilineTextAlignment(.leading)
       }
-    }.frame(maxWidth: .infinity, alignment: .leading)
+    }
   }
 }

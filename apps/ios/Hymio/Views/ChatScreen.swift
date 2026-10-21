@@ -12,14 +12,12 @@ struct ChatScreen: View {
   @State private var uploading = false
   @State private var filesOpen = false
   @State private var cameraOpen = false
-  @State private var profile = false
-  @State private var tracePage = false
-  @State private var tasksPage = false
+  @State private var following = true
+  @State private var positioned = false
   @State private var atBottom = true
   @State private var sendBusy = false
   @FocusState private var typing: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @Namespace private var transitions
   @State private var sentCount = 0
   var body: some View {
     NavigationStack {
@@ -28,7 +26,11 @@ struct ChatScreen: View {
           LazyVStack(alignment: .leading, spacing: 25) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
-                Task { await client.loadHistory() }
+                let first = client.model.turns.first?.id
+                Task {
+                  await client.loadHistory()
+                  if let first { proxy.scrollTo(first, anchor: .top) }
+                }
               }
               .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).disabled(
                 client.loadingHistory)
@@ -58,7 +60,8 @@ struct ChatScreen: View {
                 onAction: {
                   try await client.message($0)
                 }, onRetry: { client.retryDelivery($0) },
-                onDiscard: { client.discardDelivery($0) }, account: account
+                onDiscard: { client.discardDelivery($0) },
+                account: account
               ).id(turn.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
@@ -81,10 +84,9 @@ struct ChatScreen: View {
               Label(client.model.pauseNotice, systemImage: "pause.circle")
                 .font(.footnote).foregroundStyle(.secondary)
             }
-            Color.clear.frame(height: 1).id("bottom").onAppear { atBottom = true }.onDisappear {
-              atBottom = false
-            }
-          }.padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 20)
+            Color.clear.frame(height: 1).id("bottom")
+          }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
+            .frame(maxWidth: 760).frame(maxWidth: .infinity)
             .animation(
               reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
               value: client.model.messages.count)
@@ -92,14 +94,42 @@ struct ChatScreen: View {
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { typing = false })
         .scrollDismissesKeyboard(.interactively)
-        .defaultScrollAnchor(.bottom)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.top, for: .alignment)
+        .defaultScrollAnchor(.top, for: .sizeChanges)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+          geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
+            < 90
+        } action: { _, near in
+          atBottom = near
+        }
+        .onScrollPhaseChange { _, phase in
+          if phase == .interacting { following = false }
+          if phase == .idle && atBottom { following = true }
+        }
+        .onScrollGeometryChange(for: CGFloat.self) {
+          $0.contentSize.height
+        } action: { before, after in
+          if after > before && following && !client.loadingHistory && positioned {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
+        }
         .onChange(of: client.model.messages.count) { _, _ in
-          if client.model.messages.last?.role == "assistant" && typing { typing = false }
+          if client.model.messages.last?.role == "user" {
+            following = true
+            if let last = client.model.turns.last { proxy.scrollTo(last.id, anchor: .top) }
+          } else if !positioned && !client.model.messages.isEmpty {
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
+          positioned = !client.model.messages.isEmpty
         }
         .overlay(alignment: .bottomTrailing) {
           if !atBottom && !client.model.messages.isEmpty {
             Button {
-              withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+              following = true
+              withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+              }
             } label: {
               Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())
                 .shadow(color: .black.opacity(0.05), radius: 8)
@@ -110,20 +140,7 @@ struct ChatScreen: View {
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
-      .navigationDestination(isPresented: $tasksPage) { TasksScreen(account: account) }
-      .navigationDestination(isPresented: $tracePage) {
-        TraceScreen(account: account, client: client)
-      }
       .toolbar {
-        ToolbarItem(placement: .topBarLeading) {
-          Button {
-            typing = false
-            tracePage = true
-          } label: {
-            Image(systemName: "waveform.path.ecg").font(.body)
-          }
-          .accessibilityLabel("工作观察")
-        }
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
@@ -139,22 +156,6 @@ struct ChatScreen: View {
                   ? "正在处理" : client.phase, connected: client.connected)
             }
           }.accessibilityElement(children: .combine)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("任务", systemImage: "flag") {
-            typing = false
-            tasksPage = true
-          }
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-          Button {
-            typing = false
-            profile = true
-          } label: {
-            Image(systemName: "ellipsis").font(.body).frame(width: 30, height: 30).contentShape(
-              Rectangle())
-          }.buttonStyle(.plain).accessibilityLabel("我的账号")
-            .matchedTransitionSource(id: "account", in: transitions)
         }
       }
       .onChange(of: selectedPhotos) { _, photos in
@@ -219,15 +220,6 @@ struct ChatScreen: View {
         }.ignoresSafeArea()
       }
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-      .sheet(isPresented: $profile) {
-        if reduceMotion {
-          AccountScreen(account: account, client: client).presentationDragIndicator(.visible)
-        } else {
-          AccountScreen(account: account, client: client)
-            .navigationTransition(.zoom(sourceID: "account", in: transitions))
-            .presentationDragIndicator(.visible)
-        }
-      }
       .sensoryFeedback(.selection, trigger: sentCount)
     }
   }
@@ -379,6 +371,7 @@ struct ChatScreen: View {
     draft = ""
     attachments = []
     atBottom = true
+    following = true
     Task {
       do {
         try await client.message(

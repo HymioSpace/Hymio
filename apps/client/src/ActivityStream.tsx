@@ -32,6 +32,7 @@ export function ActivityStream({
       </article>
     ) : (
       <MessageView
+        activity
         onAction={onAction}
         key={first.id}
         message={first}

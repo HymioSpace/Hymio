@@ -83,3 +83,7 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 Model preferences and private attachment/media processing are owned by Hymio Backend; see [models and media](feature22-models-and-media.md).
 
 本地统一私有配置、自动身份初始化与新电脑部署见 [feature24](feature24-local-bootstrap.md)。
+
+## 产品入口
+
+iOS 使用此刻、对话、任务、我的四个原生页签；Web 使用有文字标签的侧栏，任务和账号保持宽屏面板。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。

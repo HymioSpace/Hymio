@@ -12,6 +12,8 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 ## iOS preview
 
+Start with Now for task progress, continue the shared conversation, or open Tasks and Account. iOS uses four native tabs; Web uses a labelled sidebar and a wider task inspector.
+
 The native SwiftUI client lives in [apps/ios](apps/ios/README.md). It supports the same account and continuous conversation as Web/Desktop, streaming replies, tool approvals, screenshots and foreground reconnection.
 
 ```sh

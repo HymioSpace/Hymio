@@ -9,19 +9,6 @@ struct TraceScreen: View {
   var body: some View {
     List {
       Section {
-        HStack(spacing: 18) {
-          Label("消息", systemImage: "antenna.radiowaves.left.and.right")
-          Image(systemName: "arrow.right").foregroundStyle(.tertiary)
-          Label("Agent", systemImage: "brain")
-          Image(systemName: "arrow.right").foregroundStyle(.tertiary)
-          Image(systemName: "terminal")
-        }.font(.caption).foregroundStyle(.secondary).padding(.vertical, 12)
-        Label(client.phase, systemImage: client.connected ? "checkmark.circle" : "wifi.slash")
-          .font(.caption).foregroundStyle(.secondary)
-      } header: {
-        Text("执行链路")
-      }
-      Section {
         if loading { ProgressView("正在读取执行记录…") }
         if !failure.isEmpty {
           Text(failure).font(.footnote)
@@ -53,20 +40,22 @@ struct TraceScreen: View {
       } header: {
         Text("执行记录 · \(traces.count)")
       }
-      Section("已同步事件") {
-        ForEach(client.state.events.reversed()) { event in
-          DisclosureGroup {
-            TraceJsonTree(value: event.payload)
-          } label: {
-            HStack {
-              Text("#\(event.event_seq)").monospacedDigit().foregroundStyle(.secondary)
-              Text(event.event_type).lineLimit(1)
-            }.font(.caption)
+      if !client.state.events.isEmpty {
+        Section("已同步事件") {
+          ForEach(client.state.events.reversed()) { event in
+            DisclosureGroup {
+              TraceJsonTree(value: event.payload)
+            } label: {
+              HStack {
+                Text("#\(event.event_seq)").monospacedDigit().foregroundStyle(.secondary)
+                Text(event.event_type).lineLimit(1)
+              }.font(.caption)
+            }
           }
         }
       }
     }
-    .navigationTitle("工作观察").navigationBarTitleDisplayMode(.inline)
+    .navigationTitle("工作记录").navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button {

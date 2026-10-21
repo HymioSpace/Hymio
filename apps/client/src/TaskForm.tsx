@@ -44,7 +44,9 @@ export function TaskForm({
           title,
           kind,
           objective,
-          success_criteria: criteria,
+          success_criteria:
+            criteria.trim() ||
+            (kind === 'reminder' ? '提醒已送达' : '完成所述目标，并记录结果与未解决事项。'),
           schedule: {
             mode,
             timezone: zone,
@@ -64,23 +66,16 @@ export function TaskForm({
       <h3>{task ? '调整这件事' : '想让 Hymio 做什么？'}</h3>
       <label>
         类型
-        <select value={kind} onChange={(e) => setKind(e.target.value as 'task' | 'reminder')}>
+        <select
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value as 'task' | 'reminder');
+            if (!task && e.target.value === 'reminder' && mode === 'now') setMode('once');
+          }}
+        >
           <option value="task">推进一件事</option>
           <option value="reminder">提醒我</option>
         </select>
-      </label>
-      <label>
-        允许迟到
-        <select value={grace} onChange={(e) => setGrace(Number(e.target.value))}>
-          {[...new Set([60, 300, 900, 3600, grace])]
-            .sort((a, b) => a - b)
-            .map((seconds) => (
-              <option key={seconds} value={seconds}>
-                {seconds / 60} 分钟内补执行
-              </option>
-            ))}
-        </select>
-        <small>超过后标记已过期，不再执行这一次。</small>
       </label>
       <label>
         一个清楚的名字
@@ -101,15 +96,6 @@ export function TaskForm({
           value={objective}
           onChange={(e) => setObjective(e.target.value)}
           placeholder="给一些背景、范围，以及你关心的重点。"
-        />
-      </label>
-      <label>
-        怎样算完成
-        <input
-          required
-          value={criteria}
-          onChange={(e) => setCriteria(e.target.value)}
-          placeholder="例如，5 条附来源的摘要，并说明与我的关联。"
         />
       </label>
       <fieldset>
@@ -169,12 +155,36 @@ export function TaskForm({
         )}
         <small>{zone} · 工作会在云端执行，无需保持页面打开。</small>
       </fieldset>
+      <details className="task-advanced">
+        <summary>更多设置</summary>{' '}
+        <label>
+          完成标准（可选）
+          <input
+            value={criteria}
+            onChange={(e) => setCriteria(e.target.value)}
+            placeholder="例如，5 条附来源的摘要，并说明与我的关联。"
+          />
+        </label>
+        <label>
+          允许迟到
+          <select value={grace} onChange={(e) => setGrace(Number(e.target.value))}>
+            {[...new Set([60, 300, 900, 3600, grace])]
+              .sort((a, b) => a - b)
+              .map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds / 60} 分钟内补执行
+                </option>
+              ))}
+          </select>
+          <small>超过后标记已过期，不再执行这一次。</small>
+        </label>
+      </details>
       <div className="task-form-submit">
         <Button type="button" variant="quiet" onClick={onCancel}>
           取消
         </Button>
         <Button type="submit" busy={busy}>
-          {task ? '保存安排' : '交给 Hymio'}
+          {task ? '保存修改' : '交给 Hymio'}
           <ArrowUpRight size={15} />
         </Button>
       </div>

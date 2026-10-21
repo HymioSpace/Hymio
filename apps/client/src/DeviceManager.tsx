@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Monitor, Globe, Smartphone, LoaderCircle, Plus } from 'lucide-react';
+import { Monitor, Globe, Smartphone, LoaderCircle } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import { deviceImage, deviceRequest, type Device } from './deviceApi';
 import { DeviceDetails } from './DeviceDetails';
@@ -144,7 +144,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
             )}
           </span>
           <div className="device-info">
-            <strong>{device.name}</strong>
+            <strong>{device.kind === 'cloud_desktop' ? '云电脑' : device.name}</strong>
             <small>
               {(
                 {
@@ -213,14 +213,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
           />
         ))}
       {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
-        <p className="dialog-note">
-          还没有可执行设备。添加云电脑后，Hymio 才能浏览网页、执行命令和操作桌面。
-        </p>
-      )}
-      {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
-        <button className="device-add" disabled={busy} onClick={() => void ensureDevice()}>
-          {busy ? <LoaderCircle className="spin" size={16} /> : <Plus size={16} />}准备云电脑
-        </button>
+        <p className="dialog-note">当前没有可用云电脑。对话不受影响；执行环境由服务端管理。</p>
       )}
       <p className="dialog-note">云电脑可执行命令、浏览网页和操作桌面。手机仅用于对话。</p>
       {screen && (

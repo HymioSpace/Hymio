@@ -1,6 +1,8 @@
 import SwiftUI
 
 enum Brand {
+  static let attention = adaptive(0x9A641E, dark: 0xF0C384)
+  static let attentionSurface = adaptive(0xFFF5E7, dark: 0x392E21)
   static let ink = adaptive(0x202536, dark: 0xEFF1F7)
   static let blue = adaptive(0x425DE8, dark: 0xA2B0FF)
   static let muted = adaptive(0x626B7D, dark: 0xA7AFC1)
