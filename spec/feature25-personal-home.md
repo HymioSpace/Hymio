@@ -20,7 +20,7 @@ for work and neutral for past results. Cards show title, the latest useful resul
 and next action. Details retain the full timeline and management operations.
 
 Home changes compare task/run fingerprints with a per-account, per-backend local baseline
-saved on background/visibility changes. A fresh installation uses “recent progress”, never
+saved when a task is opened and its displayed version is acknowledged. A fresh installation uses “recent progress”, never
 claims to know an offline interval. Only changed tasks are presented as new progress; ongoing
 work is limited to one item. Errors and empty/loading states are distinct, with retry.
 Late requests must not cross account boundaries. These local baselines are not message ACKs.
@@ -68,3 +68,13 @@ Work summaries use compact spacing before the final answer. The iOS work disclos
 directly to its trace ID; legacy work without an ID does not offer an unrelated list link.
 The trace index starts with actual execution records, without a static execution-chain graphic
 or an empty synchronized-events section.
+
+## Read state and compact details
+
+Opening a task acknowledges only that task's displayed fingerprint. Read state is observable
+immediately and persisted per account and backend; backgrounding does not acknowledge unrelated
+updates. A later task/note change becomes unread again. Needs-attention and ongoing modules
+continue to reflect task state even after viewing. Foreground/tab re-entry refreshes current data.
+Conversation timestamps are small secondary text on user messages and final replies, not on each
+intermediate work step. Task editors provide a keyboard dismissal action. Task-history notes
+start as three-line previews with explicit expand/collapse controls.

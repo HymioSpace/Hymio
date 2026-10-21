@@ -94,7 +94,9 @@ struct TasksScreen: View {
               }
               ForEach(values, id: \.self) { item in
                 NavigationLink {
-                  TaskDetailScreen(account: account, taskID: item["id"].text, initial: item)
+                  TaskDetailScreen(
+                    account: account, taskID: item["id"].text, initial: item,
+                    onViewed: { board.markSeen($0) })
                 } label: {
                   TaskSummaryCard(item: item)
                 }.buttonStyle(GentlePress())
@@ -120,6 +122,7 @@ struct TaskDetailScreen: View {
   @ObservedObject var account: AccountService
   let taskID: String
   let initial: JSON
+  var onViewed: (JSON) -> Void = { _ in }
   @Environment(\.dismiss) private var dismiss
   @State private var value: JSON = .null
   @State private var error = ""
@@ -214,8 +217,7 @@ struct TaskDetailScreen: View {
                   if !note["phase"].text.isEmpty {
                     Text(note["phase"].text).font(.subheadline.weight(.medium))
                   }
-                  Text(note["content"].text).font(.subheadline).lineSpacing(5).textSelection(
-                    .enabled)
+                  TaskNotePreview(content: note["content"].text)
                 }
               }
             }
@@ -226,7 +228,8 @@ struct TaskDetailScreen: View {
         }
         if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.secondary) }
       }.padding(24)
-    }.background(Brand.surface).navigationTitle("任务详情").navigationBarTitleDisplayMode(.inline)
+    }.onAppear { onViewed(item) }.background(Brand.surface).navigationTitle("任务详情")
+      .navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
@@ -272,6 +275,7 @@ struct TaskDetailScreen: View {
       value = try await account.request(
         "tasks", body: .object(["action": .string("get"), "task_id": .string(taskID)]))
       error = ""
+      onViewed(value)
     } catch { self.error = "暂时无法读取最新进展。" }
   }
   private func action(_ action: String) async {
@@ -283,6 +287,21 @@ struct TaskDetailScreen: View {
       error = ""
       await load()
     } catch { self.error = "操作未完成，请稍后再试。" }
+  }
+}
+
+private struct TaskNotePreview: View {
+  let content: String
+  @State private var expanded = false
+  var body: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(content).font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
+        .lineLimit(expanded ? nil : 3).textSelection(.enabled)
+      if !content.isEmpty {
+        Button(expanded ? "收起" : "展开") { expanded.toggle() }
+          .font(.caption).frame(minHeight: 44)
+      }
+    }
   }
 }
 
@@ -301,6 +320,7 @@ private struct TaskEditor: View {
   @State private var requestID = UUID().uuidString
   @State private var busy = false
   @State private var error = ""
+  @FocusState private var editingText: Bool
   var body: some View {
     NavigationStack {
       Form {
@@ -313,10 +333,12 @@ private struct TaskEditor: View {
             .font(.footnote).foregroundStyle(Brand.muted)
         }.listRowBackground(Brand.surface)
         Section("这件事叫什么") {
-          TextField(kind == "reminder" ? "例如，提醒我出门" : "例如，整理周末出游路线", text: $title)
+          TextField(kind == "reminder" ? "例如，提醒我出门" : "例如，整理周末出游路线", text: $title).focused(
+            $editingText)
         }
         Section(kind == "reminder" ? "提醒内容" : "希望完成什么") {
-          TextField("背景、范围，以及你关心的重点", text: $objective, axis: .vertical).lineLimit(3...7)
+          TextField("背景、范围，以及你关心的重点", text: $objective, axis: .vertical).lineLimit(3...7).focused(
+            $editingText)
         }
         Section {
           Picker("开始时间", selection: $mode) {
@@ -344,7 +366,8 @@ private struct TaskEditor: View {
         }
         Section {
           DisclosureGroup("更多设置") {
-            TextField("完成标准（可选）", text: $criteria, axis: .vertical).lineLimit(2...4)
+            TextField("完成标准（可选）", text: $criteria, axis: .vertical).lineLimit(2...4).focused(
+              $editingText)
             if mode != "now" {
               Picker("错过时间后", selection: $grace) {
                 ForEach(Array(Set([60, 300, 900, 3600, grace])).sorted(), id: \.self) { seconds in
@@ -361,6 +384,10 @@ private struct TaskEditor: View {
           if existing == .null && next == "reminder" && mode == "now" { mode = "once" }
         }
         .toolbar {
+          ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("完成", systemImage: "keyboard.chevron.compact.down") { editingText = false }
+          }
           ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(busy) }
           ToolbarItem(placement: .confirmationAction) {
             Button {

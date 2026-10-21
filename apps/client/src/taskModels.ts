@@ -26,6 +26,7 @@ export type Run = {
   }[];
 };
 export type Work = {
+  updated_at: number;
   id: string;
   title: string;
   objective: string;

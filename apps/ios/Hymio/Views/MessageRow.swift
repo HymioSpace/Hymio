@@ -7,6 +7,7 @@ struct MessageRow: View {
   var onAction: (String) async throws -> Void = { _ in }
   @ObservedObject var account: AccountService
   var compact = false
+  var showsTime = true
   var onRetry: (String) -> Void = { _ in }
   var onDiscard: (String) -> Void = { _ in }
   private var reasoningOnly: Bool {
@@ -22,6 +23,10 @@ struct MessageRow: View {
           UserMessageContent(content: message.content, account: account)
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
+          if showsTime, let date = TurnClock.date(message.time) {
+            Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
+              .foregroundStyle(Brand.muted).monospacedDigit()
+          }
           if message.delivery == "failed" {
             HStack(spacing: 16) {
               Label("未发送", systemImage: "exclamationmark.circle").foregroundStyle(.secondary)
@@ -100,6 +105,12 @@ struct MessageRow: View {
                 ToolOutcomeLabel(outcome: summaryOutcome)
               }.font(.caption).foregroundStyle(.secondary)
             }.tint(.secondary)
+          }
+          if showsTime && !compact && !message.streaming && !reasoningOnly,
+            let date = TurnClock.date(message.time)
+          {
+            Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
+              .foregroundStyle(Brand.muted).monospacedDigit()
           }
         }.frame(maxWidth: .infinity, alignment: .leading)
       }

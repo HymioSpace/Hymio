@@ -729,3 +729,19 @@
   background: var(--surface);
   border-top: 1px solid var(--line);
 }
+
+.task-note-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.task-note-content button {
+  display: block;
+  min-height: 36px;
+  padding: 4px 0;
+  color: var(--blue);
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+}

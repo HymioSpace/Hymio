@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -32,16 +32,8 @@ const labels: Record<string, string> = {
 };
 function fingerprint(task: Work) {
   const run = task.runs[0];
-  const text = JSON.stringify([
-    task.title,
-    task.state,
-    run?.id,
-    run?.status,
-    run?.phase,
-    run?.result,
-    run?.progress,
-    run?.next_step,
-  ]);
+  // Summary and detail payloads share this revision even when prose/notes differ.
+  const text = JSON.stringify([task.updated_at, task.title, task.state, run?.id, run?.status]);
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
   return (hash >>> 0).toString(16);
@@ -78,7 +70,6 @@ export function HomePanel({
     [error, setError] = useState('');
   const key = `hymio.task-baseline:${login.backend}:${login.session?.user_id}`;
   const [baseline, setBaseline] = useState(() => saved(key));
-  const latest = useRef<Work[] | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -96,7 +87,6 @@ export function HomePanel({
         const value = await response.json();
         if (!controller.signal.aborted) {
           setTasks(value.tasks);
-          latest.current = value.tasks;
           setLoaded(true);
           setError('');
         }
@@ -106,24 +96,8 @@ export function HomePanel({
         running = false;
       }
     }
-    const remember = () => {
-      if (latest.current)
-        try {
-          localStorage.setItem(
-            key,
-            JSON.stringify(
-              Object.fromEntries(latest.current.map((task) => [task.id, fingerprint(task)])),
-            ),
-          );
-        } catch {
-          /* Progress still works without local storage. */
-        }
-    };
     const visibility = () => {
-      if (document.hidden) {
-        remember();
-        setBaseline(saved(key));
-      } else void refresh();
+      if (!document.hidden) void refresh();
     };
     void refresh();
     const timer = setInterval(() => void refresh(), 15000);
@@ -132,7 +106,6 @@ export function HomePanel({
       controller.abort();
       clearInterval(timer);
       document.removeEventListener('visibilitychange', visibility);
-      remember();
     };
   }, [key, login.session?.access_token, retry]);
   const attention = tasks.filter((t) => ['blocked', 'failed'].includes(workState(t)));
@@ -153,6 +126,15 @@ export function HomePanel({
     { kind: 'ongoing' as const, title: '正在推进', items: ongoing ? [ongoing] : [] },
     { kind: 'upcoming' as const, title: '接下来的安排', items: upcoming },
   ].filter((module) => module.items.length);
+  function markSeen(task: Work) {
+    const next = { ...(baseline || {}), [task.id]: fingerprint(task) };
+    setBaseline(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      /* In-memory read state still works. */
+    }
+  }
   function card(task: Work) {
     const state = workState(task),
       run = task.runs[0];
@@ -160,7 +142,10 @@ export function HomePanel({
       <button
         className={`home-work ${['blocked', 'failed'].includes(state) ? 'attention' : ''}`}
         key={task.id}
-        onClick={() => onTask(task.id)}
+        onClick={() => {
+          markSeen(task);
+          onTask(task.id);
+        }}
       >
         <span className="home-work-status">
           {state === 'succeeded' ? <Check size={14} /> : <Clock3 size={14} />}

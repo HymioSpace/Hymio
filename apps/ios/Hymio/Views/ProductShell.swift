@@ -7,7 +7,7 @@ import SwiftUI
   @Published var loaded = false
   @Published var error = ""
   private var loading = false
-  private var baseline: [String: String]?
+  @Published private var baseline: [String: String]?
   private var owner = ""
   private var key: String { "hymio.task-baseline." + owner }
   func bind(_ account: AccountService) {
@@ -21,9 +21,10 @@ import SwiftUI
   }
   private func fingerprint(_ item: JSON) -> String {
     let run = item["runs"].items.first ?? .null
+    // List responses omit notes and truncate prose; use their shared server revision.
     let text = [
-      item["state"].text, item["title"].text, run["id"].text, run["status"].text,
-      run["phase"].text, run["progress"].text, run["result"].text, run["next_step"].text,
+      String(item["updated_at"].double), item["state"].text, item["title"].text,
+      run["id"].text, run["status"].text,
     ].joined(separator: "\u{1F}")
     return SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
   }
@@ -35,12 +36,18 @@ import SwiftUI
     }
     return items.filter { baseline[$0["id"].text] != fingerprint($0) }
   }
-  func remember() {
-    guard loaded else { return }
-    let values = Dictionary(
-      items.map { ($0["id"].text, fingerprint($0)) }, uniquingKeysWith: { _, latest in latest })
-    UserDefaults.standard.set(values, forKey: key)
+  func markSeen(_ item: JSON) {
+    guard loaded, !item["id"].text.isEmpty else { return }
+    let stamp = fingerprint(item)
+    guard baseline?[item["id"].text] != stamp else { return }
+    var values = baseline ?? [:]
+    values[item["id"].text] = stamp
     baseline = values
+    remember()
+  }
+  func remember() {
+    guard let baseline else { return }
+    UserDefaults.standard.set(baseline, forKey: key)
   }
   func refresh(_ account: AccountService) async {
     guard !loading else { return }
@@ -89,6 +96,7 @@ struct ProductShell: View {
         do { try await Task.sleep(for: .seconds(15)) } catch { return }
       }
     }
+    .onChange(of: selected) { _, _ in Task { await board.refresh(account) } }
     .onChange(of: scene) { _, phase in if phase == .background { board.remember() } }
   }
 }
@@ -98,6 +106,7 @@ struct HomeScreen: View {
   @ObservedObject var client: AgentClient
   @ObservedObject var board: TaskBoard
   @Binding var selected: ProductTab
+  @State private var openedTask: JSON?
   private var attention: [JSON] {
     board.items.filter { ["blocked", "failed"].contains(taskStatus($0)) }
   }
@@ -229,14 +238,21 @@ struct HomeScreen: View {
           .frame(maxWidth: .infinity)
       }.background(Brand.surface).navigationTitle("此刻").navigationBarTitleDisplayMode(.inline)
         .refreshable { await board.refresh(account) }
+        .onAppear { Task { await board.refresh(account) } }
+        .navigationDestination(item: $openedTask) { item in
+          TaskDetailScreen(
+            account: account, taskID: item["id"].text, initial: item,
+            onViewed: { board.markSeen($0) })
+        }
     }
   }
   private func taskLink(_ item: JSON) -> some View {
-    NavigationLink {
-      TaskDetailScreen(account: account, taskID: item["id"].text, initial: item)
+    Button {
+      openedTask = item
     } label: {
       TaskSummaryCard(item: item)
-    }.buttonStyle(GentlePress())
+    }
+    .buttonStyle(GentlePress())
   }
   private func homeSection<Content: View>(
     _ title: String, symbol: String, tint: Color, count: Int?, @ViewBuilder content: () -> Content

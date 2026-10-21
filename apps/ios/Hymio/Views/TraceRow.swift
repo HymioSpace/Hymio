@@ -67,7 +67,8 @@ struct TraceRow: View {
   private func row(_ message: ChatMessage, compact: Bool = false) -> some View {
     MessageRow(
       message: message, tools: tools, approvals: approvals, onAction: onAction, account: account,
-      compact: compact, onRetry: onRetry, onDiscard: onDiscard
+      compact: compact, showsTime: message.id == turn.user?.id || message.id == turn.final?.id,
+      onRetry: onRetry, onDiscard: onDiscard
     )
     .id(message.id)
   }

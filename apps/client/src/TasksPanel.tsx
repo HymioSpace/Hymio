@@ -54,6 +54,20 @@ function scheduleLabel(s: Schedule) {
       ? new Date(s.at!).toLocaleString()
       : `${s.mode === 'daily' ? '每天' : ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][s.weekday || 0]} ${s.time} · ${s.timezone}`;
 }
+function TaskNoteContent({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="task-note-content">
+      <p className={expanded ? '' : 'task-note-preview'}>{content}</p>
+      {content && (
+        <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          {expanded ? '收起' : '展开'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function TasksPanel({
   login,
   onClose,
@@ -418,7 +432,7 @@ export function TasksPanel({
                               )}
                             </div>
                             {n.phase && <strong>{n.phase}</strong>}
-                            <p>{n.content}</p>
+                            <TaskNoteContent content={n.content} />
                           </div>
                         </div>
                       ))}
