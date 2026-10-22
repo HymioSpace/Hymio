@@ -43,7 +43,9 @@ export class TextBuffer {
       this.credit = 0;
       return this.value;
     }
-    this.credit += (elapsed * this.rate) / 1000;
+    const backlog = this.target.length - this.shown;
+    const rate = Math.min(180, Math.max(this.rate, backlog * 7));
+    this.credit += (elapsed * rate) / 1000;
     const count = Math.floor(this.credit);
     this.shown = Math.min(this.target.length, this.shown + count);
     this.credit -= count;

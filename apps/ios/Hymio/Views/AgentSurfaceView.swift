@@ -1,5 +1,45 @@
 import SwiftUI
 
+@available(iOS 18.0, *)
+private struct StreamingFadeRenderer: TextRenderer {
+  var animatableData: Double = 0
+
+  func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+    let total = layout.reduce(0) { count, line in
+      count + line.reduce(0) { $0 + $1.characterIndices.count }
+    }
+    var index = 0
+    for line in layout {
+      for run in line {
+        for slice in run {
+          let length = max(1, slice.characterIndices.count)
+          let distance = max(0, total - index - length)
+          let settled = min(1, Double(distance) / 9)
+          context.opacity = 0.14 + settled * 0.86
+          let lift = distance < 5 ? CGFloat(5 - distance) * 0.45 : 0
+          context.translateBy(x: 0, y: lift)
+          context.draw(slice)
+          context.translateBy(x: 0, y: -lift)
+          index += length
+        }
+      }
+    }
+  }
+}
+
+private struct StreamingInlineText: View {
+  let value: AttributedString
+  let animate: Bool
+
+  var body: some View {
+    if animate, #available(iOS 18.0, *) {
+      Text(value).textRenderer(StreamingFadeRenderer())
+    } else {
+      Text(value)
+    }
+  }
+}
+
 @MainActor
 private final class ProsePresenter: ObservableObject {
   struct Frame: Equatable {
@@ -12,19 +52,22 @@ private final class ProsePresenter: ObservableObject {
   init(source: String, immediate: Bool) {
     buffer.set(source, now: ProcessInfo.processInfo.systemUptime, immediate: immediate)
     frame = Frame(text: buffer.value, pending: buffer.pending)
+    startTicker()
   }
   func receive(_ source: String, immediate: Bool) {
-    task?.cancel()
     buffer.set(source, now: ProcessInfo.processInfo.systemUptime, immediate: immediate)
     publish()
-    guard buffer.pending else { return }
+    startTicker()
+  }
+  private func startTicker() {
+    guard task == nil else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .milliseconds(32)) } catch { return }
+        let delay = self?.buffer.pending == true ? 32 : 160
+        do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
-        if !self.buffer.pending { return }
       }
     }
   }
@@ -61,11 +104,12 @@ struct BufferedProse: View {
         VStack(alignment: .leading, spacing: 8) {
           if !parts.stable.isEmpty { MessageContent(content: parts.stable, account: account) }
           if !parts.tail.isEmpty {
-            Text(
-              (try? AttributedString(
+            StreamingInlineText(
+              value: (try? AttributedString(
                 markdown: parts.tail,
                 options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                ?? AttributedString(parts.tail)
+                ?? AttributedString(parts.tail),
+              animate: !reduceMotion
             )
             .font(.body).lineSpacing(4).textSelection(.enabled).frame(
               maxWidth: .infinity, alignment: .leading)

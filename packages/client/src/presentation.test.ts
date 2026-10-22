@@ -7,7 +7,9 @@ test('jitter buffer meters bursts and drains final content without losing Unicod
   const b = new TextBuffer(10, 100);
   b.set('👨‍👩‍👧‍👦你好é', 0);
   assert.equal(b.tick(50), '');
-  assert.equal(b.tick(150), '👨‍👩‍👧‍👦');
+  const first = b.tick(150);
+  assert.ok(first.startsWith('👨‍👩‍👧‍👦'));
+  assert.notEqual(first, '👨‍👩‍👧‍👦你好é');
   b.set('👨‍👩‍👧‍👦你好é世界', 151);
   for (let t = 250; t < 1200; t += 100) b.tick(t);
   assert.equal(b.value, '👨‍👩‍👧‍👦你好é世界');
@@ -25,6 +27,14 @@ test('long gaps do not accumulate unlimited render credit', () => {
   b.set('abcdefghijkl', 10001);
   b.tick(10002);
   assert.equal(b.value, 'a');
+});
+test('large stream bursts accelerate without dumping the whole backlog', () => {
+  const b = new TextBuffer(10, 100);
+  b.set('字'.repeat(300), 0);
+  assert.equal(b.tick(50), '');
+  b.tick(150);
+  assert.ok(b.value.length > 10);
+  assert.ok(b.value.length < 300);
 });
 const root = { type: 'Card', props: { title: 'Plan' }, children: ['choice', 'go'] };
 const patch = (id: string, value: unknown) =>

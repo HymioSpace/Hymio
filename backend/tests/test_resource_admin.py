@@ -175,3 +175,14 @@ class ResourceTests(unittest.TestCase):
         self.assertEqual(
             self.service.resources.overview()["devices"][0]["state"], "release_unknown"
         )
+
+    def test_overview_distinguishes_running_and_stale_device_locks(self):
+        device = self.service.store.create("alice", "daytona")
+        self.service.store.claim("alice", device["id"], "running", {}, 30)
+        row = self.service.resources.overview()["devices"][0]
+        self.assertEqual(row["lock_state"], "running")
+
+        with self.sessions.transaction() as db:
+            db.execute("UPDATE device_locks SET deadline=0")
+        row = self.service.resources.overview()["devices"][0]
+        self.assertEqual(row["lock_state"], "stale")

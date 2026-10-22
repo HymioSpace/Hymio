@@ -40,6 +40,10 @@ class Cloud:
     def resume(self, device):
         self.states[device["provider_ref"]] = "online"
 
+    def stop(self, device):
+        self.states[device["provider_ref"]] = "missing"
+        return "stopped"
+
 
 class EnsureTests(unittest.TestCase):
     def setUp(self):
@@ -122,6 +126,42 @@ class EnsureTests(unittest.TestCase):
         self.assertEqual(result["status"], "outcome_unknown")
         self.service.store.claim("alice", device["device_id"], "new", {}, 10)
         self.assertEqual(self.cloud.created, 1)
+
+    def test_paused_sandbox_settles_expired_execution_without_waking_it(self):
+        device = self.service.ensure_available("alice")["device"]
+        ref = self.service.store.get("alice", device["device_id"])["provider_ref"]
+        self.service.store.claim("alice", device["device_id"], "old", {}, 10)
+        with self.sessions.transaction() as db:
+            db.execute("UPDATE device_locks SET deadline=0")
+        self.cloud.states[ref] = "paused"
+        self.cloud.execution_idle = lambda device: False
+
+        result = self.service.ensure_available("alice")
+
+        self.assertEqual(result["action"], "resumed")
+        self.assertTrue(result["device"]["online"])
+        self.assertEqual(
+            self.service.store.commands("alice", device["device_id"], "old")["status"],
+            "outcome_unknown",
+        )
+        with self.sessions.transaction() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM device_locks").fetchone()[0], 0)
+
+    def test_paused_sandbox_can_be_revoked_after_expired_execution(self):
+        device = self.service.ensure_available("alice")["device"]
+        ref = self.service.store.get("alice", device["device_id"])["provider_ref"]
+        self.service.store.claim("alice", device["device_id"], "old", {}, 10)
+        with self.sessions.transaction() as db:
+            db.execute("UPDATE device_locks SET deadline=0")
+        self.cloud.states[ref] = "paused"
+        self.cloud.execution_idle = lambda device: False
+
+        result = self.service.revoke("alice", device["device_id"])
+
+        self.assertTrue(result["revoked"])
+        self.assertTrue(result["stopped"])
+        with self.assertRaises(KeyError):
+            self.service.store.get("alice", device["device_id"])
 
     def test_automatic_pause_resumes_without_replacing_computer(self):
         device = self.service.ensure_available("alice")["device"]

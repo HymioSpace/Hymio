@@ -9,6 +9,7 @@ import UIKit
   @Published var devices: [JSON] = []
   @Published private(set) var devicesLoading = false
   @Published private(set) var devicesError = ""
+  @Published private(set) var deviceActionID = ""
   private var devicesRequest = UUID()
   @Published var loadingHistory = false
   @Published private(set) var model = Conversation(events: [])
@@ -593,6 +594,19 @@ import UIKit
     } catch {
       guard request == devicesRequest, requestedUser == user, !Task.isCancelled else { return }
       devicesError = "设备暂时无法读取，对话仍可继续。"
+    }
+  }
+  func controlDevice(_ deviceID: String, action: String) async {
+    guard !deviceID.isEmpty, !devicesLoading, deviceActionID.isEmpty else { return }
+    deviceActionID = deviceID
+    devicesError = ""
+    defer { deviceActionID = "" }
+    do {
+      _ = try await account.request(
+        "devices/\(deviceID)/\(action)", body: .object([:]), timeout: 90)
+      await loadDevices()
+    } catch {
+      devicesError = error.localizedDescription
     }
   }
 }

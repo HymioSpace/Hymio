@@ -47,7 +47,15 @@ const messages: Record<string, string> = {
     "账号或密码不正确。本地与云端是独立账号体系，请使用当前部署的管理员账号。",
   origin_denied:
     "当前管理台地址未被服务端授权，请确认访问的是该部署的正确地址。",
-  resource_busy_or_capacity_exhausted: "设备仍在执行或需要核对，请稍后再试。",
+  device_busy_or_outcome_unknown:
+    "设备有未完成的执行记录。系统不会重复原操作；过期锁会自动核对，请刷新后重试。",
+  device_execution_still_running:
+    "远端仍有命令在运行。完成后才能暂停或释放云电脑。",
+  device_state_unknown:
+    "云端状态暂时无法确认，环境与文件已保留。请稍后刷新重试。",
+  device_lock_changed: "设备状态刚刚发生变化，请刷新后再试。",
+  device_unavailable: "云电脑当前不可用，无法完成该操作。",
+  provision_requires_recovery: "云电脑创建结果尚未确认，暂时不能释放。",
   resource_release_required: "切换供应商前，请先释放当前云主机。",
   resource_provider_unavailable: "供应商暂不可用，名额已保留，请稍后核对。",
   invalid_admin_request: "请检查输入后重试。",
@@ -438,7 +446,7 @@ export function AdminApp() {
                 <h2>
                   <Users size={18} /> 用户权限
                 </h2>
-                <p>权限只决定使用权。关闭权限不会自动删除已有环境。</p>
+                <p>停用访问会立即阻止使用，但不会暂停、删除或释放已有环境；释放请到下方云主机区域。</p>
               </div>
               <label className="search">
                 <Search size={15} />
@@ -458,6 +466,9 @@ export function AdminApp() {
                   selection[user.user_id] || user.provider || "daytona";
                 const enabled = Boolean(user.enabled);
                 const unchanged = enabled && chosen === user.provider;
+                const holdsDevice = data.devices.some(
+                  (device) => device.user_id === user.user_id,
+                );
                 return (
                   <article key={user.user_id}>
                     <div className="avatar">
@@ -468,7 +479,7 @@ export function AdminApp() {
                       <small title={user.user_id}>{user.user_id}</small>
                     </div>
                     <span className={`access ${enabled ? "enabled" : ""}`}>
-                      {enabled ? "已授权" : "未开通"}
+                      {enabled ? "已授权" : holdsDevice ? "未授权 · 环境保留" : "未开通"}
                     </span>
                     <select
                       value={chosen}
@@ -494,7 +505,14 @@ export function AdminApp() {
                     <button
                       className={unchanged ? "quiet" : "primary"}
                       disabled={!!busy}
-                      onClick={() =>
+                      onClick={() => {
+                        if (
+                          unchanged &&
+                          !window.confirm(
+                            "停用访问会立即阻止该用户使用云电脑，但云电脑和文件仍会保留并继续占用名额。确认停用？",
+                          )
+                        )
+                          return;
                         void mutate(
                           user.user_id,
                           "resources/grants",
@@ -503,14 +521,14 @@ export function AdminApp() {
                             provider: chosen,
                             enabled: !unchanged,
                           },
-                          unchanged ? "已关闭云主机权限。" : "权限已更新。",
-                        )
-                      }
+                          unchanged ? "已停用云电脑访问，环境仍保留。" : "权限已更新。",
+                        );
+                      }}
                     >
                       {busy === user.user_id
                         ? "保存中…"
                         : unchanged
-                          ? "关闭权限"
+                          ? "停用访问"
                           : enabled
                             ? "切换供应商"
                             : "开通权限"}
@@ -561,11 +579,15 @@ export function AdminApp() {
                       <small>{providerName(device.provider)}</small>
                     </div>
                     <span className="state">
-                      {states[
-                        device.state === "allocated"
-                          ? device.control_state
-                          : device.state
-                      ] || device.state}
+                      {device.lock_state === "running"
+                        ? "执行中"
+                        : device.lock_state === "stale"
+                          ? "待核对"
+                          : states[
+                              device.state === "allocated"
+                                ? device.control_state
+                                : device.state
+                            ] || device.state}
                     </span>
                   </div>
                   <code>{device.device_id}</code>
@@ -586,7 +608,11 @@ export function AdminApp() {
                       </button>
                     )}
                     <button
-                      disabled={!!busy || device.state !== "allocated"}
+                      disabled={
+                        !!busy ||
+                        device.state !== "allocated" ||
+                        device.lock_state === "running"
+                      }
                       onClick={() =>
                         void mutate(
                           device.device_id,
@@ -601,11 +627,17 @@ export function AdminApp() {
                         )
                       }
                     >
-                      {device.control_state === "paused" ? "恢复" : "暂停"}
+                      {busy === device.device_id
+                        ? "处理中…"
+                        : device.lock_state === "running"
+                          ? "执行中"
+                          : device.control_state === "paused"
+                            ? "恢复"
+                            : "暂停"}
                     </button>
                     <button
                       className="danger"
-                      disabled={!!busy}
+                      disabled={!!busy || device.lock_state === "running"}
                       onClick={() => {
                         if (
                           window.confirm(
