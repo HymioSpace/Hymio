@@ -56,6 +56,11 @@ export type Latency = Record<
 export type ChannelSummary = {
   channel: string;
   turns: number;
+  acknowledged: number;
+  first_response: number;
+  renderable: number;
+  terminal: number;
+  traced: number;
   completed: number;
   failed: number;
   cancelled: number;
@@ -167,6 +172,7 @@ export type TraceSearchMatch = ClientTurn & {
     event_name: string;
     unix_nano: number | null;
     snippet: string;
+    source: "application" | "otel";
   }[];
 };
 

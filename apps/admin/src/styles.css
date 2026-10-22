@@ -454,6 +454,26 @@ summary:focus-visible {
   color: #9099a8;
   font-size: 10px;
 }
+.panel-heading-copy {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.panel-heading-copy > div {
+  min-width: 0;
+}
+.panel-heading-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #dfe5ef;
+  border-radius: 10px;
+  background: #f7f9fc;
+  color: #5369c8;
+}
 .search {
   width: 220px;
   height: 36px;
@@ -752,13 +772,32 @@ summary:focus-visible {
 .monitor-actions {
   gap: 8px;
 }
-.monitor-actions select {
+.range-control {
   height: 36px;
-  padding: 0 28px 0 10px;
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid #dce2eb;
   border-radius: 9px;
-  background: white;
-  color: var(--ink);
+  background: linear-gradient(#fff, #fbfcfe);
+  color: #607087;
+  box-shadow: 0 1px 2px #26375a08;
+}
+.range-control select {
+  appearance: none;
+  height: 100%;
+  padding: 0 2px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #263246;
+  font-size: 11px;
+  font-weight: 600;
+}
+.range-control svg:last-child {
+  color: #77849a;
+  pointer-events: none;
 }
 .monitor-hero {
   display: grid;
@@ -1018,6 +1057,55 @@ summary:focus-visible {
   font-size: 10px;
   line-height: 1.4;
 }
+.overview-coverage {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #e7ebf2;
+  background: #fafbfd;
+}
+.overview-coverage > div {
+  position: relative;
+  min-width: 0;
+  padding: 11px 15px 13px;
+  border-right: 1px solid #e7ebf2;
+}
+.overview-coverage > div:nth-child(4) {
+  border-right: 0;
+}
+.overview-coverage span {
+  display: block;
+  color: #718096;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.overview-coverage strong {
+  display: block;
+  margin-top: 3px;
+  color: #263246;
+  font:
+    650 15px/1.1 "Avenir Next",
+    system-ui,
+    sans-serif;
+}
+.overview-coverage i {
+  position: absolute;
+  right: 15px;
+  bottom: 12px;
+  left: 15px;
+  height: 2px;
+  border-radius: 2px;
+  background: #5f72ce;
+}
+.overview-coverage p {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 15px 10px;
+  border-top: 1px solid #edf0f4;
+  color: #748095;
+  font-size: 10px;
+}
 .overview-kpis > div.attention dd {
   color: #a44326;
 }
@@ -1233,6 +1321,21 @@ summary:focus-visible {
   color: #5f6b7d;
   font-size: 10px;
 }
+.chart-empty.compact {
+  min-height: 135px;
+  gap: 5px;
+  text-align: center;
+}
+.chart-empty.compact strong {
+  color: #344058;
+  font-size: 11px;
+}
+.chart-empty.compact span {
+  max-width: 260px;
+  color: #7c8799;
+  font-size: 9px;
+  line-height: 1.5;
+}
 .channel-panel,
 .recent-panel,
 .metric-guide-panel {
@@ -1292,6 +1395,56 @@ summary:focus-visible {
 .channel-workspace {
   display: grid;
   gap: 14px;
+}
+.telemetry-coverage {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 2.2fr);
+  gap: 18px;
+  padding: 13px 15px;
+  border: 1px solid #e1e6ee;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f8faff, #fcfdff);
+}
+.telemetry-coverage > div strong {
+  display: block;
+  color: #253049;
+  font-size: 11px;
+}
+.telemetry-coverage > div span {
+  display: block;
+  margin-top: 4px;
+  color: #748095;
+  font-size: 9px;
+  line-height: 1.55;
+}
+.telemetry-coverage dl {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+.telemetry-coverage dl > div {
+  position: relative;
+  min-width: 0;
+  padding-bottom: 7px;
+}
+.telemetry-coverage dt {
+  color: #738096;
+  font-size: 9px;
+}
+.telemetry-coverage dd {
+  margin: 2px 0 0;
+  color: #263246;
+  font-size: 14px;
+  font-weight: 650;
+}
+.telemetry-coverage dl i {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: #657bd3;
 }
 .channel-kpis {
   display: grid;
@@ -1652,6 +1805,30 @@ summary:focus-visible {
 }
 .explorer-search {
   width: 100%;
+}
+.explorer-source-switch {
+  display: inline-flex;
+  gap: 3px;
+  margin: 0 14px 9px;
+  padding: 3px;
+  border: 1px solid #e1e6ee;
+  border-radius: 9px;
+  background: #f5f7fa;
+}
+.explorer-source-switch button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #69758a;
+  font-size: 9px;
+  font-weight: 650;
+}
+.explorer-source-switch button.active {
+  background: #fff;
+  color: #273458;
+  box-shadow: 0 1px 4px #24345612;
 }
 .explorer-filters {
   display: flex;

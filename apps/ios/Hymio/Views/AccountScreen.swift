@@ -112,7 +112,7 @@ struct AccountScreen: View {
           NavigationLink {
             TraceScreen(account: account, client: client)
           } label: {
-            Label("工作记录", systemImage: "clock.arrow.circlepath")
+            Label("探索记录", systemImage: "clock.arrow.circlepath")
           }
           Button {
             diagnostics = true
@@ -135,7 +135,7 @@ struct AccountScreen: View {
       }
       .refreshable { await client.loadDevices() }
       .confirmationDialog(
-        "退出后会清除本机缓存，云端工作仍会继续。", isPresented: $loggingOut, titleVisibility: .visible
+        "退出后会清除本机缓存，云端探索仍会继续。", isPresented: $loggingOut, titleVisibility: .visible
       ) {
         Button("退出登录", role: .destructive) {
           client.reset()

@@ -23,7 +23,7 @@ struct ChatScreen: View {
     NavigationStack {
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 25) {
+          LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.model.turns.first?.id
@@ -72,7 +72,7 @@ struct ChatScreen: View {
             {
               HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text(client.model.awaitingReply ? "正在等候回复…" : "正在继续处理…").font(.caption)
+                Text(client.model.awaitingReply ? "正在探索…" : "继续探索中…").font(.caption)
                   .foregroundStyle(.secondary)
               }.accessibilityIdentifier("chat.working")
             }
@@ -85,7 +85,7 @@ struct ChatScreen: View {
                 .font(.footnote).foregroundStyle(.secondary)
             }
             Color.clear.frame(height: 1).id("bottom")
-          }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
+          }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
             .animation(
               reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
@@ -153,7 +153,7 @@ struct ChatScreen: View {
               }
               ConnectionStatus(
                 text: client.connected && (client.model.working || client.model.awaitingReply)
-                  ? "正在处理" : client.phase, connected: client.connected)
+                  ? "探索中" : client.phase, connected: client.connected)
             }
           }.accessibilityElement(children: .combine)
         }
@@ -287,7 +287,6 @@ struct ChatScreen: View {
             } label: {
               Label("选择文件", systemImage: "doc")
             }
-            PasteButton(supportedContentTypes: [.image]) { providers in pasteImages(providers) }
           } label: {
             Image(systemName: "plus").font(.system(size: 19, weight: .regular)).foregroundStyle(
               Brand.muted
@@ -314,42 +313,6 @@ struct ChatScreen: View {
       .padding(8)
       .modifier(ComposerSurface())
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
-  }
-  private func pasteImages(_ providers: [NSItemProvider]) {
-    let images = providers.filter { $0.canLoadObject(ofClass: UIImage.self) }
-    guard !images.isEmpty else { return }
-    guard !uploading else {
-      client.error = "附件正在上传，完成后可继续粘贴。"
-      return
-    }
-    guard images.count + attachments.count <= 8 else {
-      client.error = "每条消息最多添加 8 个附件"
-      return
-    }
-    uploading = true
-    Task {
-      defer { uploading = false }
-      do {
-        for provider in images {
-          let image: UIImage = try await withCheckedThrowingContinuation { continuation in
-            _ = provider.loadObject(ofClass: UIImage.self) { object, error in
-              if let error {
-                continuation.resume(throwing: error)
-              } else if let image = object as? UIImage {
-                continuation.resume(returning: image)
-              } else {
-                continuation.resume(throwing: ServiceError.message("无法读取剪贴板图片"))
-              }
-            }
-          }
-          guard let data = image.jpegData(compressionQuality: 0.9) else {
-            throw ServiceError.message("无法读取剪贴板图片")
-          }
-          let value = try await account.upload(data, name: "screenshot.jpg")
-          attachments.append(value)
-        }
-      } catch { client.error = error.localizedDescription }
-    }
   }
   private var canSend: Bool {
     client.connected && !sendBusy && !uploading

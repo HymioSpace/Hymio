@@ -66,8 +66,13 @@ E = t_terminal    - t0    # 首个 completed/failed/cancelled step.status，或�
 `Q_p=x_floor(h)+(h-floor(h))*(x_ceil(h)-x_floor(h))`。各 stage 独立剔除 NULL，
 窗口按 `received_at` 过滤并按该字段保留最新 5000 条幂等样本。
 
-完成率和失败率分别使用 `outcome=completed`、`outcome=failed` 的非 NULL 样本数除以
-窗口内全部 turn 数 `N`；`cancelled` 和 `partial` 进入分母，不进入这两个分子。
+令终态集合 `T={completed, failed, cancelled, partial}`，`N_T` 为具备终态的样本数。
+完成率和失败率分别使用 completed、failed 数除以 `N_T`；`N_T=0` 时无定义并显示 `—`。
+只有 sent、accepted 或 in_progress 的请求不能解释为 0% 完成。无响应率仍使用窗口内
+全部 turn 数 `N` 作为分母，因为 stalled 是客户端观察状态，不是服务端终态。
+
+每个渠道同时返回 `turns / acknowledged / first_response / renderable / terminal / traced`
+覆盖计数。管理台先显示数据覆盖，再显示有分母的比率；缺失阶段不填成 0 ms。
 
 Trace 派生量在样本上报时读取 span 快照：
 
@@ -109,7 +114,7 @@ Trace 查询失败时派生字段为 NULL，不按 0 处理，也不进入对应
 “健康/需要关注”结论替代可核对字段。
 
 日志中心使用 Backend 独立的 `observability.sqlite3`：结构化事件先幂等写入
-`events(stage,message_id,trace_id,channel,occurred_at,body)`，同时写入 SQLite FTS5
+`events(stage,message_id,trace_id,channel,occurred_at,source,body)`，同时写入 SQLite FTS5
 索引；Trace 到达后再按 `trace_id` 增量补齐 span 和 span event。查询时直接走 FTS5
 倒排索引，不遍历最近 turn，也不对每条历史日志做字符串扫描。中文文本按 Unicode
 字符切分后使用 FTS5 phrase 查询，因此短关键词不依赖前缀偶然匹配。
@@ -122,6 +127,11 @@ Trace 查询失败时派生字段为 NULL，不按 0 处理，也不进入对应
 事件日志默认保留 7 天，最多 20000 条，写入时按时间和总条数裁剪，避免字符串匹配导致
 全表扫描，也避免监控自身无界增长。若关键词没有命中，界面区分“事件日志尚无该 query”
 与“已有 `message_id` 但尚未形成 trace”，不能把空结果解释为服务端没有执行。
+
+日志中心默认只检索 `source=application` 的客户端、Gateway、队列和业务生命周期日志；
+`source=otel` 的 Span 事件作为独立来源切换查看。Trace 页中的“链路事件”只属于当前
+trace 的 Span events 与生命周期，不是日志中心的另一份副本。Gateway 收到 ACK 时必须
+把 ACK 中的 `trace_id` 写入事件列并建立索引任务；旧 ACK 只在缺少关联时做一次幂等修复。
 
 管理 API 只允许配置的 admin 用户。跨用户 trace 查询由 Backend 使用内部服务凭据调用
 Oath Biz；浏览器不接触 Oath 服务凭据。

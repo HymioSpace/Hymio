@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BarChart3,
+  CalendarRange,
   CheckCircle2,
   ChevronDown,
   CircleHelp,
@@ -206,9 +207,9 @@ const metricGuide: readonly MetricGuideGroup[] = [
       {
         name: "完成 / 失败 / 无响应率",
         formula:
-          "CR = Σ[oᵢ = completed] / N\nFR = Σ[oᵢ = failed] / N\nNR = Σ[oᵢ = stalled] / N",
+          "T = {completed, failed, cancelled, partial}\nN_T = |{i: oᵢ ∈ T}|\nCR = Σ[oᵢ = completed] / N_T\nFR = Σ[oᵢ = failed] / N_T\nNR = Σ[oᵢ = stalled] / N",
         definition:
-          "N 为窗口内全部有效 turn 样本。stalled 表示发送后 30 秒内没有第一个 assistant.delta；cancelled、partial 仍进入分母，但不进入完成、失败或无响应分子。N = 0 时比率无定义并显示 —。",
+          "N 为窗口内全部 turn 样本，N_T 为已有终态的样本。只有 sent/accepted/in_progress 的样本不能当作失败或 0% 完成；N_T = 0 时完成率无定义并显示 —。NR 使用全部 N，因为 stalled 本身不是服务端终态。",
       },
       {
         name: "P50 / P95 / P99",
@@ -358,6 +359,31 @@ function latest(data: MonitoringOverview | undefined, name: string) {
   const row = data?.prometheus.metrics[name]?.[0];
   const value = Number(row?.value);
   return Number.isFinite(value) ? value : undefined;
+}
+
+function RangeSelect({
+  hours,
+  onChange,
+}: {
+  hours: number;
+  onChange: (hours: number) => void;
+}) {
+  return (
+    <label className="range-control">
+      <CalendarRange size={15} aria-hidden="true" />
+      <select
+        value={hours}
+        onChange={(event) => onChange(Number(event.target.value))}
+        aria-label="观测时间范围"
+      >
+        <option value={1}>最近 1 小时</option>
+        <option value={6}>最近 6 小时</option>
+        <option value={24}>最近 24 小时</option>
+        <option value={168}>最近 7 天</option>
+      </select>
+      <ChevronDown size={14} aria-hidden="true" />
+    </label>
+  );
 }
 
 function metricName(metric: Record<string, string>) {
@@ -511,6 +537,14 @@ function QuantileChart({ channel }: { channel: ChannelRecord }) {
       quantiles.map((quantile) => channel.latency[key]?.[quantile] || 0),
     ),
   );
+  const available = stages.some(([key]) => channel.latency[key]);
+  if (!available)
+    return (
+      <div className="chart-empty compact">
+        <strong>尚无阶段耗时样本</strong>
+        <span>客户端需要上报 ACK、首响应或终态后才能计算。</span>
+      </div>
+    );
   return (
     <div
       className="quantile-chart"
@@ -554,6 +588,13 @@ function StageDeltaChart({ channel }: { channel: ChannelRecord }) {
   const response = channel.latency.first_response_ms?.["95"] || 0;
   const content = channel.latency.first_renderable_ms?.["95"] || 0;
   const completed = channel.latency.completed_ms?.["95"] || 0;
+  if (!accepted && !response && !content && !completed)
+    return (
+      <div className="chart-empty compact">
+        <strong>暂无可拆分的时间样本</strong>
+        <span>请求已记录，但完整链路阶段尚未上报。</span>
+      </div>
+    );
   const segments = [
     { label: "ACK", value: accepted },
     { label: "ACK → 首响应", value: Math.max(0, response - accepted) },
@@ -616,6 +657,15 @@ function OutcomeBreakdown({ channel }: { channel: ChannelRecord }) {
     1,
     outcomes.reduce((sum, [key]) => sum + count(key), 0),
   );
+  if (
+    outcomes.every(([key]) => count(key) === 0)
+  )
+    return (
+      <div className="chart-empty compact">
+        <strong>尚无终态分类</strong>
+        <span>已记录 {channel.turns} 个请求，等待完成、失败或 stalled 样本。</span>
+      </div>
+    );
   return (
     <div
       className="outcome-chart"
@@ -644,6 +694,38 @@ function OutcomeBreakdown({ channel }: { channel: ChannelRecord }) {
               {label}
             </dt>
             <dd>{count(key)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function TelemetryCoverage({ channel }: { channel: ChannelRecord }) {
+  const items = [
+    ["请求", channel.turns],
+    ["ACK", channel.acknowledged || 0],
+    ["首响应", channel.first_response || 0],
+    ["可渲染", channel.renderable || 0],
+    ["终态", channel.terminal || 0],
+    ["Trace", channel.traced || 0],
+  ] as const;
+  return (
+    <div className="telemetry-coverage">
+      <div>
+        <strong>数据覆盖</strong>
+        <span>同一请求在每一阶段都应递增；不把缺失样本显示成 0 ms 或 0% 成功。</span>
+      </div>
+      <dl>
+        {items.map(([label, value]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+            <i
+              style={{
+                width: `${channel.turns ? Math.min(100, (value / channel.turns) * 100) : 0}%`,
+              }}
+            />
           </div>
         ))}
       </dl>
@@ -709,7 +791,7 @@ function ChannelWorkspace({
   turns: ClientTurn[];
 }) {
   const completion =
-    channel.turns > 0 ? channel.completed / channel.turns : undefined;
+    channel.terminal > 0 ? channel.completed / channel.terminal : undefined;
   const stalled = channel.stalled || channel.outcomes?.stalled || 0;
   const noAck = channel.no_ack || 0;
   const noDelta = channel.no_delta || 0;
@@ -725,7 +807,11 @@ function ChannelWorkspace({
         <article>
           <span>完成率</span>
           <strong>{latency(completion, "percent")}</strong>
-          <small>{channel.completed} completed</small>
+          <small>
+            {channel.terminal
+              ? `${channel.completed} / ${channel.terminal} 个终态样本`
+              : "尚无终态样本"}
+          </small>
         </article>
         <article className={stalled ? "attention" : ""}>
           <span>无响应</span>
@@ -742,6 +828,7 @@ function ChannelWorkspace({
           </small>
         </article>
       </div>
+      <TelemetryCoverage channel={channel} />
       <div className="channel-chart-grid">
         <article className="channel-chart">
           <header>
@@ -844,6 +931,8 @@ function ExplorerPage({
   failed = 0,
   searchError = "",
   contentSearch = false,
+  source = "application",
+  onSource = () => {},
 }: {
   mode: "traces" | "logs";
   channels: ChannelRecord[];
@@ -863,6 +952,8 @@ function ExplorerPage({
   failed?: number;
   searchError?: string;
   contentSearch?: boolean;
+  source?: "application" | "otel";
+  onSource?: (source: "application" | "otel") => void;
 }) {
   const needle = query.trim().toLowerCase();
   const filtered = turns.filter((turn) => {
@@ -882,7 +973,11 @@ function ExplorerPage({
         <header>
           <div>
             <p className="eyebrow">
-              {mode === "logs" ? "LOG SOURCES" : "TRACE RESULTS"}
+              {mode === "logs"
+                ? source === "application"
+                  ? "APPLICATION LOGS"
+                  : "OTEL EVENTS"
+                : "TRACE RESULTS"}
             </p>
             <h2>
               {searching
@@ -890,7 +985,9 @@ function ExplorerPage({
                 : mode === "logs" && query.trim()
                   ? `${filtered.length} 个匹配`
                   : mode === "logs"
-                    ? "选择一条 Trace"
+                    ? source === "application"
+                      ? "应用日志"
+                      : "OTel 事件"
                     : `${filtered.length} 条 Trace`}
             </h2>
           </div>
@@ -908,6 +1005,22 @@ function ExplorerPage({
             />
           </label>
         </header>
+        {mode === "logs" && (
+          <div className="explorer-source-switch" aria-label="日志来源">
+            <button
+              className={source === "application" ? "active" : ""}
+              onClick={() => onSource("application")}
+            >
+              应用日志
+            </button>
+            <button
+              className={source === "otel" ? "active" : ""}
+              onClick={() => onSource("otel")}
+            >
+              OTel 事件
+            </button>
+          </div>
+        )}
         <div className="explorer-filters" aria-label="渠道筛选">
           {channels.map((channel) => (
             <button
@@ -989,7 +1102,7 @@ function ExplorerPage({
               {searching
                 ? "正在检索最近 Trace 的关联事件…"
                 : mode === "logs" && query.trim() && searched
-                  ? "所选时间和渠道内没有匹配事件。消息接收和 ACK 会独立记录，Trace 随执行补充。"
+                  ? `所选时间和渠道内没有匹配${source === "application" ? "应用日志" : " OTel 事件"}。`
                   : "没有匹配的 Trace。"}
             </p>
           )}
@@ -1013,10 +1126,12 @@ function ExplorerPage({
               <Workflow size={28} />
             )}
             <h2>
-              {mode === "logs" ? "选择 Trace 查看事件" : "选择 Trace 查看链路"}
+              {mode === "logs" ? "选择记录查看关联 Trace" : "选择 Trace 查看链路"}
             </h2>
             <p>
-              从左侧选择一条样本。查询条件会同时作用于用户、Trace ID 和设备。
+              {mode === "logs"
+                ? "日志中心检索应用结构化日志；OTel Span 事件通过来源切换查看。"
+                : "从左侧选择一条样本，查询条件同时作用于用户、Trace ID 和设备。"}
             </p>
           </div>
         )}
@@ -1222,14 +1337,13 @@ function TraceEventLog({
       .includes(needle);
   });
   return (
-    <section className="trace-log-center" aria-label="Trace 关联事件日志">
+    <section className="trace-log-center" aria-label="Trace 关联链路事件">
       <header>
         <div>
-          <p className="eyebrow">BUSINESS EVENTS</p>
-          <h3>业务事件日志</h3>
+          <p className="eyebrow">TRACE EVENTS</p>
+          <h3>链路事件</h3>
           <p>
-            按 trace_id 汇总 Oath
-            业务事件与模型事件，包括用户输入、阶段和工具结果。
+            仅展示当前 trace_id 的 Span events 与客户端生命周期；全文应用日志请使用独立日志中心。
           </p>
         </div>
         <label className="search trace-log-search">
@@ -1238,7 +1352,7 @@ function TraceEventLog({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="过滤事件或字段"
-            aria-label="过滤 Trace 事件日志"
+            aria-label="过滤链路事件"
           />
         </label>
       </header>
@@ -1373,7 +1487,7 @@ function TracePanel({
           className={panelTab === "logs" ? "active" : ""}
           onClick={() => setPanelTab("logs")}
         >
-          <ScrollText size={14} /> 事件日志
+          <ScrollText size={14} /> 链路事件
         </button>
       </div>
       {error && <p className="feedback error">{error}</p>}
@@ -1646,6 +1760,9 @@ export function Monitoring({ session }: { session: Session }) {
   const [selectedTrace, setSelectedTrace] = useState(traceKey);
   const [guideOpen, setGuideOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [logSource, setLogSource] = useState<"application" | "otel">(
+    "application",
+  );
   const [traceSearch, setTraceSearch] = useState<TraceSearchResponse>();
   const [searchingLogs, setSearchingLogs] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -1704,7 +1821,7 @@ export function Monitoring({ session }: { session: Session }) {
     setSearchError("");
     const timer = setTimeout(() => {
       void adminRequest<TraceSearchResponse>(
-        `monitoring/search?q=${encodeURIComponent(needle)}&hours=${hours}&channel=${encodeURIComponent(selectedChannel)}`,
+        `monitoring/search?q=${encodeURIComponent(needle)}&hours=${hours}&channel=${encodeURIComponent(selectedChannel)}&source=${logSource}`,
         { session },
       )
         .then((value) => {
@@ -1724,7 +1841,7 @@ export function Monitoring({ session }: { session: Session }) {
       active = false;
       clearTimeout(timer);
     };
-  }, [hours, page, query, selectedChannel, session]);
+  }, [hours, logSource, page, query, selectedChannel, session]);
 
   useEffect(() => {
     const available = data?.client.channels || [];
@@ -1750,7 +1867,13 @@ export function Monitoring({ session }: { session: Session }) {
   const failures = channels.reduce((sum, item) => sum + item.failed, 0) || 0;
   const completed =
     channels.reduce((sum, item) => sum + item.completed, 0) || 0;
-  const completionRate = totalTurns ? completed / totalTurns : undefined;
+  const terminal =
+    channels.reduce((sum, item) => sum + (item.terminal || 0), 0) || 0;
+  const acknowledged =
+    channels.reduce((sum, item) => sum + (item.acknowledged || 0), 0) || 0;
+  const traced =
+    channels.reduce((sum, item) => sum + (item.traced || 0), 0) || 0;
+  const completionRate = terminal ? completed / terminal : undefined;
   const stalled =
     channels.reduce(
       (sum, item) => sum + (item.stalled || item.outcomes?.stalled || 0),
@@ -1787,16 +1910,7 @@ export function Monitoring({ session }: { session: Session }) {
         </div>
         <div className="monitor-actions">
           {page !== "runbook" && (
-            <select
-              value={hours}
-              onChange={(event) => setHours(Number(event.target.value))}
-              aria-label="观测时间范围"
-            >
-              <option value={1}>最近 1 小时</option>
-              <option value={6}>最近 6 小时</option>
-              <option value={24}>最近 24 小时</option>
-              <option value={168}>最近 7 天</option>
-            </select>
+            <RangeSelect hours={hours} onChange={setHours} />
           )}
           {page === "overview" && (
             <button
@@ -1863,7 +1977,9 @@ export function Monitoring({ session }: { session: Session }) {
               <div>
                 <dt>完成率</dt>
                 <dd>{latency(completionRate, "percent")}</dd>
-                <span>{completed} completed</span>
+                <span>
+                  {terminal ? `${completed} / ${terminal} 个终态样本` : "尚无终态样本"}
+                </span>
               </div>
               <div className={stalled ? "attention" : ""}>
                 <dt>无响应</dt>
@@ -1889,6 +2005,29 @@ export function Monitoring({ session }: { session: Session }) {
                 </span>
               </div>
             </dl>
+            <div className="overview-coverage" aria-label="客户端数据覆盖">
+              {[
+                ["请求", totalTurns],
+                ["ACK", acknowledged],
+                ["终态", terminal],
+                ["Trace 关联", traced],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                  <i
+                    style={{
+                      width: `${totalTurns ? Math.min(100, (Number(value) / totalTurns) * 100) : 0}%`,
+                    }}
+                  />
+                </div>
+              ))}
+              <p>
+                {terminal
+                  ? "完成率只使用具备终态的上报样本；缺失阶段不按成功或 0 ms 处理。"
+                  : "当前只有发送阶段样本。完成率保持未知，等待 ACK、首响应和终态上报。"}
+              </p>
+            </div>
           </section>
 
           <div className="overview-content">
@@ -1944,15 +2083,17 @@ export function Monitoring({ session }: { session: Session }) {
 
             <section className="panel channel-panel">
               <header className="panel-head">
-                <div>
-                  <p className="eyebrow">CLIENT EXPERIENCE</p>
-                  <h2>
-                    <Activity size={18} /> 分渠道诊断
-                  </h2>
-                  <p>
-                    切换渠道查看样本量、阶段分位数、P95
-                    分段、结果分布和设备归因。
-                  </p>
+                <div className="panel-heading-copy">
+                  <span className="panel-heading-icon">
+                    <Activity size={18} />
+                  </span>
+                  <div>
+                    <p className="eyebrow">CLIENT EXPERIENCE</p>
+                    <h2>客户端体验</h2>
+                    <p>
+                      分渠道查看数据覆盖、阶段分位、结果分布和设备归因。
+                    </p>
+                  </div>
                 </div>
                 <div className="channel-head-actions">
                   {data?.grafana_url && (
@@ -2042,6 +2183,8 @@ export function Monitoring({ session }: { session: Session }) {
           failed={traceSearch?.failed}
           searchError={searchError}
           contentSearch={page === "logs" && Boolean(query.trim())}
+          source={logSource}
+          onSource={setLogSource}
         />
       )}
 

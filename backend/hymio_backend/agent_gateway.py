@@ -89,6 +89,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                             messages[message_id] = time.monotonic()
                             if len(messages) > 256:
                                 messages.pop(next(iter(messages)))
+
                             async def record_gateway_sample():
                                 try:
                                     await asyncio.to_thread(
@@ -165,7 +166,48 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         frame = json.loads(message)
                         if frame.get("type") in {"ack", "error"} and frame.get("id") in messages:
                             identifier = frame["id"]
-                            await log_event(identifier, "gateway." + frame["type"], frame)
+                            trace_id = (
+                                str(frame.get("trace_id", "")) if frame.get("type") == "ack" else ""
+                            )
+                            started = None
+                            accepted_ms = None
+                            if frame.get("type") == "ack":
+                                started = messages.pop(identifier)
+                                accepted_ms = max(0, round((time.monotonic() - started) * 1000, 3))
+                            await log_event(
+                                identifier,
+                                "gateway." + frame["type"],
+                                frame,
+                                trace_id,
+                            )
+                            if accepted_ms is not None:
+
+                                async def record_gateway_ack(
+                                    message_id=identifier,
+                                    accepted=accepted_ms,
+                                    trace=trace_id,
+                                ):
+                                    try:
+                                        await asyncio.to_thread(
+                                            client_telemetry.record,
+                                            sessions,
+                                            channel.user_id,
+                                            {
+                                                "message_id": message_id,
+                                                "sent_at": time.time() * 1000 - accepted,
+                                                "accepted_ms": accepted,
+                                                "trace_id": trace,
+                                                "outcome": "accepted",
+                                                "channel": "desk"
+                                                if channel.kind == "mac"
+                                                else channel.kind,
+                                            },
+                                            None,
+                                        )
+                                    except Exception:
+                                        _log.exception("Gateway ACK sample unavailable")
+
+                                background(record_gateway_ack())
                         elif frame.get("type") == "event":
                             event = frame
                             payload = event.get("payload", {})

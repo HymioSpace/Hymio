@@ -75,13 +75,26 @@ class SessionStore:
 
         self.event_log = EventLog(
             settings.database.with_name("observability.sqlite3"),
-            retention_days=max(
-                1, min(90, getattr(settings, "observability_retention_days", 7))
-            ),
-            max_events=max(
-                100, min(1000000, getattr(settings, "observability_max_events", 20000))
-            ),
+            retention_days=max(1, min(90, getattr(settings, "observability_retention_days", 7))),
+            max_events=max(100, min(1000000, getattr(settings, "observability_max_events", 20000))),
         )
+        with self.transaction() as db:
+            for link in self.event_log.trace_links():
+                db.execute(
+                    "UPDATE client_turns SET "
+                    "trace_id=CASE WHEN trace_id='' THEN ? ELSE trace_id END,"
+                    "accepted_ms=COALESCE(accepted_ms,?),"
+                    "outcome=CASE WHEN outcome='sent' AND ? IS NOT NULL "
+                    "THEN 'accepted' ELSE outcome END "
+                    "WHERE user_id=? AND message_id=?",
+                    (
+                        link["trace_id"],
+                        link["accepted_ms"],
+                        link["accepted_ms"],
+                        link["user_id"],
+                        link["message_id"],
+                    ),
+                )
 
     @contextmanager
     def transaction(self):

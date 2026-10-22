@@ -9,7 +9,7 @@ struct TraceScreen: View {
   var body: some View {
     List {
       Section {
-        if loading { ProgressView("正在读取执行记录…") }
+        if loading { ProgressView("正在读取探索记录…") }
         if !failure.isEmpty {
           Text(failure).font(.footnote)
           Button("重试") { Task { await load() } }
@@ -35,10 +35,10 @@ struct TraceScreen: View {
           }
         }
         if !loading && traces.isEmpty && failure.isEmpty {
-          Text("开始对话后，执行记录会出现在这里。").foregroundStyle(.secondary)
+          Text("开始对话后，探索记录会出现在这里。").foregroundStyle(.secondary)
         }
       } header: {
-        Text("执行记录 · \(traces.count)")
+        Text("探索记录 · \(traces.count)")
       }
       if !client.state.events.isEmpty {
         Section("已同步事件") {
@@ -55,14 +55,14 @@ struct TraceScreen: View {
         }
       }
     }
-    .navigationTitle("工作记录").navigationBarTitleDisplayMode(.inline)
+    .navigationTitle("探索记录").navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button {
           Task { await load() }
         } label: {
           Image(systemName: "arrow.clockwise")
-        }.disabled(loading).accessibilityLabel("刷新执行记录")
+        }.disabled(loading).accessibilityLabel("刷新探索记录")
       }
     }
     .task { await load() }
@@ -93,7 +93,7 @@ struct TraceScreen: View {
         }
       }
       if !Task.isCancelled { traces = result }
-    } catch { if !Task.isCancelled { failure = "执行记录读取失败，请重试。" } }
+    } catch { if !Task.isCancelled { failure = "探索记录读取失败，请重试。" } }
   }
 }
 struct TraceRecordScreen: View {
