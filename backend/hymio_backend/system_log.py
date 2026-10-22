@@ -62,12 +62,15 @@ class LogCapture:
         self.handler = logging.handlers.QueueHandler(events)
         self.handler.setLevel(logging.INFO)
         self.root = logging.getLogger()
+        self.previous_level = self.root.level
+        self.root.setLevel(logging.INFO)
         self.listener.start()
         self.root.addHandler(self.handler)
 
     def stop(self):
         self.root.removeHandler(self.handler)
         self.listener.stop()
+        self.root.setLevel(self.previous_level)
 
 
 __all__ = ["EventLogHandler", "LogCapture"]

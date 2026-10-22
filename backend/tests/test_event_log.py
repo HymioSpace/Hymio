@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from hymio_backend.event_log import EventLog
-from hymio_backend.system_log import EventLogHandler
+from hymio_backend.system_log import EventLogHandler, LogCapture
 
 
 class EventLogTests(unittest.TestCase):
@@ -140,6 +140,20 @@ class EventLogTests(unittest.TestCase):
             self.assertNotIn("synthetic-token", logs[0]["message"])
             self.assertEqual(store.search("device lookup", since=0, source="application"), [])
             self.assertEqual(store.search("device lookup", since=0, source="otel"), [])
+
+    def test_log_capture_includes_info_records_from_root_logger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = EventLog(Path(directory) / "observability.sqlite3")
+            capture = LogCapture(store)
+            try:
+                logging.getLogger("hymio_backend.test").info("captured info record")
+            finally:
+                capture.stop()
+
+            logs = store.search_logs("captured info record", since=0)
+
+            self.assertEqual(len(logs), 1)
+            self.assertEqual(logs[0]["level"], "INFO")
 
 
 if __name__ == "__main__":
