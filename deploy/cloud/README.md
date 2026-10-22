@@ -53,6 +53,8 @@ issuer = "http://identity:8000"
 client_id = "REPLACE_WITH_CASDOOR_CLIENT_ID"
 client_secret_file = "./private/backend/casdoor-client-secret"
 service_token_file = "./private/backend/internal-service-token"
+admin_user_ids = ["PRODUCT_USER_ID"]
+oath_admin_token_file = "./private/backend/oath-admin-token"
 public_url = "https://hymio.example.com"
 callback_url = "https://hymio.example.com/auth/callback"
 origins = ["https://hymio.example.com", "http://tauri.localhost", "tauri://localhost"]
@@ -65,6 +67,11 @@ computer_provider = "e2b"
 e2b_key_file = "./private/backend/e2b-api-key"
 e2b_template = "hymio-desktop"
 ```
+
+`oath_admin_token_file` must contain exactly Oath's private
+`services.internal_token`. It is used only by Backend's administrator trace reader and
+background event indexer, never by clients. Keep it mode 600 and owned by the Backend
+runtime UID.
 
 Build the E2B template using the [computer guide](../computer/README.md#e2b-desktop).
 Set `signup_enabled = false` to close registration entirely. If registration is enabled

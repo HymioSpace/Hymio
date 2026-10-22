@@ -12,6 +12,35 @@ spec.loader.exec_module(cloud)
 
 
 class CloudEntryTests(unittest.TestCase):
+    def test_admin_console_requires_oath_internal_token_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            backend = root / "hymio.toml"
+            backend.write_text(
+                'computer_provider="e2b"\nhost="0.0.0.0"\nport=8080\n'
+                'database="/data/hymio.sqlite"\npublic_url="https://app.example.com"\n'
+                'oath_ws="ws://host.docker.internal:8765"\n'
+                'admin_user_ids=["user-1"]\n'
+            )
+            config = root / "cloud.toml"
+            config.write_text(
+                'web_domain="app.example.com"\napi_domain="app.example.com"\n'
+                'backend_config_dir="."\n'
+            )
+            previous = cloud.OUTPUT
+            cloud.OUTPUT = root / "generated"
+            try:
+                with self.assertRaisesRegex(ValueError, "oath_admin_token_file"):
+                    cloud.generate(config)
+                token = root / "oath-admin-token"
+                token.write_text("x" * 43)
+                backend.write_text(
+                    backend.read_text() + 'oath_admin_token_file="./oath-admin-token"\n'
+                )
+                cloud.generate(config)
+            finally:
+                cloud.OUTPUT = previous
+
     def test_single_domain_routes_api_before_static_fallback(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

@@ -36,6 +36,19 @@ def generate(path):
         raise ValueError("Backend must listen on 0.0.0.0:8080 inside the container")
     if backend.get("database") != "/data/hymio.sqlite":
         raise ValueError("Set database = /data/hymio.sqlite for the persistent volume")
+    if backend.get("admin_user_ids"):
+        admin_token = backend.get("oath_admin_token_file")
+        if not isinstance(admin_token, str) or not admin_token:
+            raise ValueError(
+                "Set oath_admin_token_file to the Oath internal token for admin trace reads"
+            )
+        admin_token_path = Path(admin_token).expanduser()
+        if not admin_token_path.is_absolute():
+            admin_token_path = config / admin_token_path
+        if not admin_token_path.is_file() or not admin_token_path.read_text().strip():
+            raise ValueError(
+                "oath_admin_token_file must contain the Oath internal token"
+            )
     web, api = domains[:2]
     agent = settings.get("agent_domain")
     if backend.get("public_url") != f"https://{api}":
