@@ -299,19 +299,21 @@ class EventLog:
 
     def search(self, query, *, since, channel="", source="application", limit=100):
         phrase = tokens(query)
-        if not phrase:
-            return []
         with self.connect() as db:
             rows = [
                 dict(r)
                 for r in db.execute(
-                    "SELECT e.* FROM event_fts JOIN events e ON e.id=event_fts.rowid "
-                    "WHERE event_fts MATCH ? AND e.occurred_at>=? "
+                    (
+                        "SELECT e.* FROM event_fts JOIN events e ON e.id=event_fts.rowid "
+                        "WHERE event_fts MATCH ? AND e.occurred_at>=? "
+                        if phrase
+                        else "SELECT e.* FROM events e WHERE e.occurred_at>=? "
+                    )
                     + ("AND e.channel=? " if channel else "")
                     + ("AND e.source=? " if source else "")
                     + "ORDER BY e.occurred_at DESC LIMIT ?",
                     tuple(
-                        ['"' + phrase + '"', since]
+                        (['"' + phrase + '"', since] if phrase else [since])
                         + ([channel] if channel else [])
                         + ([source] if source else [])
                         + [limit]
@@ -321,6 +323,29 @@ class EventLog:
         for row in rows:
             row["snippet"] = row["body"]
         return rows
+
+    def annotate(self, turns):
+        from .investigation import trigger
+
+        with self.connect() as db:
+            for turn in turns:
+                rows = []
+                for field in ("message_id", "trace_id"):
+                    identity = turn.get(field, "")
+                    if not identity:
+                        continue
+                    rows = db.execute(
+                        f"SELECT stage,body FROM events WHERE user_id=? AND {field}=? "
+                        "AND stage IN ('gateway.received','oath.input.user',"
+                        "'oath.input.system','oath.input.tool') ORDER BY id LIMIT 8",
+                        (turn["user_id"], identity),
+                    ).fetchall()
+                    if rows:
+                        break
+                turn["trigger"] = next(
+                    (item for row in rows if (item := trigger(row["stage"], row["body"]))), None
+                )
+        return turns
 
     def indexed_messages(self, *, since, channel="", source="application"):
         with self.connect() as db:

@@ -87,7 +87,7 @@ def generate(path):
             " handle_path /admin/* {\n  root * /srv/admin\n"
             "  try_files {path} /index.html\n  file_server\n }\n"
             " @backend path /health /auth/* /agent/* /oath-biz/* /devices /devices/* "
-            "/tasks /attachments /attachments/* /settings/*\n"
+            "/tasks /attachments /attachments/* /settings/* /telemetry/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )
@@ -138,6 +138,28 @@ def generate(path):
         },
     }
     runtime_network = settings.get("runtime_network")
+    (OUTPUT / "hymio-metrics-targets.json").write_text(
+        json.dumps(
+            [
+                {
+                    "targets": [
+                        "backend:8080"
+                        if runtime_network
+                        else "host.docker.internal:8080"
+                    ]
+                }
+            ]
+        )
+        + "\n"
+    )
+    compose["services"]["backend"]["environment"] = {
+        "HYMIO_PROMETHEUS_URL": settings.get("prometheus_url")
+        or (
+            "http://prometheus:9090"
+            if runtime_network
+            else "http://host.docker.internal:19090"
+        )
+    }
     if runtime_network:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", runtime_network):
             raise ValueError("Invalid runtime network name")

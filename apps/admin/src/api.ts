@@ -77,6 +77,12 @@ export type ChannelSummary = {
 };
 
 export type ClientTurn = {
+  trigger?: {
+    kind: string;
+    label: string;
+    text: string;
+    source: string;
+  } | null;
   user_id: string;
   user_name: string;
   message_id: string;
@@ -107,6 +113,7 @@ export type MonitoringOverview = {
   };
   prometheus: {
     available: boolean;
+    errors?: string[];
     active: {
       name: string;
       state: "firing" | "pending";
@@ -158,6 +165,8 @@ export type TraceNode = {
 };
 
 export type TraceDetail = {
+  triggers?: NonNullable<ClientTurn["trigger"]>[];
+  upstream_available?: boolean;
   trace_id: string;
   duration_ms: number | null;
   spans: TraceNode[];
