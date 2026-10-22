@@ -54,7 +54,8 @@ def trace_triggers(trace):
         for event in span.get("events", []):
             item = trigger(event.get("name", ""), event.get("attributes", {}))
             if item:
-                key = (item["kind"], item["text"], item["source"])
+                # Gateway and Oath record the same user input with different sources.
+                key = (item["kind"], item["text"], "" if item["kind"] == "user" else item["source"])
                 if key not in seen:
                     seen.add(key)
                     result.append(item)

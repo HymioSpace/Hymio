@@ -1773,7 +1773,7 @@ function SystemLogCenter({
             <p className="empty">
               {query.trim()
                 ? "当前时间窗没有匹配的系统日志。"
-                : "暂无系统日志；部署新版本后，服务端 logger 输出会进入这里。"}
+                : "当前时间窗和渠道下没有系统日志，可切换全部渠道或扩大时间范围。"}
             </p>
           )}
         </div>

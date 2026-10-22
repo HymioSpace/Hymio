@@ -72,9 +72,16 @@ class InvestigationTests(unittest.TestCase):
             "name": "oath.input.user",
             "attributes": {"body": json.dumps({"payload": {"content": "你好"}})},
         }
+        gateway = {"name": "gateway.received", "attributes": {"content": "你好"}}
+        forwarded = {
+            "name": "oath.input.user",
+            "attributes": {"body": {"source": "user.message", "payload": {"content": "你好"}}},
+        }
         system = {
             "name": "oath.input.tool",
             "attributes": {"body": {"source": "tool.terminal", "payload": {"content": "已经完成"}}},
         }
-        values = trace_triggers({"spans": [{"events": [event]}, {"events": [event, system]}]})
+        values = trace_triggers(
+            {"spans": [{"events": [gateway, event]}, {"events": [forwarded, system]}]}
+        )
         self.assertEqual([value["kind"] for value in values], ["user", "tool"])
