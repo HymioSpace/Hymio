@@ -71,15 +71,24 @@ struct AccountScreen: View {
                   device["kind"].text == "cloud_desktop"
                     ? "云电脑" : device["kind"].text == "ios" ? "iPhone" : device["name"].text
                 ).font(.subheadline.weight(.medium))
-                Text(
-                  device["online"].flag
-                    ? "在线" : device["state"].text == "paused" ? "已暂停 · 使用时恢复" : "暂不可用"
-                ).font(.caption).foregroundStyle(.secondary)
+                Text(deviceStatus(device)).font(.caption).foregroundStyle(.secondary)
                 if device["kind"].text == "cloud_desktop" {
                   Text("终端 · 浏览器 · 桌面").font(.caption2).foregroundStyle(.tertiary)
                 }
               }
               Spacer()
+              if device["kind"].text == "cloud_desktop" {
+                let state = device["state"].text
+                if state == "paused" || state == "recovery_required" {
+                  Button(state == "paused" ? "继续" : "核对并继续") {
+                    Task { await client.controlDevice(device["device_id"].text, action: "resume") }
+                  }
+                  .buttonStyle(.bordered)
+                  .controlSize(.small)
+                  .disabled(!client.deviceActionID.isEmpty || client.devicesLoading)
+                  .accessibilityIdentifier("device.resume")
+                }
+              }
               if device["online"].flag {
                 Circle().fill(Brand.blue).frame(width: 5, height: 5).padding(.top, 7)
               }
@@ -150,6 +159,18 @@ struct AccountScreen: View {
           }
         }.navigationTitle("连接诊断").navigationBarTitleDisplayMode(.inline)
       }
+    }
+  }
+  private func deviceStatus(_ device: JSON) -> String {
+    if device["online"].flag { return "在线" }
+    switch device["state"].text {
+    case "paused": return "已暂停 · 文件保留，可继续"
+    case "recovery_required": return "需要核对 · 不会重复原操作"
+    case "changing": return "状态确认中"
+    case "preparing": return "正在准备"
+    case "missing": return "原环境已失效"
+    case "offline": return "暂时无法连接"
+    default: return "暂不可用"
     }
   }
 }

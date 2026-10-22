@@ -44,6 +44,12 @@ controller readiness, application readiness and live viewing are separate health
 A screenshot carries capture time, actual dimensions and execution generation. Side-effecting
 commands with uncertain outcomes are queried, never blindly replayed.
 
+An expired execution lease is settled only after the provider proves that the remote operation
+is no longer running. A paused or missing sandbox is definitive: its processes are not running,
+so pause, resume and release may settle the stale local lease without waking or replaying the
+original command. An online sandbox is still probed for idle execution. The resulting command
+remains `outcome_unknown`; the lease is released, while effects are never inferred or repeated.
+
 ## Volcengine integration gate
 
 Use official cloudphone APIs for device lifecycle, APK installation, command execution and

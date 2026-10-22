@@ -93,11 +93,7 @@ class ResourceStore:
                 "WHERE user_id=? AND state!='released' LIMIT 1",
                 (user_id,),
             ).fetchone()
-            if (
-                enabled
-                and active
-                and active["provider"] != provider
-            ):
+            if enabled and active and active["provider"] != provider:
                 raise ResourceCapacity("resource_release_required")
             db.execute(
                 "INSERT OR REPLACE INTO resource_grants VALUES(?,?,?,?,?)",
@@ -140,11 +136,24 @@ class ResourceStore:
                 dict(row)
                 for row in db.execute("""
                 SELECT a.device_id,a.user_id,a.provider,a.state,a.updated_at,
-                d.name,d.control_state,d.revoked_at,coalesce(u.name,a.user_id) AS user_name
+                d.name,d.control_state,d.revoked_at,coalesce(u.name,a.user_id) AS user_name,
+                l.invocation_id AS lock_invocation,l.deadline AS lock_deadline
                 FROM resource_allocations a JOIN devices d ON d.id=a.device_id
                 LEFT JOIN users u ON u.user_id=a.user_id
+                LEFT JOIN device_locks l ON l.device_id=a.device_id
                 WHERE a.state!='released' ORDER BY a.updated_at DESC LIMIT 100""")
             ]
+            now = time.time()
+            for device in devices:
+                deadline = device.pop("lock_deadline")
+                invocation = device.pop("lock_invocation")
+                device["lock_state"] = (
+                    "running"
+                    if deadline is not None and deadline > now
+                    else "stale"
+                    if invocation is not None
+                    else "idle"
+                )
             capacities = []
             for provider, limit in LIMITS.items():
                 used = db.execute(

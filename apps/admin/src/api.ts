@@ -28,6 +28,7 @@ export type Device = {
   provider: string;
   state: string;
   control_state: string;
+  lock_state: "idle" | "running" | "stale";
   updated_at: number;
 };
 

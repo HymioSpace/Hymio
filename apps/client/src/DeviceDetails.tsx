@@ -76,7 +76,9 @@ export function DeviceDetails({
               ? device.provider === 'device_api'
                 ? '暂停自动操作'
                 : '暂停电脑'
-              : '继续运行'}
+              : device.state === 'recovery_required'
+                ? '核对并继续'
+                : '继续运行'}
         </button>
         <button
           disabled={busy}

@@ -297,6 +297,16 @@ class DeviceStore:
                 (time.time(), device_id, user_id),
             )
 
+    def set_control_state(self, user_id, device_id, state):
+        with self.transaction() as db:
+            updated = db.execute(
+                "UPDATE devices SET control_state=? WHERE id=? AND user_id=? "
+                "AND revoked_at IS NULL",
+                (state, device_id, user_id),
+            )
+            if not updated.rowcount:
+                raise KeyError("device_not_found")
+
     def revoke(self, user_id, device_id):
         self.get(user_id, device_id)
         with self.transaction() as db:

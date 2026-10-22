@@ -166,6 +166,15 @@ export function DeviceManager({ login }: { login: LoginState }) {
               · {device.capabilities.length ? '终端 · 浏览器 · 桌面' : '对话与消息同步'}
             </small>
           </div>
+          {device.kind === 'cloud_desktop' && device.state === 'paused' && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void action(`/${device.device_id}/resume`)}
+            >
+              继续
+            </button>
+          )}
           {device.state === 'missing' && (
             <button className="text-button" disabled={busy} onClick={() => void ensureDevice()}>
               重试连接

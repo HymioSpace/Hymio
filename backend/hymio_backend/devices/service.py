@@ -162,6 +162,19 @@ class DeviceService:
                     raise
         return self.describe(self.store.get(user_id, device["id"]))
 
+    def _settle_expired_execution(self, user_id, device, physical):
+        lock = self.store.expired_execution(user_id, device["id"])
+        if lock is None:
+            return False
+        if physical == "online":
+            if not self.provider(device).execution_idle(device):
+                raise DeviceConflict("device_execution_still_running")
+        elif physical not in ("paused", "missing"):
+            raise DeviceConflict("device_state_unknown")
+        if not self.store.release_expired_execution(user_id, device["id"], lock):
+            raise DeviceConflict("device_lock_changed")
+        return True
+
     def ensure_available(self, user_id, *, wake=False):
         provider_name = self.resources.provider(user_id)
         if provider_name is None:
@@ -209,6 +222,17 @@ class DeviceService:
                 physical = self.physical(device)
                 if self.store.reconcile_control(user_id, device["id"], physical):
                     device = self.store.get(user_id, device["id"])
+                try:
+                    self._settle_expired_execution(user_id, device, physical)
+                except DeviceConflict:
+                    return {
+                        "action": "recovery_required",
+                        "device": self.describe(device),
+                        "notice": (
+                            "Prior execution is still being verified. "
+                            "The computer and files were preserved."
+                        ),
+                    }
                 if physical == "missing":
                     profile = getattr(self.provider(device), "profile", DeviceProfile())
                     if not profile.replace_missing:
@@ -226,10 +250,6 @@ class DeviceService:
                         "notice": "Provider unavailable; existing environment was not replaced.",
                     }
                 elif physical in ("online", "paused"):
-                    if device["control_state"] != "paused" or wake:
-                        lock = self.store.expired_execution(user_id, device["id"])
-                        if lock and self.provider(device).execution_idle(device):
-                            self.store.release_expired_execution(user_id, device["id"], lock)
                     if physical == "online" and device["control_state"] == "active":
                         self.store.recovery(user_id, clear=True)
                         return {"action": "reused", "device": self.describe(device)}
@@ -410,10 +430,16 @@ class DeviceService:
             self.resources.require(user_id, device["provider"])
         desired = "paused" if action == "pause" else "active"
         provider = self.provider(device)
-        if device["control_state"] == desired and provider.state(device) == (
-            "paused" if action == "pause" else "online"
-        ):
-            return self.describe(device)
+        physical = self.physical(device)
+        if self.store.reconcile_control(user_id, device_id, physical):
+            device = self.store.get(user_id, device_id)
+        self._settle_expired_execution(user_id, device, physical)
+        actual = "paused" if action == "pause" else "online"
+        if physical == actual:
+            self.store.set_control_state(user_id, device_id, desired)
+            return self.describe(self.store.get(user_id, device_id))
+        if physical not in ("online", "paused"):
+            raise DeviceConflict("device_unavailable")
         control_id = self.store.begin_control(user_id, device_id, action)
         try:
             getattr(provider, action)(device)
@@ -431,6 +457,21 @@ class DeviceService:
             if row is None:
                 raise KeyError("device_not_found")
             device = dict(row)
+        if not device["revoked_at"] and device["provider"] != "channel" and device["provider_ref"]:
+            try:
+                physical = self.physical(device)
+                if self.store.reconcile_control(user_id, device_id, physical):
+                    device = self.store.get(user_id, device_id)
+                self._settle_expired_execution(user_id, device, physical)
+            except ProviderUnavailable:
+                pass
+        with self.store.transaction() as db:
+            row = db.execute(
+                "SELECT * FROM devices WHERE id=? AND user_id=?", (device_id, user_id)
+            ).fetchone()
+            if row is None:
+                raise KeyError("device_not_found")
+            device = dict(row)
             if device["provider"] == "channel":
                 db.execute(
                     "UPDATE devices SET revoked_at=?,generation=generation+1 WHERE id=?",
@@ -441,8 +482,7 @@ class DeviceService:
                 "SELECT * FROM device_locks WHERE device_id=?", (device_id,)
             ).fetchone()
             if lock and (
-                lock["deadline"] > time.time()
-                or not lock["invocation_id"].startswith("control:release:")
+                lock["deadline"] > time.time() or not lock["invocation_id"].startswith("control:")
             ):
                 raise DeviceConflict("device_busy_or_outcome_unknown")
             if not device["provider_ref"]:

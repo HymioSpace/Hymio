@@ -109,8 +109,21 @@ struct SecureSession {
     }
     if response.statusCode == 401 { throw ServiceError.unauthorized }
     guard (200..<300).contains(response.statusCode) else {
+      let failure = try? JSON.decode(data)
+      let code = failure?["error"].text ?? ""
+      let conflicts = [
+        "device_busy_or_requires_recovery":
+          "上一次云端操作尚未结束。过期记录会自动核对，原操作不会重复执行。",
+        "device_busy_or_outcome_unknown":
+          "上一次云端操作结果未知。系统会先确认远端状态，请稍后重试。",
+        "device_running_or_requires_recovery": "云电脑仍有一条执行记录，请稍后重试。",
+        "device_unavailable": "云电脑暂时无法连接，原环境和文件仍会保留。",
+        "provision_requires_recovery": "云电脑创建结果尚在核对，请稍后重试。",
+      ]
       throw ServiceError.message(
-        response.statusCode == 409 ? "操作正在进行，请稍后重试。" : "服务暂不可用（\(response.statusCode)）")
+        response.statusCode == 409
+          ? conflicts[code] ?? "设备状态正在变化，请稍后重试。"
+          : "服务暂不可用（\(response.statusCode)）")
     }
     return data
   }

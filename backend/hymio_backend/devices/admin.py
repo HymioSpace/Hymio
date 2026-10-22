@@ -90,8 +90,8 @@ def admin_routes(settings, sessions, bearer, body):
             return JSONResponse({"error": "resource_access_denied"}, 403)
         except ResourceCapacity as error:
             return JSONResponse({"error": str(error)}, 409)
-        except DeviceConflict:
-            return JSONResponse({"error": "resource_busy_or_capacity_exhausted"}, 409)
+        except DeviceConflict as error:
+            return JSONResponse({"error": str(error)}, 409)
         except KeyError:
             return JSONResponse({"error": "not_found"}, 404)
         except (TypeError, ValueError):

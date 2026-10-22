@@ -10,6 +10,18 @@ export interface Device {
   preserves_files_on_revoke: boolean;
   replaces_device_id?: string | null;
 }
+const errorMessages: Record<string, string> = {
+  device_busy_or_requires_recovery:
+    '上一次云端操作尚未结束。系统正在保留原环境并核对结果，请稍后重试；原操作不会重复执行。',
+  device_busy_or_outcome_unknown:
+    '上一次云端操作结果未知。系统会先确认远端状态，不会直接重复执行；请稍后重试。',
+  device_running_or_requires_recovery:
+    '云电脑仍有一条执行记录。过期记录会自动核对，请稍后再试。',
+  device_unavailable:
+    '云电脑暂时无法连接，原环境和文件仍会保留，请稍后重试。',
+  provision_requires_recovery:
+    '云电脑的创建结果还在核对中，请稍后重试，不要重复创建。',
+};
 export async function deviceRequest(login: LoginState, path = '', data?: object) {
   const session = login.session;
   if (!session) throw new Error('请先登录');
@@ -28,13 +40,20 @@ export async function deviceRequest(login: LoginState, path = '', data?: object)
           : 15000,
     ),
   });
-  if (!response.ok)
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const code =
+      payload && typeof payload === 'object' && 'error' in payload
+        ? String(payload.error)
+        : '';
     throw new Error(
-      response.status === 409
-        ? '设备正在执行操作，请稍后再试'
-        : `设备服务暂不可用（${response.status}）`,
+      errorMessages[code] ||
+        (response.status === 409
+          ? '设备状态正在变化，请稍后重试。'
+          : `设备服务暂不可用（${response.status}）`),
     );
-  return response.json();
+  }
+  return payload;
 }
 
 export async function deviceImage(login: LoginState, path: string, signal?: AbortSignal) {
