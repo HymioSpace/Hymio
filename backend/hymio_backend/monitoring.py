@@ -8,8 +8,15 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from . import client_telemetry
+from .investigation import trace_triggers
 from .observability import observe_turn
 from .session_store import Unauthorized
+
+
+def _p95(metric, group=""):
+    labels = "le" + (", " + group if group else "")
+    return f"histogram_quantile(0.95, sum by ({labels}) (rate({metric}_bucket[5m])))"
+
 
 SERIES: dict[str, str] = {
     "host_memory_used": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
@@ -21,35 +28,19 @@ SERIES: dict[str, str] = {
         "(rate(oath_storage_lock_wait_seconds_bucket[5m])))"
     ),
     "storage_busy": 'sum(rate(oath_storage_transaction_seconds_count{outcome="busy"}[5m]))',
-    "rpc_p95": (
-        "histogram_quantile(0.95, sum by (service, le) (oath_rpc_duration_seconds_bucket))"
-    ),
-    "queue_publish_p95": (
-        "histogram_quantile(0.95, sum by (le) (oath_queue_publish_delay_seconds_bucket))"
-    ),
-    "queue_buffer_p95": (
-        "histogram_quantile(0.95, sum by (le) (oath_queue_to_buffer_seconds_bucket))"
-    ),
-    "wake_wait_p95": (
-        "histogram_quantile(0.95, sum by (le) (oath_buffer_wake_delay_seconds_bucket))"
-    ),
-    "brain_claim_p95": (
-        "histogram_quantile(0.95, sum by (le) (oath_brain_claim_wait_seconds_bucket))"
-    ),
-    "llm_ttft_p95": ("histogram_quantile(0.95, sum by (model, le) (oath_llm_ttft_seconds_bucket))"),
-    "llm_duration_p95": (
-        "histogram_quantile(0.95, sum by (model, le) (oath_llm_duration_seconds_bucket))"
-    ),
-    "tool_duration_p95": (
-        "histogram_quantile(0.95, sum by (tool, le) (oath_tool_duration_seconds_bucket))"
-    ),
+    "rpc_p95": _p95("oath_rpc_duration_seconds", "service"),
+    "queue_publish_p95": _p95("oath_queue_publish_delay_seconds"),
+    "queue_buffer_p95": _p95("oath_queue_to_buffer_seconds"),
+    "wake_wait_p95": _p95("oath_buffer_wake_delay_seconds"),
+    "brain_claim_p95": _p95("oath_brain_claim_wait_seconds"),
+    "llm_ttft_p95": _p95("oath_llm_ttft_seconds", "model"),
+    "llm_duration_p95": _p95("oath_llm_duration_seconds", "model"),
+    "tool_duration_p95": _p95("oath_tool_duration_seconds", "tool"),
     "tool_success_rate": (
         'sum by (tool) (rate(oath_tool_terminals_total{outcome="succeeded"}[5m])) '
         "/ clamp_min(sum by (tool) (rate(oath_tool_terminals_total[5m])), 0.000001)"
     ),
-    "delivery_p95": (
-        "histogram_quantile(0.95, sum by (type, le) (oath_delivery_delay_seconds_bucket))"
-    ),
+    "delivery_p95": _p95("oath_delivery_delay_seconds", "type"),
     "gateway_rate": "sum by (type, channel, status) (rate(oath_gateway_commands_total[5m]))",
     "rpc_rate": "sum(rate(oath_rpc_requests_total[5m]))",
     "rpc_error_rate": (
@@ -195,22 +186,34 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                 client = client_telemetry.summary(
                     sessions, since=time.time() - hours * 3600, channel=channel
                 )
+                await asyncio.to_thread(sessions.event_log.annotate, client["recent"])
                 try:
                     values = await asyncio.gather(
                         *(_instant(settings, upstream, query) for query in SERIES.values()),
                         _alerts(settings, upstream),
+                        return_exceptions=True,
                     )
                     alert_state = values.pop()
+                    failures = [
+                        name
+                        for name, value in zip(SERIES, values, strict=True)
+                        if isinstance(value, Exception)
+                    ]
                     prometheus = {
-                        "available": True,
-                        **alert_state,
+                        "available": len(failures) < len(SERIES),
+                        "errors": failures,
+                        **(
+                            alert_state
+                            if isinstance(alert_state, dict)
+                            else {"active": [], "rule_errors": []}
+                        ),
                         "metrics": {
                             name: [
                                 {
                                     "labels": item.get("metric", {}),
                                     "value": item.get("value", [None, "0"])[1],
                                 }
-                                for item in result
+                                for item in (result if isinstance(result, list) else [])
                             ]
                             for name, result in zip(SERIES, values, strict=True)
                         },
@@ -241,10 +244,8 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
             if path == "/admin/api/monitoring/search":
                 query = request.query_params.get("q", "").strip()[:128]
                 source = request.query_params.get("source", "application")
-                if source not in {"application", "otel", "log"}:
+                if source not in {"application", "otel", "log", "all"}:
                     raise ValueError("invalid_source")
-                if not query and source != "log":
-                    raise ValueError("query_required")
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
                 channel = request.query_params.get("channel", "")
                 if channel and channel not in client_telemetry.CHANNELS:
@@ -275,13 +276,13 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                     query,
                     since=time.time() - hours * 3600,
                     channel=channel,
-                    source=source,
+                    source="" if source == "all" else source,
                 )
                 indexed = await asyncio.to_thread(
                     sessions.event_log.indexed_messages,
                     since=time.time() - hours * 3600,
                     channel=channel,
-                    source=source,
+                    source="" if source == "all" else source,
                 )
                 traces = []
                 grouped = {}
@@ -323,6 +324,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                                 "source": row["source"],
                             }
                         )
+                await asyncio.to_thread(sessions.event_log.annotate, traces)
                 return JSONResponse(
                     {
                         "query": query,
@@ -366,6 +368,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                     response.raise_for_status()
                     detail = response.json()
                     detail["spans"] = lifecycle + detail.get("spans", [])
+                    detail["triggers"] = trace_triggers(detail)
                     return JSONResponse(detail)
                 except Exception:
                     return JSONResponse(

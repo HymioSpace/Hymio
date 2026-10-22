@@ -8,6 +8,7 @@
     "build": "pnpm check && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/trace-model.test.ts",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },

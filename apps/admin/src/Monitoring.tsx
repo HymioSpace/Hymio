@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { orderSpans } from "./trace-model";
 import {
   Activity,
   AlertTriangle,
@@ -113,7 +114,7 @@ const chartDefinitions = [
     question: "哪个服务正在拖慢链路？",
     unit: "ms",
     detail:
-      "oath_rpc_duration_seconds 按 service 聚合后的桶内 P95；进程启动以来的累计直方图。",
+      "oath_rpc_duration_seconds 按 service 聚合后的桶内 P95；使用 5 分钟滚动窗口。",
   },
   {
     name: "wake_wait_p95",
@@ -253,7 +254,7 @@ const metricGuide: readonly MetricGuideGroup[] = [
     summary:
       "下式为单次 span/直方图观测值；P95 由 Prometheus 的有限桶做桶内线性插值。",
     notation:
-      "Bₗ(t) = Σ bucketₗ(t)；Qₚ(t) = histogram_quantile(p, {Bₗ(t)})。当前图线取进程启动以来的累计桶，不做 rate 窗口平滑。",
+      "Bₗ(t) = Σ rate(bucketₗ[5m])；Qₚ(t) = histogram_quantile(p, {Bₗ(t)})。图线使用 5 分钟滚动窗口内的桶增量。",
     items: [
       {
         name: "RPC 处理",
@@ -539,7 +540,11 @@ function LineChart({
     return (
       <div className="chart-empty">
         <BarChart3 size={22} />
-        <span>当前时间窗没有样本</span>
+        <span>
+          {series?.available === false
+            ? "指标数据源不可用"
+            : "当前时间窗没有样本"}
+        </span>
       </div>
     );
   const y = (value: number) => 190 - (value / max) * 150;
@@ -1108,11 +1113,18 @@ function RecentTraffic({ turns }: { turns: ClientTurn[] }) {
 
 function HttpApiHealth({ data }: { data?: MonitoringOverview }) {
   const rows = httpMetrics(data);
+  const unavailable =
+    data &&
+    (!data.prometheus.available ||
+      data.prometheus.errors?.some((name) => name.startsWith("http_")));
   const [showAll, setShowAll] = useState(false);
   const maximumP90 = Math.max(0.001, ...rows.map((row) => row.p90 || 0));
   const visible = showAll ? rows : rows.slice(0, 8);
   return (
-    <section className="monitor-section api-health-section">
+    <section
+      id="http-api-health"
+      className="monitor-section api-health-section"
+    >
       <header className="section-heading">
         <div>
           <p className="eyebrow">HTTP API HEALTH</p>
@@ -1164,20 +1176,25 @@ function HttpApiHealth({ data }: { data?: MonitoringOverview }) {
               >
                 {latency(success, "percent")}
               </span>
-              <span>{latency((row.average || 0) * 1000)}</span>
-              <span>{latency((row.p50 || 0) * 1000)}</span>
-              <span>{latency((row.p90 || 0) * 1000)}</span>
-              <span>{latency((row.p95 || 0) * 1000)}</span>
+              <span>
+                {latency(row.average == null ? null : row.average * 1000)}
+              </span>
+              <span>{latency(row.p50 == null ? null : row.p50 * 1000)}</span>
+              <span>{latency(row.p90 == null ? null : row.p90 * 1000)}</span>
+              <span>{latency(row.p95 == null ? null : row.p95 * 1000)}</span>
             </div>
           );
         })}
         {!rows.length && (
           <div className="api-health-empty">
             <Activity size={21} />
-            <strong>暂无 HTTP 指标样本</strong>
+            <strong>
+              {unavailable ? "HTTP 指标数据源不可用" : "暂无 HTTP 指标样本"}
+            </strong>
             <span>
-              发送一条请求后，Prometheus
-              会在下一个采样周期显示接口成功率与延迟。
+              {unavailable
+                ? "检查 Backend 的 Prometheus 地址、容器网络与采集目标。数据源恢复后自动重试。"
+                : "采集正常；当前 5 分钟窗口没有足够请求，等待下一次采样。"}
             </span>
           </div>
         )}
@@ -1420,10 +1437,10 @@ function ExplorerPage({
 }) {
   const needle = query.trim().toLowerCase();
   const filtered = turns.filter((turn) => {
-    if (turn.channel !== selectedChannel) return false;
+    if (selectedChannel && turn.channel !== selectedChannel) return false;
     if (contentSearch) return true;
     if (!needle) return true;
-    return `${turn.user_name} ${turn.user_id} ${turn.trace_id} ${turn.message_id} ${turn.device_id}`
+    return `${turn.user_name} ${turn.user_id} ${turn.trace_id} ${turn.message_id} ${turn.device_id} ${turn.trigger?.text || ""} ${turn.trigger?.source || ""}`
       .toLowerCase()
       .includes(needle);
   });
@@ -1466,7 +1483,7 @@ function ExplorerPage({
               placeholder={
                 mode === "logs"
                   ? "搜索用户 query、事件或字段"
-                  : "用户、Trace、设备"
+                  : "搜索消息、唤醒事件、用户或 Trace"
               }
               aria-label="搜索 Trace"
             />
@@ -1495,6 +1512,12 @@ function ExplorerPage({
           </div>
         )}
         <div className="explorer-filters" aria-label="渠道筛选">
+          <button
+            className={!selectedChannel ? "active" : ""}
+            onClick={() => onChannel("")}
+          >
+            全部渠道
+          </button>
           {channels.map((channel) => (
             <button
               key={channel.channel}
@@ -1538,14 +1561,23 @@ function ExplorerPage({
                 onClick={() => onOpen(turn)}
               >
                 <span className="trace-main">
-                  <strong>{turn.user_name || "未命名用户"}</strong>
+                  <strong
+                    className="trigger-preview"
+                    title={turn.trigger?.text}
+                  >
+                    {turn.trigger?.text || turn.user_name || "未命名用户"}
+                  </strong>
+                  <small>
+                    {turn.trigger?.label || "触发消息待补充"} ·{" "}
+                    {turn.user_name || "未命名用户"}
+                  </small>
                   <code>{turn.trace_id.slice(0, 12)}</code>
                   <small>
                     {new Date(turn.received_at * 1000).toLocaleTimeString(
                       "zh-CN",
                       { hour12: false },
                     )}{" "}
-                    · {turn.device_id || turn.client_id || "unknown"}
+                    · {channelNames[turn.channel] || turn.channel}
                   </small>
                   {contentMatch?.matches[0] && (
                     <small className="explorer-match">
@@ -1558,9 +1590,9 @@ function ExplorerPage({
                   )}
                 </span>
                 <span className="trace-duration">
-                  {turn.completed_ms
+                  {turn.completed_ms != null
                     ? latency(turn.completed_ms)
-                    : turn.accepted_ms
+                    : turn.accepted_ms != null
                       ? `${latency(turn.accepted_ms)} ACK`
                       : "—"}
                 </span>
@@ -1741,7 +1773,7 @@ function SystemLogCenter({
             <p className="empty">
               {query.trim()
                 ? "当前时间窗没有匹配的系统日志。"
-                : "暂无系统日志；部署新版本后，服务端 logger 输出会进入这里。"}
+                : "当前时间窗和渠道下没有系统日志，可切换全部渠道或扩大时间范围。"}
             </p>
           )}
         </div>
@@ -2079,8 +2111,11 @@ function TracePanel({
   const [trace, setTrace] = useState<TraceDetail>();
   const [error, setError] = useState("");
   const [panelTab, setPanelTab] = useState<"spans" | "logs">(initialTab);
+  useEffect(() => setPanelTab(initialTab), [initialTab]);
   useEffect(() => {
     let active = true;
+    setTrace(undefined);
+    setError("");
     void adminRequest<TraceDetail>(
       `monitoring/trace?user_id=${encodeURIComponent(turn.user_id)}&trace_id=${encodeURIComponent(turn.trace_id)}`,
       { session },
@@ -2095,7 +2130,7 @@ function TracePanel({
     return () => {
       active = false;
     };
-  }, [session, turn.trace_id, turn.user_id]);
+  }, [session, turn.trace_id, turn.user_id, turn.received_at]);
   const spans = [...(trace?.spans || [])].sort(
     (a, b) => a.start_unix_nano - b.start_unix_nano,
   );
@@ -2134,8 +2169,28 @@ function TracePanel({
           <X size={17} />
         </button>
       </header>
+      <div className="trace-trigger-context" aria-label="触发消息与唤醒事件">
+        {(trace?.triggers?.length
+          ? trace.triggers
+          : turn.trigger
+            ? [turn.trigger]
+            : []
+        ).map((trigger, index) => (
+          <div key={`${trigger.kind}-${index}`}>
+            <span>{trigger.label}</span>
+            <p>{trigger.text || "未记录消息正文"}</p>
+            {trigger.source && <code>{trigger.source}</code>}
+          </div>
+        ))}
+        {!trace?.triggers?.length && !turn.trigger && (
+          <p>触发消息尚未归档；链路事件中仍可查看已记录的唤醒信息。</p>
+        )}
+      </div>
       <div className="trace-summary">
-        <span>端到端 {latency(turn.completed_ms || 0)}</span>
+        <span>客户端总耗时 {latency(turn.completed_ms)}</span>
+        <span>
+          链路跨度 {trace && spans.length ? latency(total / 1_000_000) : "—"}
+        </span>
         <span>{turn.step_count ?? "—"} Steps</span>
         <span>{turn.tool_calls ?? "—"} 工具</span>
         <span>{trace?.spans.length ?? "—"} Spans</span>
@@ -2159,6 +2214,9 @@ function TracePanel({
         </button>
       </div>
       {error && <p className="feedback error">{error}</p>}
+      {trace?.upstream_available === false && (
+        <p className="feedback">Oath 暂不可达，当前显示已保存的消息事件。</p>
+      )}
       {!trace && !error && <p className="empty">正在读取服务端 span…</p>}
       {panelTab === "spans" && (
         <>
@@ -2167,7 +2225,7 @@ function TracePanel({
             attributes、原始模型请求与响应。
           </p>
           <div className="trace-nodes waterfall">
-            {spans.map((span) => {
+            {orderSpans(spans).map(({ span, depth }) => {
               const offset = ((span.start_unix_nano - start) / total) * 100;
               const width = Math.max(
                 0.8,
@@ -2181,6 +2239,7 @@ function TracePanel({
               return (
                 <details
                   className={span.parent_span_id ? "child" : ""}
+                  style={{ marginLeft: depth * 14 }}
                   key={`${span.span_id}-${span.start_unix_nano}`}
                 >
                   <summary>
@@ -2195,7 +2254,7 @@ function TracePanel({
                         )}
                         {span.name}
                       </span>
-                      <b>{latency(span.duration_ms || undefined)}</b>
+                      <b>{latency(span.duration_ms)}</b>
                       <ChevronDown size={14} />
                     </div>
                     <div className="waterfall-track">
@@ -2478,7 +2537,10 @@ export function Monitoring({ session }: { session: Session }) {
 
   useEffect(() => {
     const needle = query.trim();
-    if (page !== "logs" || (!needle && logSource !== "log")) {
+    if (
+      (page !== "logs" && page !== "traces") ||
+      (page === "traces" && !needle)
+    ) {
       setTraceSearch(undefined);
       setSearchingLogs(false);
       setSearchError("");
@@ -2492,7 +2554,7 @@ export function Monitoring({ session }: { session: Session }) {
       void adminRequest<TraceSearchResponse>(
         `monitoring/search?q=${encodeURIComponent(needle)}&hours=${hours}&channel=${encodeURIComponent(
           logSource === "log" ? logChannel : selectedChannel,
-        )}&source=${logSource}`,
+        )}&source=${page === "traces" ? "all" : logSource}`,
         { session },
       )
         .then((value) => {
@@ -2517,7 +2579,10 @@ export function Monitoring({ session }: { session: Session }) {
   useEffect(() => {
     const available = data?.client.channels || [];
     if (!available.length) return;
-    if (!available.some((item) => item.channel === selectedChannel))
+    if (
+      selectedChannel &&
+      !available.some((item) => item.channel === selectedChannel)
+    )
       setSelectedChannel(available[0].channel);
   }, [data, selectedChannel]);
 
@@ -2564,8 +2629,24 @@ export function Monitoring({ session }: { session: Session }) {
   const visibleChartDefinitions = chartDefinitions.filter((definition) =>
     (activeMetricGroup.names as readonly string[]).includes(definition.name),
   );
+  const localMatches = recentTurns.filter((turn) =>
+    `${turn.user_name} ${turn.user_id} ${turn.trace_id} ${turn.message_id} ${turn.trigger?.text || ""}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
   const explorerTurns =
-    page === "logs" && query.trim() ? traceSearch?.traces || [] : recentTurns;
+    page === "logs"
+      ? traceSearch?.traces || []
+      : query.trim()
+        ? [
+            ...new Map(
+              [...localMatches, ...(traceSearch?.traces || [])].map((turn) => [
+                `${turn.user_id}|${turn.trace_id}`,
+                turn,
+              ]),
+            ).values(),
+          ]
+        : recentTurns;
   const selectedTurn = [...(traceSearch?.traces || []), ...recentTurns].find(
     (turn) => `${turn.user_id}|${turn.trace_id}` === selectedTrace,
   );
@@ -2594,6 +2675,18 @@ export function Monitoring({ session }: { session: Session }) {
           </p>
         </div>
         <div className="monitor-actions">
+          {page === "overview" && (
+            <button
+              className="guide-trigger"
+              onClick={() =>
+                document
+                  .getElementById("http-api-health")
+                  ?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            >
+              HTTP 接口
+            </button>
+          )}
           <span className="live-indicator">
             <i /> 自动刷新 20s
           </span>
@@ -2639,7 +2732,7 @@ export function Monitoring({ session }: { session: Session }) {
                   <span>LIVE CLIENT TELEMETRY</span>
                   <i />
                 </div>
-                <h2>从用户按下发送，到最后一个响应节点。</h2>
+                <h2>请求与服务状态</h2>
                 <p>
                   最近 {hours === 168 ? "7 天" : `${hours} 小时`}
                   内，客户端体验与 Prometheus
@@ -2800,7 +2893,9 @@ export function Monitoring({ session }: { session: Session }) {
               <p>
                 {terminal
                   ? "完成率只使用具备终态的上报样本；缺失阶段不按成功或 0 ms 处理。"
-                  : "当前只有发送阶段样本。完成率保持未知，等待 ACK、首响应和终态上报。"}
+                  : acknowledged
+                    ? "已收到发送与接纳记录；首响应或终态上报尚未齐全。"
+                    : "当前只有发送记录；等待接纳、首响应和终态上报。"}
               </p>
             </div>
           </section>
@@ -2854,7 +2949,7 @@ export function Monitoring({ session }: { session: Session }) {
                 </div>
                 <div className="metric-section-controls">
                   <span className="section-note">
-                    服务端 P95 为有限桶插值；曲线使用进程启动以来累计 bucket
+                    服务端 P95 为有限桶插值；曲线使用 5 分钟滚动窗口
                   </span>
                   <div
                     className="metric-group-tabs"
@@ -3011,7 +3106,7 @@ export function Monitoring({ session }: { session: Session }) {
           scanned={traceSearch?.scanned}
           failed={traceSearch?.failed}
           searchError={searchError}
-          contentSearch={page === "logs" && Boolean(query.trim())}
+          contentSearch={Boolean(traceSearch)}
           source={logSource}
           onSource={setLogSource}
         />

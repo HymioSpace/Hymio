@@ -1,3 +1,4 @@
+import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +49,8 @@ class Settings:
     def load(cls, path):
         path = Path(path).expanduser().resolve()
         data = tomllib.loads(path.read_text())
+        if os.environ.get("HYMIO_PROMETHEUS_URL"):
+            data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
         for key in ("database", "client_secret_file", "service_token_file"):
             file = Path(data[key]).expanduser()
             data[key] = file if file.is_absolute() else path.parent / file

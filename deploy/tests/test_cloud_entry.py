@@ -64,6 +64,24 @@ class CloudEntryTests(unittest.TestCase):
                 caddy = (cloud.OUTPUT / "Caddyfile").read_text()
                 self.assertEqual(caddy.count("app.example.com"), 1)
                 self.assertIn("/agent/*", caddy)
+                self.assertIn("/telemetry/*", caddy.split("handle @backend")[0])
+                self.assertEqual(
+                    json.loads(
+                        (cloud.OUTPUT / "hymio-metrics-targets.json").read_text()
+                    ),
+                    [{"targets": ["backend:8080"]}],
+                )
+                self.assertEqual(
+                    (cloud.OUTPUT / "hymio-metrics-targets.json").stat().st_mode
+                    & 0o777,
+                    0o644,
+                )
+                self.assertEqual(
+                    compose["services"]["backend"]["environment"][
+                        "HYMIO_PROMETHEUS_URL"
+                    ],
+                    "http://prometheus:9090",
+                )
                 self.assertIn("/devices/*", caddy)
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
                 self.assertIn("handle /admin/api/*", caddy)

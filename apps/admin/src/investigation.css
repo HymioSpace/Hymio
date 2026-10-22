@@ -1,0 +1,455 @@
+.shell {
+  grid-template-columns: 216px minmax(0, 1fr);
+}
+.sidebar {
+  padding: 24px 14px;
+}
+.sidebar .brand {
+  margin-bottom: 28px;
+}
+.sidebar .nav {
+  min-height: 40px;
+  font-size: 13px;
+}
+.monitoring-workspace {
+  width: 100%;
+  max-width: 1560px;
+  padding: 0 28px 40px;
+}
+.monitor-topbar {
+  min-height: 100px;
+  padding: 20px 0;
+  gap: 18px;
+}
+.monitor-topbar h1 {
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+.monitor-subtitle {
+  font-size: 13px;
+}
+.monitor-actions {
+  gap: 8px;
+}
+.monitor-actions .live-indicator {
+  padding: 8px 10px;
+}
+.monitor-topbar .eyebrow {
+  letter-spacing: 0.08em;
+  font-size: 10px;
+}
+.overview-content {
+  gap: 22px;
+  margin-top: 22px;
+}
+.overview-snapshot.command-overview {
+  border-radius: 14px;
+  background: #fff;
+}
+.command-overview > header {
+  padding: 24px;
+  gap: 20px;
+}
+.command-overview h2 {
+  font-size: 24px;
+  line-height: 1.3;
+}
+.command-overview-copy > p {
+  max-width: 65ch;
+  font-size: 13px;
+}
+.command-actions {
+  max-width: 420px;
+}
+.command-actions .overview-live-card {
+  min-height: 90px;
+  padding: 14px;
+}
+.command-overview .hero-kpis {
+  padding: 0 24px 20px;
+  gap: 12px;
+}
+.hero-kpis > div {
+  min-height: 100px;
+  padding: 14px;
+  border-radius: 10px;
+}
+.hero-kpis strong {
+  font-size: 28px;
+}
+.section-heading {
+  padding: 20px 22px 16px;
+  gap: 16px;
+}
+.section-heading h2 {
+  font-size: 19px;
+}
+.section-heading p:not(.eyebrow) {
+  max-width: 78ch;
+  font-size: 12px;
+}
+.section-note {
+  max-width: 38ch;
+  text-wrap: pretty;
+}
+.monitor-section,
+.channel-panel,
+.global-metrics-section {
+  border-radius: 12px;
+}
+.channel-tabs {
+  margin: 0 20px 16px;
+}
+.channel-workspace {
+  padding: 0 20px 20px;
+  gap: 16px;
+}
+.channel-context {
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.channel-context > p {
+  max-width: 70ch;
+  font-size: 12px;
+}
+.channel-kpis {
+  gap: 12px;
+}
+.channel-kpis article {
+  min-height: 112px;
+  padding: 16px;
+  border-radius: 10px;
+}
+.channel-kpis article > strong {
+  margin: 12px 0;
+  font-size: 28px;
+}
+.channel-chart {
+  padding: 18px;
+  border-radius: 10px;
+}
+.channel-chart > header {
+  margin-bottom: 16px;
+}
+.channel-chart h3 {
+  font-size: 15px;
+}
+.channel-activity-card .traffic-columns {
+  height: 100px;
+}
+.telemetry-coverage {
+  padding: 16px;
+  border-radius: 10px;
+}
+.api-health-section {
+  scroll-margin-top: 18px;
+}
+.api-health-panel {
+  margin: 0 20px 20px;
+}
+.api-health-row {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.api-health-empty {
+  min-height: 140px;
+}
+.explorer-shell {
+  grid-template-columns: minmax(310px, 370px) minmax(0, 1fr);
+  height: calc(100dvh - 146px);
+  min-height: 480px;
+  border-radius: 12px;
+}
+.explorer-list {
+  overflow: hidden;
+}
+.explorer-list > header {
+  padding: 16px;
+  gap: 12px;
+}
+.explorer-list h2 {
+  font-size: 17px;
+}
+.explorer-list .eyebrow {
+  font-size: 10px;
+}
+.explorer-filters {
+  gap: 6px;
+  padding: 10px 16px;
+}
+.explorer-source-switch {
+  margin: 0 16px;
+  border-radius: 8px;
+}
+.explorer-source-switch button {
+  padding: 8px;
+}
+.explorer-search input {
+  min-width: 0;
+  width: 100%;
+  font-size: 12px;
+}
+.explorer-column-head,
+.explorer-row {
+  grid-template-columns: minmax(0, 1fr) 66px 56px;
+  gap: 8px;
+}
+.explorer-row {
+  padding: 12px 14px;
+}
+.trace-main {
+  gap: 3px;
+}
+.trace-main .trigger-preview {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--investigation-ink);
+}
+.trace-main small {
+  font-size: 11px;
+  color: var(--investigation-muted);
+}
+.trace-main code {
+  font-size: 10px;
+  color: #667085;
+}
+.trace-duration {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.trace-main .explorer-match {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.explorer-detail {
+  min-height: 0;
+  overflow: auto;
+}
+.trace-detail-pane {
+  padding: 20px;
+}
+.trace-detail-pane > header {
+  padding-bottom: 12px;
+}
+.trace-heading h2 {
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+.trace-identity > span:first-child {
+  display: none;
+}
+.trace-heading > code {
+  font-size: 11px;
+}
+.trace-trigger-context {
+  margin: 0 0 16px;
+  max-width: 90ch;
+}
+.trace-trigger-context > div {
+  padding: 12px 14px;
+  margin: 6px 0;
+  border-left: 3px solid #6677ca;
+  background: #f5f7fc;
+  border-radius: 0 7px 7px 0;
+}
+.trace-trigger-context span {
+  font-size: 11px;
+  color: #536285;
+  font-weight: 600;
+}
+.trace-trigger-context p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 5px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.trace-trigger-context > p {
+  font-size: 12px;
+  color: var(--investigation-muted);
+}
+.trace-trigger-context code {
+  font-size: 11px;
+}
+.trace-summary {
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.trace-summary > span {
+  padding: 5px 8px;
+  font-size: 11px;
+  border-radius: 5px;
+  background: #f3f5f8;
+}
+.trace-mode-tabs {
+  justify-content: start;
+  width: fit-content;
+  min-width: 230px;
+  padding: 3px;
+  border-radius: 8px;
+}
+.trace-mode-tabs button {
+  min-height: 32px;
+  padding: 6px 14px;
+}
+.trace-help {
+  max-width: 75ch;
+  font-size: 11px;
+  margin: 12px 0;
+}
+.trace-nodes.waterfall {
+  display: grid;
+  gap: 0;
+}
+.trace-nodes.waterfall > details {
+  border: 0;
+  border-bottom: 1px solid #e9edf3;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+.trace-nodes.waterfall > details.child {
+  background: #fff;
+  border-left: 1px solid #e0e6f0;
+}
+.trace-nodes.waterfall > details[open] {
+  background: #fbfcfe;
+}
+.trace-nodes.waterfall > details > summary {
+  padding: 10px 10px 9px;
+}
+.trace-nodes.waterfall > details > summary > div:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 80px 16px;
+  align-items: center;
+  gap: 8px;
+}
+.trace-nodes .span-status {
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.trace-nodes summary b {
+  font-size: 11px;
+  text-align: right;
+}
+.trace-nodes .waterfall-track {
+  height: 4px;
+  margin-top: 7px;
+  background: #f0f3f7;
+}
+.trace-nodes .waterfall-track i {
+  height: 4px;
+}
+.span-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.span-tags > span {
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.span-tags > small {
+  font-size: 10px;
+}
+.otel-detail {
+  padding: 14px;
+  border-top: 1px solid #e4e9f0;
+}
+.otel-attributes {
+  max-width: 100%;
+}
+.otel-attributes > div {
+  grid-template-columns: minmax(130px, 32%) minmax(0, 1fr);
+}
+.otel-attributes dd,
+.otel-attributes dt {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.otel-events pre,
+.trace-log-list pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.system-log-center {
+  grid-template-columns: minmax(360px, 46%) minmax(0, 1fr);
+}
+.system-log-detail {
+  padding: 20px;
+}
+.system-log-row p {
+  font-size: 12px;
+}
+.system-log-detail > pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.system-log-detail dl {
+  font-size: 12px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid #4f60c7;
+  outline-offset: 2px;
+}
+@media (max-width: 1150px) {
+  .shell {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+  .monitoring-workspace {
+    padding: 0 18px 30px;
+  }
+  .explorer-shell {
+    grid-template-columns: 310px minmax(0, 1fr);
+  }
+  .monitor-topbar {
+    flex-wrap: wrap;
+  }
+  .trace-detail-pane {
+    padding: 14px;
+  }
+}
+@media (max-width: 850px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .explorer-shell,
+  .system-log-center {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .explorer-list {
+    max-height: 440px;
+    border-right: 0;
+    border-bottom: 1px solid #e5e9f0;
+  }
+  .explorer-detail {
+    max-height: none;
+  }
+  .explorer-empty {
+    min-height: 220px;
+  }
+  .command-actions {
+    max-width: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

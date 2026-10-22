@@ -1,4 +1,6 @@
 :root {
+  --investigation-ink: #1c2940;
+  --investigation-muted: #59677b;
   font:
     14px/1.5 "Avenir Next",
     system-ui,
