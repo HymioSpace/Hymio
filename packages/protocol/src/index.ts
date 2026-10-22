@@ -25,6 +25,7 @@ export interface Frame {
   type: string;
   id?: string;
   user_id?: string;
+  trace_id?: string;
   payload?: Data;
   after_cursor?: number;
   through_cursor?: number;

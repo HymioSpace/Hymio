@@ -4,8 +4,12 @@ This is a standalone React/Vite application for operators. It is served at `/adm
 cloud Web image and uses `/auth/*` plus `/admin/api/*` on the same origin. It does not share
 navigation, state or visual components with the user Web application.
 
-The current module manages cloud-resource entitlements, capacity and lifecycle. Future
-operations modules can be added without changing the product clients.
+The console manages cloud-resource entitlements, capacity and lifecycle, plus the
+observability view. `/admin/#/monitoring` shows Prometheus-backed service latency, queue
+wait, model TTFT, tool health and per-channel client turn timing.
+
+Client turns are grouped by `web`, `ios`, `desk`, `chrome` and `unknown`. The client only
+uploads timings and anonymous identifiers; prompts and model output stay out of telemetry.
 
 ## Development
 

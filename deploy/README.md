@@ -284,6 +284,16 @@ or agent sandboxes. A default Daytona image is prepared with one shared desktop/
 3. Add that ID to `admin_user_ids = ["YOUR_PRODUCT_USER_ID"]` in `~/.hymio/config.toml`, then
    restart Hymio. Legacy deployments set this field in private `backend/hymio.toml` instead.
 4. Open the independent operator console at `/admin/` and sign in with that product account.
+
+The local observability stack starts with `hymio start`:
+
+- Prometheus: `http://127.0.0.1:19090`
+- Grafana: `http://127.0.0.1:13000`
+- Operator view: `/admin/#/monitoring`
+
+Override ports with `OATH_PROMETHEUS_PORT` and `OATH_GRAFANA_PORT`. In cloud deployments,
+set Backend `prometheus_url` to the private address reachable from its container. Client
+telemetry contains timings and anonymous device IDs only, never prompts or model output.
    It is not linked from the user Web sidebar. Server authorization checks every read and change;
    knowing the URL does not grant access.
 5. Search a registered user, choose a provider and click **开通云电脑**. On their next login or

@@ -58,8 +58,30 @@ class SessionStore:
                 CREATE INDEX IF NOT EXISTS credentials_session ON credentials(session_id);
                 CREATE INDEX IF NOT EXISTS credentials_expiry ON credentials(kind, expires);
                 CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires);
+                CREATE TABLE IF NOT EXISTS client_turns (
+                    user_id TEXT NOT NULL, message_id TEXT NOT NULL,
+                    channel TEXT NOT NULL, client_id TEXT NOT NULL DEFAULT '',
+                    device_id TEXT NOT NULL DEFAULT '', trace_id TEXT NOT NULL DEFAULT '',
+                    sent_at REAL NOT NULL, accepted_ms REAL, first_response_ms REAL,
+                    first_renderable_ms REAL, first_paint_ms REAL, completed_ms REAL,
+                    outcome TEXT NOT NULL, step_count INTEGER, model_calls INTEGER,
+                    tool_calls INTEGER, tool_successes INTEGER, tool_ms REAL,
+                    received_at REAL NOT NULL, PRIMARY KEY(user_id, message_id));
+                CREATE INDEX IF NOT EXISTS client_turns_recent
+                    ON client_turns(received_at, channel);
             """)
         settings.database.chmod(0o600)
+        from .event_log import EventLog
+
+        self.event_log = EventLog(
+            settings.database.with_name("observability.sqlite3"),
+            retention_days=max(
+                1, min(90, getattr(settings, "observability_retention_days", 7))
+            ),
+            max_events=max(
+                100, min(1000000, getattr(settings, "observability_max_events", 20000))
+            ),
+        )
 
     @contextmanager
     def transaction(self):

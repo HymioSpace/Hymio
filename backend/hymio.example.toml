@@ -5,6 +5,8 @@ client_secret_file = "./private/casdoor-client-secret"
 public_url = "http://localhost:8080"
 callback_url = "http://localhost:8080/auth/callback"
 service_token_file = "./private/oath-auth-token"
+# Optional Oath service token used only by the admin console for cross-user trace reads.
+# oath_admin_token_file = "./private/oath-admin-token"
 origins = [
   "http://127.0.0.1:1420",
   "http://localhost:1420",
@@ -34,6 +36,12 @@ e2b_template = "hymio-desktop"
 
 # Choices must be deployed in Oath, including independent model_providers. Restart after changing.
 model_options = ["MiniMax-M2.7", "MiniMax-M3"]
+# Internal read-only Prometheus endpoint used by the operator console.
+prometheus_url = "http://127.0.0.1:19090"
+observability_retention_days = 7
+observability_max_events = 20000
+# Optional operator link. Leave empty when Grafana is not exposed publicly.
+grafana_url = ""
 # Add "deepseek-flash" after configuring its Oath model_providers entry and Vault alias.
 vision_model = "MiniMax-M3"
 # Local launcher derives these from oath.toml; set explicitly in cloud deployments.

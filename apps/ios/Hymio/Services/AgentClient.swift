@@ -23,6 +23,8 @@ import UIKit
   private var sourceDevice = ""
   private var replaced = false
   private var ready = false
+  private var turnTiming: TurnTiming?
+  private var telemetryUploading = false
   private let account: AccountService
   init(account: AccountService) { self.account = account }
   var connected: Bool { ready }
@@ -220,6 +222,15 @@ import UIKit
       if !f["user_id"].text.isEmpty && f["user_id"].text != user { throw ProtocolFailure.identity }
       var next = state
       let id = f["id"].text
+      if var timing = turnTiming, timing.messageID == id {
+        let firstAck = timing.acceptedMs == nil
+        timing.acceptedMs = timing.milliseconds()
+        if !f["trace_id"].text.isEmpty { timing.traceID = f["trace_id"].text }
+        turnTiming = timing
+        if firstAck {
+          reportTelemetry(timing, outcome: "accepted", stage: "client.ack")
+        }
+      }
       guard let command = next.pending.first(where: { $0.id == id }) else { return }
       if command.type == "user.message" {
         next.accepted = (next.accepted ?? []).union([id])
@@ -245,6 +256,7 @@ import UIKit
         if event.event_seq > previous {
           state = next
           model.apply(event)
+          observeTelemetry(event)
         }
         schedulePersistence(ws)
       } catch ProtocolFailure.gap {
@@ -377,6 +389,19 @@ import UIKit
       var body = payload
       body["user_context"] = .object(context)
       command.payload = .object(body)
+      turnTiming = TurnTiming(
+        messageID: command.id,
+        sentAt: Date().timeIntervalSince1970 * 1000,
+        content: payload["content"]?.text ?? "")
+      if let timing = turnTiming {
+        reportTelemetry(timing, outcome: "sent", stage: "user.message")
+        Task { [weak self] in
+          try? await Task.sleep(for: .seconds(30))
+          guard let self, let current = self.turnTiming,
+                current.messageID == timing.messageID, current.firstResponseMs == nil else { return }
+          self.reportTelemetry(current, outcome: "stalled", stage: "client.stalled")
+        }
+      }
     }
     next.pending.append(command)
     let token = generation
@@ -414,9 +439,101 @@ import UIKit
           "locale": .string(Locale.current.identifier),
           "time_zone": .string(TimeZone.current.identifier),
           "source_device_id": .string(sourceDevice), "client_id": .string(state.clientID),
+          "channel": .string("ios"),
           "received_event_seq": .number(Double(state.cursor)),
         ]),
       ])
+  }
+
+  private struct TurnTiming {
+    let messageID: String
+    let sentAt: Double
+    let content: String
+    let started = ProcessInfo.processInfo.systemUptime
+    var traceID = ""
+    var acceptedMs: Double?
+    var firstResponseMs: Double?
+    var firstRenderableMs: Double?
+    var completedMs: Double?
+
+    func milliseconds() -> Double { (ProcessInfo.processInfo.systemUptime - started) * 1000 }
+  }
+
+  private func observeTelemetry(_ event: Event) {
+    guard var timing = turnTiming else { return }
+    let payload = event.payload
+    if event.event_type == "assistant.delta" {
+      if timing.firstResponseMs == nil {
+        timing.firstResponseMs = timing.milliseconds()
+        reportTelemetry(timing, outcome: "in_progress", stage: "client.first_response")
+      }
+      if payload["channel"].text == "content", timing.firstRenderableMs == nil {
+        timing.firstRenderableMs = timing.milliseconds()
+        reportTelemetry(timing, outcome: "in_progress", stage: "client.first_renderable")
+      }
+    }
+    if event.event_type == "step.status", !payload["trace_id"].text.isEmpty {
+      timing.traceID = payload["trace_id"].text
+    }
+    let status = payload["status"].text
+    let response = state.events.last { $0.event_type == "assistant.message" && $0.payload["step_id"] == payload["step_id"] }
+    let continues = !(response?.payload["tool_calls"].items.isEmpty ?? true)
+    let terminal = event.event_type == "step.status"
+      && ["completed", "failed", "cancelled"].contains(status)
+      && !(status == "completed" && continues)
+    if terminal {
+      timing.completedMs = timing.milliseconds()
+      turnTiming = nil
+      let outcome = status == "completed" ? "completed" : status
+      reportTelemetry(timing, outcome: outcome, stage: "client.terminal")
+    } else {
+      turnTiming = timing
+    }
+  }
+
+  private var telemetryKey: String { "hymio.telemetry.\(account.backend.absoluteString).\(user)" }
+  private func reportTelemetry(
+    _ timing: TurnTiming, outcome: String, stage: String? = nil
+  ) {
+      let sample: JSON = .object([
+        "message_id": .string(timing.messageID),
+        "channel": .string("ios"),
+        "client_id": .string(state.clientID),
+        "device_id": .string(sourceDevice),
+        "trace_id": .string(timing.traceID),
+        "sent_at": .number(timing.sentAt),
+        "content": .string(timing.content),
+        "accepted_ms": timing.acceptedMs.map(JSON.number) ?? .null,
+        "first_response_ms": timing.firstResponseMs.map(JSON.number) ?? .null,
+        "first_renderable_ms": timing.firstRenderableMs.map(JSON.number) ?? .null,
+        "completed_ms": timing.completedMs.map(JSON.number) ?? .null,
+        "outcome": .string(outcome),
+        "stage": .string(stage ?? "client.\(outcome)"),
+      ])
+      let key = telemetryKey
+      var queued = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: JSON].self, from: $0) }) ?? [:]
+      queued["\(timing.messageID):\(stage ?? outcome)"] = sample
+      if queued.count > 100, let oldest = queued.min(by: { $0.value["sent_at"].double < $1.value["sent_at"].double })?.key { queued.removeValue(forKey: oldest) }
+      UserDefaults.standard.set(try? JSONEncoder().encode(queued), forKey: key)
+      guard !telemetryUploading else { return }
+      telemetryUploading = true
+      Task { [weak self] in
+        guard let self else { return }
+        defer { self.telemetryUploading = false }
+        for attempt in 0..<3 {
+          guard key == self.telemetryKey else { return }
+          let pending = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: JSON].self, from: $0) }) ?? [:]
+          for (id, body) in pending {
+            do {
+              _ = try await self.account.request("telemetry/client", body: body)
+              var current = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: JSON].self, from: $0) }) ?? [:]
+              current.removeValue(forKey: id)
+              UserDefaults.standard.set(try? JSONEncoder().encode(current), forKey: key)
+            } catch { break }
+          }
+          if attempt < 2 { try? await Task.sleep(for: .seconds(5)) }
+        }
+      }
   }
   func decide(_ id: String, _ approved: Bool) async {
     do {
