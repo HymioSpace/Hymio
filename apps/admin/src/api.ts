@@ -56,6 +56,11 @@ export type Latency = Record<
 export type ChannelSummary = {
   channel: string;
   turns: number;
+  acknowledged: number;
+  first_response: number;
+  renderable: number;
+  terminal: number;
+  traced: number;
   completed: number;
   failed: number;
   cancelled: number;
@@ -167,6 +172,7 @@ export type TraceSearchMatch = ClientTurn & {
     event_name: string;
     unix_nano: number | null;
     snippet: string;
+    source: "application" | "otel";
   }[];
 };
 
@@ -174,10 +180,25 @@ export type TraceSearchResponse = {
   query: string;
   hours: number;
   channel: string;
+  source?: "application" | "otel" | "log";
   scanned: number;
   failed: number;
   matched: number;
   traces: TraceSearchMatch[];
+  logs?: SystemLog[];
+};
+
+export type SystemLog = {
+  id: number;
+  service: string;
+  level: string;
+  logger: string;
+  message: string;
+  occurred_at: number;
+  trace_id: string;
+  message_id: string;
+  channel: string;
+  attributes: Record<string, unknown>;
 };
 
 const storageKey = "hymio.admin.session";

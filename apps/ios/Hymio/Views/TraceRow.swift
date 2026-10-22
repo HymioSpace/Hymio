@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 一次工作：用户消息在上，过程收成一行，最终回复留在下面。
+/// 一次探索：用户消息在上，过程收成一行，最终回复留在下面。
 struct TraceRow: View {
   let turn: Turn
   let tools: [String: JSON]
@@ -15,7 +15,7 @@ struct TraceRow: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 8) {
       if let user = turn.user { row(user) }
       if turn.foldable {
         VStack(alignment: .leading, spacing: 0) {
@@ -37,17 +37,17 @@ struct TraceRow: View {
             .accessibilityHint("展开或收起中间步骤，不影响最终回复")
           if expanded {
             Divider().padding(.horizontal, 14)
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
               ForEach(turn.activity) { row($0, compact: true) }
               if !turn.trace.isEmpty {
                 NavigationLink {
                   TraceRecordScreen(traceID: turn.trace, account: account)
                 } label: {
-                  Label("查看执行详情", systemImage: "arrow.up.right")
+                  Label("查看探索详情", systemImage: "arrow.up.right")
                     .font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
                 }
               }
-            }.padding(12)
+            }.padding(10)
           }
         }.background(
           expanded ? Brand.mist.opacity(0.5) : Color.clear, in: RoundedRectangle(cornerRadius: 14)
@@ -84,7 +84,7 @@ struct TraceRow: View {
 
   private func worked(_ now: Date) -> String {
     let value = formatDuration(elapsed(now))
-    return value.isEmpty ? "已工作" : "已工作 \(value)"
+    return value.isEmpty ? "探索中" : "已探索 \(value)"
   }
 
   private func elapsed(_ now: Date) -> TimeInterval? {

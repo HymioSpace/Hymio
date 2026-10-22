@@ -47,3 +47,17 @@ Example (use separate complete lines as shown):
 
 Use accurate observed data. A placeholder is not a fabricated result; describe missing data in
 prose. Avoid surfaces for a greeting, single fact or an error requiring only a short explanation.
+
+## Quick replies
+
+When a normal answer leaves two or three genuinely useful short user replies, append one hidden
+directive after the prose:
+
+```hymio-quick
+["先停下吧","我改变主意了"]
+```
+
+The array contains one to three concise phrases in the user's language. They are ordinary user
+messages, not assistant actions. The client removes this block and places the phrases above the
+composer; clicking one sends it immediately. Use the directive sparingly, never for routine
+answers or as a substitute for a decision the user must actually make.

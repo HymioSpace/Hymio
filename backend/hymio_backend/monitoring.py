@@ -16,8 +16,10 @@ SERIES: dict[str, str] = {
     "host_iowait": 'avg(rate(node_cpu_seconds_total{mode="iowait"}[5m]))',
     "process_memory": 'process_resident_memory_bytes{job=~"oath|hymio"}',
     "storage_bytes": "oath_storage_bytes",
-    "storage_lock_p95": ("histogram_quantile(0.95,sum by (le,mode) "
-                         "(rate(oath_storage_lock_wait_seconds_bucket[5m])))"),
+    "storage_lock_p95": (
+        "histogram_quantile(0.95,sum by (le,mode) "
+        "(rate(oath_storage_lock_wait_seconds_bucket[5m])))"
+    ),
     "storage_busy": 'sum(rate(oath_storage_transaction_seconds_count{outcome="busy"}[5m]))',
     "rpc_p95": (
         "histogram_quantile(0.95, sum by (service, le) (oath_rpc_duration_seconds_bucket))"
@@ -57,6 +59,34 @@ SERIES: dict[str, str] = {
     "tool_terminal_rate": "sum(rate(oath_tool_terminals_total[10m]))",
     "rabbit_ready": "sum by (queue) (rabbitmq_queue_messages_ready)",
     "services_up": 'sum(up{job="oath"})',
+    "http_request_rate": (
+        'sum by (method, route) (rate(hymio_http_requests_total{route!="/metrics"}[5m]))'
+    ),
+    "http_success_rate": (
+        "(sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics",status=~"2.."}[5m])) '
+        "/ clamp_min(sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics"}[5m])), 0.000001)) '
+        "or (0 * sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics"}[5m])))'
+    ),
+    "http_avg": (
+        "sum by (method, route) (rate(hymio_http_request_duration_seconds_sum[5m])) "
+        "/ clamp_min(sum by (method, route) "
+        "(rate(hymio_http_request_duration_seconds_count[5m])), 0.000001)"
+    ),
+    "http_p50": (
+        "histogram_quantile(0.50, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "http_p90": (
+        "histogram_quantile(0.90, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "http_p95": (
+        "histogram_quantile(0.95, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
 }
 
 
@@ -210,22 +240,48 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                 )
             if path == "/admin/api/monitoring/search":
                 query = request.query_params.get("q", "").strip()[:128]
-                if not query:
+                source = request.query_params.get("source", "application")
+                if source not in {"application", "otel", "log"}:
+                    raise ValueError("invalid_source")
+                if not query and source != "log":
                     raise ValueError("query_required")
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
                 channel = request.query_params.get("channel", "")
                 if channel and channel not in client_telemetry.CHANNELS:
                     raise ValueError("invalid_channel")
+                if source == "log":
+                    logs = await asyncio.to_thread(
+                        sessions.event_log.search_logs,
+                        query,
+                        since=time.time() - hours * 3600,
+                        channel=channel,
+                        level=request.query_params.get("level", ""),
+                    )
+                    return JSONResponse(
+                        {
+                            "query": query,
+                            "hours": hours,
+                            "channel": channel,
+                            "source": source,
+                            "scanned": len(logs),
+                            "failed": 0,
+                            "matched": len(logs),
+                            "traces": [],
+                            "logs": logs,
+                        }
+                    )
                 rows = await asyncio.to_thread(
                     sessions.event_log.search,
                     query,
                     since=time.time() - hours * 3600,
                     channel=channel,
+                    source=source,
                 )
                 indexed = await asyncio.to_thread(
                     sessions.event_log.indexed_messages,
                     since=time.time() - hours * 3600,
                     channel=channel,
+                    source=source,
                 )
                 traces = []
                 grouped = {}
@@ -264,6 +320,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                                 "event_name": row["stage"],
                                 "unix_nano": int(row["occurred_at"] * 1e9),
                                 "snippet": row["snippet"] or row["body"][:180],
+                                "source": row["source"],
                             }
                         )
                 return JSONResponse(
@@ -284,11 +341,17 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                     raise ValueError("trace_required")
                 if trace_id.startswith("message:"):
                     spans = await asyncio.to_thread(
-                        sessions.event_log.detail, user_id, message_id=trace_id[8:]
+                        sessions.event_log.detail,
+                        user_id,
+                        message_id=trace_id[8:],
+                        source="application",
                     )
                     return JSONResponse({"trace_id": trace_id, "duration_ms": None, "spans": spans})
                 lifecycle = await asyncio.to_thread(
-                    sessions.event_log.detail, user_id, trace_id=trace_id
+                    sessions.event_log.detail,
+                    user_id,
+                    trace_id=trace_id,
+                    source="application",
                 )
                 try:
                     token_file = settings.oath_admin_token_file

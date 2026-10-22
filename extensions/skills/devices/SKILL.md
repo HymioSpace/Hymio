@@ -13,7 +13,10 @@ A replacement is empty, so do not assume files or applications from the deleted 
 filesystem and screen across these tools. Prefer browser DOM snapshots for web tasks.
 GUI and shell operations on a device are serialized. A busy response means wait, not switch devices.
 An outcome_unknown result may have side effects. Do not retry the action under a new invocation.
-Use `device_command` with the original device_id and invocation_id to query a lost result.
+Use `device_command` only with a lost result from `bash`, `browser` or `computer`, passing that
+call's original device_id and invocation_id. It cannot query `multimodal_understand`,
+`image_generate`, `tasks`, skills, subagents or any other server-side tool. Their results arrive
+as tool events automatically; never poll them through the device service.
 The devices tool ensures a usable cloud computer and may resume or provision one.
 Passive UI list polling is read-only. Device preparation never replays a previous command.
 Browser `tabs` returns stable page_id values. Specify page_id for multi-tab tasks.

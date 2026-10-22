@@ -4,6 +4,7 @@ import time
 import uuid
 
 LIMIT = 20 * 1024 * 1024
+MAX_ITEMS = 12
 
 
 class MediaStore:

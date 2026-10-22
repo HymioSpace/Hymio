@@ -1,6 +1,54 @@
 import Combine
 import Foundation
+import ImageIO
 import Security
+import UIKit
+
+enum ImagePipeline {
+  static let attachmentMaxEdge: CGFloat = 2048
+  static let displayMaxEdge: CGFloat = 4096
+
+  static func attachment(_ data: Data) -> Data? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    return attachment(source: source)
+  }
+
+  static func attachment(_ image: UIImage) -> Data? {
+    let edge = max(image.size.width, image.size.height)
+    let scale = min(1, attachmentMaxEdge / max(edge, 1))
+    let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+    let renderer = UIGraphicsImageRenderer(size: size)
+    let resized = renderer.image { _ in
+      image.draw(in: CGRect(origin: .zero, size: size))
+    }
+    return resized.jpegData(compressionQuality: 0.76)
+  }
+
+  static func display(_ data: Data, maxPixel: CGFloat = displayMaxEdge) -> UIImage? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: Int(maxPixel),
+      kCGImageSourceShouldCacheImmediately: true,
+    ]
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    else { return nil }
+    return UIImage(cgImage: image)
+  }
+
+  private static func attachment(source: CGImageSource) -> Data? {
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: Int(attachmentMaxEdge),
+      kCGImageSourceShouldCacheImmediately: true,
+    ]
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    else { return nil }
+    return UIImage(cgImage: image).jpegData(compressionQuality: 0.76)
+  }
+}
 
 struct LoginSession: Codable {
   var access_token: String
@@ -71,6 +119,12 @@ struct SecureSession {
   let backend: URL
   private var refreshTask: Task<LoginSession, Error>?
   private var generation = UUID()
+  private let imageCache: NSCache<NSString, NSData> = {
+    let cache = NSCache<NSString, NSData>()
+    cache.countLimit = 64
+    cache.totalCostLimit = 64 * 1024 * 1024
+    return cache
+  }()
   init() {
     let value = Bundle.main.object(forInfoDictionaryKey: "HymioBackendURL") as? String ?? ""
     backend = URL(string: value) ?? URL(string: "https://invalid.example")!
@@ -180,8 +234,10 @@ struct SecureSession {
   func request(_ path: String, body: JSON? = nil, timeout: Double = 25) async throws -> JSON {
     let s = try await credential()
     let owner = generation
-    let value = try JSON.decode(
-      await raw(path, body: body, token: s.access_token, timeout: timeout))
+    let data = try await raw(path, body: body, token: s.access_token, timeout: timeout)
+    let value = try await Task.detached(priority: .userInitiated) {
+      try JSON.decode(data)
+    }.value
     guard owner == generation else { throw CancellationError() }
     return value
   }
@@ -211,7 +267,12 @@ struct SecureSession {
     guard let response = response as? HTTPURLResponse, response.statusCode == 201 else {
       throw ServiceError.message("附件上传失败，请检查文件格式后重试。")
     }
-    return try JSON.decode(result)
+    let value = try JSON.decode(result)
+    if value["mime"].text.hasPrefix("image/"), !value["url"].text.isEmpty {
+      imageCache.setObject(
+        data as NSData, forKey: value["url"].text as NSString, cost: data.count)
+    }
+    return value
   }
   func downloadAttachment(_ path: String) async throws -> URL {
     guard path.range(of: "^/attachments/[a-f0-9]{32}$", options: .regularExpression) != nil else {
@@ -249,8 +310,13 @@ struct SecureSession {
         path.range(of: "^/(?:devices/media|attachments)/[a-f0-9]{32}$", options: .regularExpression)
           != nil
       else { throw ServiceError.message("图片地址无效") }
+      if let cached = imageCache.object(forKey: path as NSString) { return cached as Data }
       let s = try await credential()
-      return try await raw(String(path.dropFirst()), token: s.access_token)
+      let data = try await raw(String(path.dropFirst()), token: s.access_token)
+      if data.count <= 20 * 1024 * 1024 {
+        imageCache.setObject(data as NSData, forKey: path as NSString, cost: data.count)
+      }
+      return data
     }
     guard url.scheme?.lowercased() == "https", url.user == nil, url.password == nil else {
       throw ServiceError.message("仅支持 HTTPS 图片或当前账号的截图附件")
@@ -261,6 +327,7 @@ struct SecureSession {
     guard let response = response as? HTTPURLResponse, response.statusCode == 200,
       response.mimeType?.hasPrefix("image/") == true, data.count <= 20 * 1024 * 1024
     else { throw ServiceError.message("图片加载失败") }
+    imageCache.setObject(data as NSData, forKey: source as NSString, cost: data.count)
     return data
   }
 }

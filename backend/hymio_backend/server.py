@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import json
+import logging
 import re
 from contextlib import asynccontextmanager, suppress
 from urllib.parse import urlsplit
@@ -9,6 +10,7 @@ import httpx
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, WebSocketRoute
@@ -22,14 +24,17 @@ from .devices.service import DeviceService
 from .media.routes import media_routes
 from .media.store import MediaStore
 from .monitoring import monitoring_routes, record_client_turn
-from .observability import metrics_response
+from .observability import HTTPMetricsMiddleware, metrics_response
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
+from .system_log import LogCapture
 from .tasks.credentials import PREFIX
 from .tasks.credentials import verify as verify_service
 from .tasks.routes import task_routes
 from .tasks.service import TaskService
 from .tasks.store import TaskStore
+
+_log = logging.getLogger(__name__)
 
 
 def bearer(request):
@@ -67,6 +72,8 @@ def build_app(settings, *, provider=None):
     async def lifespan(app):
         from .event_log import run_indexer
 
+        log_capture = LogCapture(store.event_log)
+        _log.info("Hymio backend started")
         scheduler = asyncio.create_task(tasks.run())
         indexer = asyncio.create_task(run_indexer(settings, store, upstream))
         try:
@@ -78,6 +85,7 @@ def build_app(settings, *, provider=None):
                 await indexer
             with suppress(asyncio.CancelledError):
                 await scheduler
+            log_capture.stop()
         await upstream.aclose()
         if hasattr(oidc, "http"):
             oidc.http.close()
@@ -194,6 +202,43 @@ def build_app(settings, *, provider=None):
                     else await asyncio.to_thread(store.verify, credential)
                 )
                 return JSONResponse(verified)
+            if path == "/internal/logs":
+                expected = settings.service_token_file.read_text().strip()
+                if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
+                    raise Unauthorized()
+                data = await body(request, limit=65536)
+                service = str(data.get("service", "oath"))[:64]
+                level = str(data.get("level", "INFO")).upper()[:16]
+                logger = str(data.get("logger", "oath"))[:160]
+                message = data.get("message")
+                attributes = data.get("attributes", {})
+                if (
+                    not service
+                    or level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+                    or not logger
+                    or not isinstance(message, str)
+                    or not 1 <= len(message) <= 16000
+                    or not isinstance(attributes, dict)
+                ):
+                    raise ValueError("Invalid log record")
+                inserted = await asyncio.to_thread(
+                    store.event_log.append_log,
+                    service=service,
+                    level=level,
+                    logger=logger,
+                    message=message,
+                    occurred_at=(
+                        float(data["occurred_at"])
+                        if isinstance(data.get("occurred_at"), (int, float))
+                        else None
+                    ),
+                    trace_id=str(data.get("trace_id", ""))[:64],
+                    message_id=str(data.get("message_id", ""))[:160],
+                    channel=str(data.get("channel", "unknown"))[:32],
+                    attributes=attributes,
+                    key=str(data.get("key", ""))[:256] or None,
+                )
+                return JSONResponse({"recorded": bool(inserted)})
             identity = await asyncio.to_thread(store.verify, bearer(request))
             if path == "/auth/me":
                 return JSONResponse(identity)
@@ -220,6 +265,7 @@ def build_app(settings, *, provider=None):
         except (ValueError, KeyError):
             return JSONResponse({"error": "bad_request"}, 400)
         except Exception:
+            _log.exception("Unhandled backend request failure")
             return JSONResponse({"error": "service_unavailable"}, 503)
 
     media = MediaStore(store)
@@ -266,6 +312,7 @@ def build_app(settings, *, provider=None):
             "/auth/refresh",
             "/auth/logout",
             "/internal/auth/verify",
+            "/internal/logs",
         )
     ]
     app = Starlette(routes=routes, lifespan=lifespan)
@@ -277,10 +324,13 @@ def build_app(settings, *, provider=None):
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(HTTPMetricsMiddleware)
     app.add_middleware(BaseHTTPMiddleware, dispatch=private_response)
-    return CORSMiddleware(
-        app,
+    app.add_middleware(
+        CORSMiddleware,
         allow_origins=list(settings.origins),
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id", "X-File-Name"],
     )
+    return app

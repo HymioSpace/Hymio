@@ -3272,3 +3272,45 @@ a {
   line-height: 1.65;
   color: var(--muted);
 }
+
+.quick-replies {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  margin: 0 4px 8px;
+  padding: 0 2px;
+  scrollbar-width: none;
+}
+
+.quick-replies::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-replies button {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding: 0 11px;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface, white) 88%, transparent);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 28px;
+  transition:
+    border-color 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+
+.quick-replies button:hover {
+  border-color: color-mix(in srgb, var(--line) 58%, var(--muted));
+  color: var(--ink);
+  background: var(--surface, white);
+}
+
+@media (pointer: coarse) {
+  .quick-replies button {
+    min-height: 36px;
+    line-height: 34px;
+  }
+}

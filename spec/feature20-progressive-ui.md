@@ -18,6 +18,13 @@ Web/Desk 与原生 iOS 用同一套受限声明数据展示交互卡片；正文
 
 结构 UI 使用原始接收内容，按完整记录提交，不能被逐字缓冲拖慢；正文缓冲与结构解析独立。新增卡片/节点做短时渐入，稳定节点不重复 mount。两端支持减少动态效果。模型使用方式由 Hymio extension skill 提供，Oath 无需修改。
 
+## Quick replies
+
+模型可在 assistant Markdown 末尾输出一个 `hymio-quick` fence，内容是最多三个字符串的 JSON
+数组。客户端只把它作为 latest assistant message 的候选用户回复，从正文中移除，并显示在
+输入框上方；点击后立即发送普通 `user.message`。不使用文本相似度推断、不执行工具、不批准权限。
+未闭合或非法 fence 始终隐藏；普通代码块中的同名文本不解析。Web 与 iOS 使用相同 parser 规则。
+
 ## 验证
 
 覆盖 Unicode、突发/延迟/终态、历史、不完整与非法 UI、循环/超限树、输入状态、显式动作、真实双端构建及可视化检查。调研报告保存在仓库外；spec 只记录交付契约。

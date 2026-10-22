@@ -1,14 +1,17 @@
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from PIL import Image
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from hymio_backend.devices.store import DeviceStore
-from hymio_backend.media.routes import media_routes
+from hymio_backend.media.providers import MiniMaxMedia, ModelUnavailable
+from hymio_backend.media.routes import media_routes, normalize_image
 from hymio_backend.media.store import MediaStore
 from hymio_backend.session_store import SessionStore
 
@@ -88,15 +91,9 @@ class MediaIdentifierTests(unittest.TestCase):
 
         self.assertEqual(uploaded.status_code, 200)
         self.assertEqual(captured.status_code, 200)
-        self.assertEqual(
-            uploaded.json()["content"][0]["media"][0]["source"], "attachment"
-        )
-        self.assertEqual(
-            captured.json()["content"][0]["media"][0]["source"], "device_screenshot"
-        )
-        self.assertEqual(
-            captured.json()["content"][0]["media"][0]["attachment_id"], screenshot
-        )
+        self.assertEqual(uploaded.json()["content"][0]["media"][0]["source"], "attachment")
+        self.assertEqual(captured.json()["content"][0]["media"][0]["source"], "device_screenshot")
+        self.assertEqual(captured.json()["content"][0]["media"][0]["attachment_id"], screenshot)
 
     def test_legacy_attachment_ids_parameter_remains_compatible(self):
         attachment = self.media.save("alice", "upload.png", "image/png", b"upload")
@@ -116,11 +113,44 @@ class MediaIdentifierTests(unittest.TestCase):
         screenshot = self.devices.media("alice", "device-1", b"screenshot")
         response = self.request("/devices/media/" + screenshot)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json()["content"][0]["media"][0]["source"], "device_screenshot"
-        )
+        self.assertEqual(response.json()["content"][0]["media"][0]["source"], "device_screenshot")
 
     def test_unknown_media_id_has_specific_error(self):
         response = self.request("missing")
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"], "attachment_not_found")
+
+    def test_more_than_twelve_attachments_is_rejected(self):
+        response = self.client.post(
+            "/internal/media/understand",
+            headers={"Authorization": "Bearer synthetic-service-token"},
+            json={
+                "user_id": "alice",
+                "invocation_id": "too-many",
+                "media_ids": [f"synthetic-{index}" for index in range(13)],
+                "prompt": "What is visible?",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_media_request")
+
+    def test_uploaded_images_are_downsampled_before_storage(self):
+        source = io.BytesIO()
+        Image.new("RGB", (4000, 1200), "white").save(source, format="PNG")
+        normalized = normalize_image(source.getvalue())
+        with Image.open(io.BytesIO(normalized)) as image:
+            self.assertEqual(image.format, "JPEG")
+            self.assertLessEqual(max(image.size), 2560)
+
+    def test_empty_vision_analysis_is_a_model_failure(self):
+        provider = MiniMaxMedia(self.settings)
+        row = {"name": "synthetic.jpg", "mime": "image/jpeg", "content": b"synthetic"}
+        with (
+            patch.object(
+                provider,
+                "call",
+                return_value={"choices": [{"message": {"content": "  "}}]},
+            ),
+            self.assertRaises(ModelUnavailable),
+        ):
+            provider.understand([row], "Describe")

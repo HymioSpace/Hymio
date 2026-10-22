@@ -54,6 +54,7 @@ class EventLog:
                     id INTEGER PRIMARY KEY, event_key TEXT UNIQUE NOT NULL,
                     user_id TEXT NOT NULL, message_id TEXT NOT NULL, trace_id TEXT NOT NULL,
                     channel TEXT NOT NULL, stage TEXT NOT NULL, occurred_at REAL NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'application',
                     body TEXT NOT NULL, searchable TEXT NOT NULL);
                 CREATE INDEX IF NOT EXISTS events_message ON events(user_id,message_id,id);
                 CREATE INDEX IF NOT EXISTS events_trace ON events(user_id,trace_id,id);
@@ -70,8 +71,48 @@ class EventLog:
                     channel TEXT NOT NULL,next_at REAL NOT NULL,expires_at REAL NOT NULL,
                     PRIMARY KEY(user_id,trace_id));
                 CREATE INDEX IF NOT EXISTS jobs_due ON trace_jobs(next_at);
+                CREATE TABLE IF NOT EXISTS system_logs (
+                    id INTEGER PRIMARY KEY, log_key TEXT UNIQUE NOT NULL,
+                    service TEXT NOT NULL, level TEXT NOT NULL, logger TEXT NOT NULL,
+                    message TEXT NOT NULL, occurred_at REAL NOT NULL,
+                    trace_id TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '',
+                    channel TEXT NOT NULL DEFAULT 'unknown', attributes TEXT NOT NULL DEFAULT '{}',
+                    searchable TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS system_logs_time
+                    ON system_logs(occurred_at,service,level);
+                CREATE INDEX IF NOT EXISTS system_logs_trace ON system_logs(trace_id,message_id);
+                CREATE VIRTUAL TABLE IF NOT EXISTS logs_fts USING fts5(
+                    searchable, content='system_logs', content_rowid='id');
+                CREATE TRIGGER IF NOT EXISTS logs_insert AFTER INSERT ON system_logs BEGIN
+                    INSERT INTO logs_fts(rowid,searchable) VALUES(new.id,new.searchable); END;
+                CREATE TRIGGER IF NOT EXISTS logs_delete AFTER DELETE ON system_logs BEGIN
+                    INSERT INTO logs_fts(logs_fts,rowid,searchable)
+                        VALUES('delete',old.id,old.searchable); END;
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(events)")}
+            if "source" not in columns:
+                db.execute(
+                    "ALTER TABLE events ADD COLUMN source TEXT NOT NULL DEFAULT 'application'"
+                )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS events_source_time "
+                "ON events(source,occurred_at,channel)"
+            )
+            db.execute(
+                """UPDATE events SET source='otel'
+                WHERE source='application' AND (
+                  stage IN (
+                    'server.step.status','gateway.accept','invoke_agent',
+                    'queue.publish','queue.consume'
+                  )
+                  OR stage LIKE 'oath.%'
+                  OR stage LIKE 'chat %'
+                  OR stage LIKE 'gen_ai.%'
+                  OR stage LIKE 'execute_tool %'
+                )"""
+            )
         path.chmod(0o600)
+        self.repair_trace_links()
 
     @contextmanager
     def connect(self, *, write=False):
@@ -100,6 +141,7 @@ class EventLog:
         channel="unknown",
         key=None,
         occurred_at=None,
+        source="application",
         _db=None,
     ):
         body = json.dumps(safe(body), ensure_ascii=False, separators=(",", ":"))[:32768]
@@ -112,8 +154,8 @@ class EventLog:
             inserted = (
                 db.execute(
                     "INSERT OR IGNORE INTO events(event_key,user_id,message_id,trace_id,channel,"
-                    "stage,occurred_at,body,searchable) "
-                    "VALUES(?,?,?,?,?,?,?,?,?)",
+                    "stage,occurred_at,source,body,searchable) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
                     (
                         event_key,
                         user_id,
@@ -122,8 +164,9 @@ class EventLog:
                         channel,
                         stage,
                         occurred_at or now,
+                        source,
                         body,
-                        tokens(f"{message_id} {trace_id} {stage} {body}"),
+                        tokens(f"{message_id} {trace_id} {stage} {source} {body}"),
                     ),
                 ).rowcount
                 > 0
@@ -153,7 +196,108 @@ class EventLog:
                 self.last_prune = now
         return inserted
 
-    def search(self, query, *, since, channel="", limit=100):
+    def append_log(
+        self,
+        *,
+        service,
+        level,
+        logger,
+        message,
+        occurred_at=None,
+        trace_id="",
+        message_id="",
+        channel="unknown",
+        attributes=None,
+        key=None,
+    ):
+        now = time.time()
+        message = re.sub(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [redacted]", str(message))
+        message = message[:16000]
+        level = str(level).upper()[:16]
+        service = str(service)[:64]
+        logger = str(logger)[:160]
+        channel = str(channel or "unknown")[:32]
+        trace_id = str(trace_id or "")[:64]
+        message_id = str(message_id or "")[:160]
+        attrs = json.dumps(safe(attributes or {}), ensure_ascii=False, separators=(",", ":"))[
+            :16384
+        ]
+        identity = key or "|".join(
+            [service, level, logger, message_id, trace_id, str(occurred_at or now), message]
+        )
+        log_key = hashlib.sha256(identity.encode()).hexdigest()
+        with self.connect(write=True) as db:
+            inserted = (
+                db.execute(
+                    "INSERT OR IGNORE INTO system_logs(log_key,service,level,logger,message,"
+                    "occurred_at,trace_id,message_id,channel,attributes,searchable) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        log_key,
+                        service,
+                        level,
+                        logger,
+                        message,
+                        occurred_at or now,
+                        trace_id,
+                        message_id,
+                        channel,
+                        attrs,
+                        tokens(
+                            f"{service} {level} {logger} {message_id} {trace_id} "
+                            f"{channel} {message} {attrs}"
+                        ),
+                    ),
+                ).rowcount
+                > 0
+            )
+            if now - self.last_prune >= 60:
+                db.execute("DELETE FROM system_logs WHERE occurred_at<?", (now - self.retention,))
+                db.execute(
+                    "DELETE FROM system_logs WHERE id IN "
+                    "(SELECT id FROM system_logs ORDER BY id DESC LIMIT -1 OFFSET ?)",
+                    (self.max_events,),
+                )
+                self.last_prune = now
+        return inserted
+
+    def search_logs(self, query, *, since, channel="", level="", limit=200):
+        phrase = tokens(query)
+        clauses = ["l.occurred_at>=?"]
+        params = [since]
+        if channel:
+            clauses.append("l.channel=?")
+            params.append(channel)
+        if level:
+            clauses.append("l.level=?")
+            params.append(str(level).upper())
+        with self.connect() as db:
+            if phrase:
+                sql = (
+                    "SELECT l.* FROM logs_fts JOIN system_logs l ON l.id=logs_fts.rowid "
+                    "WHERE logs_fts MATCH ? AND "
+                    + " AND ".join(clauses)
+                    + " ORDER BY l.occurred_at DESC LIMIT ?"
+                )
+                rows = db.execute(sql, ('"' + phrase + '"', *params, min(limit, 500))).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT l.* FROM system_logs l WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY l.occurred_at DESC LIMIT ?",
+                    (*params, min(limit, 500)),
+                ).fetchall()
+        result = []
+        for row in rows:
+            value = dict(row)
+            try:
+                value["attributes"] = json.loads(value["attributes"])
+            except (TypeError, ValueError):
+                value["attributes"] = {}
+            result.append(value)
+        return result
+
+    def search(self, query, *, since, channel="", source="application", limit=100):
         phrase = tokens(query)
         if not phrase:
             return []
@@ -164,35 +308,43 @@ class EventLog:
                     "SELECT e.* FROM event_fts JOIN events e ON e.id=event_fts.rowid "
                     "WHERE event_fts MATCH ? AND e.occurred_at>=? "
                     + ("AND e.channel=? " if channel else "")
+                    + ("AND e.source=? " if source else "")
                     + "ORDER BY e.occurred_at DESC LIMIT ?",
-                    ('"' + phrase + '"', since, channel, limit)
-                    if channel
-                    else ('"' + phrase + '"', since, limit),
+                    tuple(
+                        ['"' + phrase + '"', since]
+                        + ([channel] if channel else [])
+                        + ([source] if source else [])
+                        + [limit]
+                    ),
                 )
             ]
         for row in rows:
             row["snippet"] = row["body"]
         return rows
 
-    def indexed_messages(self, *, since, channel=""):
+    def indexed_messages(self, *, since, channel="", source="application"):
         with self.connect() as db:
             return int(
                 db.execute(
                     "SELECT COUNT(DISTINCT user_id || ':' || message_id) FROM events "
                     "WHERE occurred_at>=?"
-                    + (" AND channel=?" if channel else ""),
-                    (since, channel) if channel else (since,),
+                    + (" AND channel=?" if channel else "")
+                    + (" AND source=?" if source else ""),
+                    tuple([since] + ([channel] if channel else []) + ([source] if source else [])),
                 ).fetchone()[0]
             )
 
-    def detail(self, user_id, *, message_id="", trace_id=""):
+    def detail(self, user_id, *, message_id="", trace_id="", source="application"):
         with self.connect() as db:
             rows = list(
                 db.execute(
                     "SELECT * FROM events WHERE user_id=? AND "
                     + ("message_id=? " if message_id else "trace_id=? ")
+                    + ("AND source=? " if source else "")
                     + "ORDER BY id LIMIT 500",
-                    (user_id, message_id or trace_id),
+                    (user_id, message_id or trace_id, source)
+                    if source
+                    else (user_id, message_id or trace_id),
                 )
             )
         if not rows:
@@ -243,9 +395,76 @@ class EventLog:
                         event,
                         trace_id=job["trace_id"],
                         channel=job["channel"],
+                        source="otel",
                         _db=db,
                         key=f"{job['user_id']}:{job['trace_id']}:{span_id}:{i}",
                     )
+
+    def repair_trace_links(self):
+        with self.connect(write=True) as db:
+            rows = list(
+                db.execute(
+                    "SELECT id,user_id,message_id,channel,body FROM events "
+                    "WHERE stage IN ('gateway.ack','client.ack') "
+                    "ORDER BY id DESC LIMIT 10000"
+                )
+            )
+            now = time.time()
+            for row in rows:
+                try:
+                    trace_id = str(json.loads(row["body"]).get("trace_id", ""))
+                except (TypeError, ValueError):
+                    continue
+                if not re.fullmatch(r"[0-9a-f]{32}", trace_id):
+                    continue
+                db.execute(
+                    "UPDATE events SET trace_id=? WHERE user_id=? AND message_id=? AND trace_id=''",
+                    (trace_id, row["user_id"], row["message_id"]),
+                )
+                db.execute(
+                    "UPDATE events SET message_id=? WHERE user_id=? AND trace_id=? "
+                    "AND message_id=''",
+                    (row["message_id"], row["user_id"], trace_id),
+                )
+                db.execute(
+                    "INSERT INTO trace_jobs VALUES(?,?,?,?,?,?) "
+                    "ON CONFLICT(user_id,trace_id) DO UPDATE SET "
+                    "message_id=CASE WHEN excluded.message_id<>'' THEN excluded.message_id "
+                    "ELSE trace_jobs.message_id END",
+                    (
+                        row["user_id"],
+                        trace_id,
+                        row["message_id"],
+                        row["channel"],
+                        now,
+                        now + 3600,
+                    ),
+                )
+
+    def trace_links(self):
+        with self.connect() as db:
+            rows = []
+            for row in db.execute(
+                """SELECT user_id,message_id,MAX(trace_id) AS trace_id,MAX(channel) AS channel,
+                MIN(CASE WHEN source='application' AND stage='gateway.received'
+                    THEN occurred_at END) AS received_at,
+                MIN(CASE WHEN source='application' AND stage='gateway.ack'
+                    THEN occurred_at END) AS ack_at
+                FROM events WHERE message_id<>''
+                GROUP BY user_id,message_id
+                HAVING MAX(trace_id)<>''
+                ORDER BY MAX(id) DESC LIMIT 5000"""
+            ):
+                link = dict(row)
+                link["accepted_ms"] = (
+                    round(max(0, (link["ack_at"] - link["received_at"]) * 1000), 3)
+                    if link["ack_at"] is not None and link["received_at"] is not None
+                    else None
+                )
+                link.pop("received_at")
+                link.pop("ack_at")
+                rows.append(link)
+            return rows
 
     def jobs(self):
         with self.connect() as db:
@@ -303,6 +522,7 @@ async def run_indexer(settings, sessions, upstream):
                                         {"limit_bytes": 8 * 1024 * 1024},
                                         trace_id=job["trace_id"],
                                         channel=job["channel"],
+                                        source="otel",
                                     )
                                     break
                                 buffer.extend(chunk)

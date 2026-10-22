@@ -26,7 +26,7 @@ flowchart LR
 
 ## Attachments
 
-Upload is a bounded raw body with an encoded filename header, not a base64 WebSocket frame. Up to eight references travel with a message. Each original file is limited to 20 MiB, with a 256 MiB account quota. Metadata and bytes live together in SQLite under the authenticated user. Image normalization strips metadata and limits resolution. Reading an attachment always checks ownership; UUIDs are not authorization.
+Upload is a bounded raw body with an encoded filename header, not a base64 WebSocket frame. Images and files share one per-message limit of 12 references. Each original file is limited to 20 MiB, with a 256 MiB account quota. Metadata and bytes live together in SQLite under the authenticated user. Clients downsample large images before upload; the server strips metadata and normalizes accepted images to at most 2560 px and JPEG quality 82. Reading an attachment always checks ownership; UUIDs are not authorization.
 
 Web/Desktop accepts screenshot paste in the composer as well as file selection. iOS offers PhotosPicker, camera, Files and system image paste. Clipboard access occurs only during an explicit paste action; ordinary text paste remains unchanged. Upload progress is separate from message submission. Draft text remains editable while uploading; sending waits for completed uploads. Images render through the authenticated image loader, never bearer tokens in URLs.
 

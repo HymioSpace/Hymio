@@ -4,6 +4,8 @@ public struct ChatMessage: Identifiable {
   public var id: String
   public var role: String
   public var content: String
+  public var rawContent = ""
+  public var suggestions: [String] = []
   public var time: String
   public var streaming = false
   public var attempt = 0
@@ -98,6 +100,7 @@ public struct Conversation {
       guard messages[i].streaming else { return }
       let attempt = p["attempt"].int
       if attempt > messages[i].attempt {
+        messages[i].rawContent = ""
         messages[i].content = ""
         messages[i].reasoning = ""
         messages[i].attempt = attempt
@@ -107,7 +110,8 @@ public struct Conversation {
         messages[i].reasoning += p["text"].text
         messages[i].thinking = true
       } else {
-        messages[i].content += p["text"].text
+        messages[i].rawContent += p["text"].text
+        messages[i].content = AgentSurface.proseAndQuickReplies(messages[i].rawContent).content
         messages[i].thinking = false
       }
       working = true
@@ -122,7 +126,10 @@ public struct Conversation {
       }
       let i = indices[key]!
       messages[i].eventSeq = e.event_seq
-      messages[i].content = p["content"].text
+      messages[i].rawContent = p["content"].text
+      let parsed = AgentSurface.proseAndQuickReplies(messages[i].rawContent)
+      messages[i].content = parsed.content
+      messages[i].suggestions = parsed.suggestions
       if p["reasoning"] != .null { messages[i].reasoning = p["reasoning"].text }
       messages[i].streaming = false
       messages[i].thinking = false

@@ -41,7 +41,7 @@ struct MessageRow: View {
       }.accessibilityIdentifier("message.user")
     } else {
       HStack(alignment: .top, spacing: 0) {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: compact ? 6 : 10) {
           if !message.reasoning.isEmpty {
             DisclosureGroup {
               BufferedProse(
@@ -76,7 +76,7 @@ struct MessageRow: View {
           }
           if !message.calls.isEmpty {
             DisclosureGroup(isExpanded: $expanded) {
-              VStack(alignment: .leading, spacing: 8) {
+              VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(message.calls.enumerated()), id: \.offset) { i, call in
                   let tool = tools[String(message.id.dropFirst("assistant:".count)) + "-\(i)"]
                   VStack(alignment: .leading, spacing: 8) {
@@ -115,7 +115,7 @@ struct MessageRow: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
       .environment(\.workProcessText, compact)
-      .padding(compact || reasoningOnly ? 0 : 16)
+      .padding(compact || reasoningOnly ? 0 : 14)
       .background {
         if !compact && !message.content.isEmpty {
           RoundedRectangle(cornerRadius: 18).fill(Brand.mist.opacity(0.7))
@@ -151,7 +151,7 @@ struct MessageRow: View {
   }
   private func toolName(_ value: String) -> String {
     [
-      "bash": "执行命令", "devices": "查看设备", "device_command": "查询执行结果", "computer": "操作电脑",
+      "bash": "执行命令", "devices": "查看设备", "device_command": "查询设备调用", "computer": "操作电脑",
       "browser": "浏览网页", "skill": "使用技能",
     ][value] ?? value
   }
@@ -167,17 +167,26 @@ struct ProtectedImage: View {
   var body: some View {
     Group {
       if let image {
-        Button {
-          show = true
-        } label: {
-          Group {
-            if thumbnail {
-              Image(uiImage: image).resizable().scaledToFill().frame(width: 80, height: 80)
-            } else {
-              Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240)
-            }
-          }.clipShape(RoundedRectangle(cornerRadius: thumbnail ? 12 : 14))
-        }.buttonStyle(.plain).accessibilityLabel("查看完整图片")
+        Group {
+          if thumbnail {
+            Image(uiImage: image).resizable().scaledToFill().frame(width: 80, height: 80)
+              .overlay(alignment: .topTrailing) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                  .font(.system(size: 9, weight: .semibold))
+                  .foregroundStyle(.white)
+                  .padding(5)
+                  .background(.black.opacity(0.45), in: Circle())
+                  .padding(5)
+              }
+          } else {
+            Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 240)
+          }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: thumbnail ? 12 : 14))
+        .contentShape(Rectangle())
+        .onTapGesture { show = true }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("查看完整图片")
       } else if failed {
         Button {
           retry += 1
@@ -192,23 +201,43 @@ struct ProtectedImage: View {
       failed = false
       do {
         let data = try await account.image(source)
-        guard let decoded = UIImage(data: data) else { throw ServiceError.message("图片格式无效") }
+        guard
+          let decoded = await Task.detached(priority: .userInitiated, operation: {
+            ImagePipeline.display(data, maxPixel: thumbnail ? 720 : 4096)
+          }).value
+        else { throw ServiceError.message("图片格式无效") }
         image = decoded
       } catch { if !Task.isCancelled { failed = true } }
     }
-    .sheet(isPresented: $show) {
-      NavigationStack {
-        GeometryReader { geometry in
-          ScrollView {
-            if let image {
+    .fullScreenCover(isPresented: $show) {
+      ZStack {
+        Color.black.ignoresSafeArea()
+        if let image {
+          GeometryReader { geometry in
+            ScrollView([.horizontal, .vertical]) {
               Image(uiImage: image).resizable().scaledToFit()
                 .frame(width: geometry.size.width)
                 .frame(minHeight: geometry.size.height)
             }
           }
         }
-        .background(Brand.surface).navigationTitle("图片预览").navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { show = false } } }
+        VStack {
+          HStack {
+            Spacer()
+            Button {
+              show = false
+            } label: {
+              Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(.black.opacity(0.45), in: Circle())
+            }
+            .accessibilityLabel("关闭图片")
+          }
+          Spacer()
+        }
+        .padding()
       }
     }
   }

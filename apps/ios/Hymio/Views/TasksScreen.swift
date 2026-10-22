@@ -187,7 +187,7 @@ struct TaskDetailScreen: View {
         }
         Divider()
         HStack {
-          Text("工作记录").font(.caption).foregroundStyle(.secondary)
+          Text("探索记录").font(.caption).foregroundStyle(.secondary)
           Spacer()
           Text("\(item["runs"].items.count) 次执行").font(.caption2).foregroundStyle(.tertiary)
         }
