@@ -16,6 +16,7 @@ class Settings:
     origins: tuple[str, ...]
     oath_ws: str
     oath_biz: str
+    oath_admin_token_file: Path | None = None
     access_seconds: int = 900
     refresh_seconds: int = 2592000
     login_method: str = "account"
@@ -36,6 +37,10 @@ class Settings:
     media_api_base: str = "https://api.minimax.cn/v1"
     media_credential: str = ""
     vault_url: str = "http://127.0.0.1:8200"
+    prometheus_url: str = "http://127.0.0.1:19090"
+    grafana_url: str = ""
+    observability_retention_days: int = 7
+    observability_max_events: int = 20000
     vault_role_id_file: Path | None = None
     vault_secret_id_file: Path | None = None
 
@@ -53,7 +58,12 @@ class Settings:
         if data.get("invitation_codes_file"):
             file = Path(data["invitation_codes_file"]).expanduser()
             data["invitation_codes_file"] = file if file.is_absolute() else path.parent / file
-        for key in ("vault_role_id_file", "vault_secret_id_file", "daytona_key_file"):
+        for key in (
+            "vault_role_id_file",
+            "vault_secret_id_file",
+            "daytona_key_file",
+            "oath_admin_token_file",
+        ):
             if data.get(key):
                 file = Path(data[key]).expanduser()
                 data[key] = file if file.is_absolute() else path.parent / file
@@ -108,6 +118,7 @@ class Settings:
             result.oath_biz,
             result.media_api_base,
             result.vault_url,
+            result.prometheus_url,
         ):
             parsed = urlsplit(url)
             if (
@@ -117,6 +128,15 @@ class Settings:
                 or parsed.password
             ):
                 raise ValueError("Invalid service URL")
+        if result.grafana_url:
+            parsed = urlsplit(result.grafana_url)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+            ):
+                raise ValueError("Invalid Grafana URL")
         agent = urlsplit(result.oath_ws)
         if (
             agent.scheme not in ("ws", "wss")
@@ -137,4 +157,6 @@ class Settings:
             raise ValueError("Missing OIDC client secret")
         if len(result.service_token_file.read_text().strip()) < 32:
             raise ValueError("Service credential must be at least 32 characters")
+        if result.oath_admin_token_file and not result.oath_admin_token_file.read_text().strip():
+            raise ValueError("Missing Oath administrator credential")
         return result

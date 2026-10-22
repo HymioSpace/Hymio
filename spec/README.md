@@ -31,6 +31,7 @@
 | 25 | [Personal home and platform navigation](feature25-personal-home.md) | Implemented |
 | 26 | [Cloud and custom device providers](feature26-cloud-device-providers.md) | Implementing |
 | 27 | [Resource access and administration](feature27-resource-access-administration.md) | Implemented |
+| 28 | [Observability and evaluation](feature28-observability.md) | Implemented |
 
 
 ## 设计与实现

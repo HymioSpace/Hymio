@@ -10,7 +10,7 @@ from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route, WebSocketRoute
 
 from .agent_gateway import relay_agent
@@ -21,6 +21,8 @@ from .devices.routes import device_routes
 from .devices.service import DeviceService
 from .media.routes import media_routes
 from .media.store import MediaStore
+from .monitoring import monitoring_routes, record_client_turn
+from .observability import metrics_response
 from .oidc import Oidc
 from .session_store import SessionStore, Unauthorized
 from .tasks.credentials import PREFIX
@@ -63,11 +65,17 @@ def build_app(settings, *, provider=None):
 
     @asynccontextmanager
     async def lifespan(app):
+        from .event_log import run_indexer
+
         scheduler = asyncio.create_task(tasks.run())
+        indexer = asyncio.create_task(run_indexer(settings, store, upstream))
         try:
             yield
         finally:
             scheduler.cancel()
+            indexer.cancel()
+            with suppress(asyncio.CancelledError):
+                await indexer
             with suppress(asyncio.CancelledError):
                 await scheduler
         await upstream.aclose()
@@ -80,6 +88,9 @@ def build_app(settings, *, provider=None):
             if origin and origin not in settings.origins:
                 return JSONResponse({"error": "origin_denied"}, 403)
             path = request.url.path
+            if path == "/metrics":
+                payload, content_type = metrics_response()
+                return Response(payload, media_type=content_type)
             if path == "/health":
                 return JSONResponse({"alive": True})
             if path == "/auth/options":
@@ -170,6 +181,8 @@ def build_app(settings, *, provider=None):
             if path == "/auth/logout":
                 await asyncio.to_thread(store.logout, bearer(request))
                 return JSONResponse({"logged_out": True})
+            if path == "/telemetry/client":
+                return await record_client_turn(settings, store, upstream, request, bearer, body)
             if path == "/internal/auth/verify":
                 expected = settings.service_token_file.read_text().strip()
                 if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
@@ -227,14 +240,17 @@ def build_app(settings, *, provider=None):
         )
         + device_routes(settings, store, bearer, body)
         + admin_routes(settings, store, bearer, body)
+        + monitoring_routes(settings, store, upstream, bearer, body)
         + [
             WebSocketRoute("/agent/ws", agent_socket),
             Route("/health", endpoint),
+            Route("/metrics", endpoint),
             Route("/auth/options", endpoint),
             Route("/auth/callback", endpoint),
             Route("/auth/me", endpoint),
             Route("/agent/traces", endpoint),
             Route("/agent/traces/{trace_id}", endpoint),
+            Route("/telemetry/client", endpoint, methods=["POST"]),
         ]
     )
     routes += [

@@ -3,12 +3,14 @@
 import asyncio
 import json
 import logging
+import time
 from contextlib import suppress
 
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
+from . import client_telemetry
 from .devices.connections import ChannelConnection
 from .session_store import Unauthorized
 
@@ -25,6 +27,30 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
     try:
         raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
         first = await channel.attach(raw)
+        messages = {}
+        background_tasks = set()
+
+        def background(coroutine):
+            task = asyncio.create_task(coroutine)
+            background_tasks.add(task)
+            task.add_done_callback(background_tasks.discard)
+
+        async def log_event(message_id, stage, data, trace_id=""):
+            if not getattr(sessions, "event_log", None):
+                return
+            try:
+                await asyncio.to_thread(
+                    sessions.event_log.append,
+                    channel.user_id,
+                    message_id,
+                    stage,
+                    data,
+                    trace_id=trace_id,
+                    channel="desk" if channel.kind == "mac" else channel.kind,
+                )
+            except Exception:
+                _log.exception("Message lifecycle log unavailable")
+
         async with connect(
             settings.oath_ws,
             open_timeout=10,
@@ -49,6 +75,42 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         await websocket.close(code=4009, reason="Channel opened elsewhere")
                         return
                     raw = frame["text"]
+                    try:
+                        incoming = json.loads(raw)
+                        if isinstance(incoming, dict) and incoming.get("type") == "user.message":
+                            message_id = str(incoming.get("id", ""))[:128]
+                            background(
+                                log_event(
+                                    message_id,
+                                    "gateway.received",
+                                    incoming.get("payload", {}),
+                                )
+                            )
+                            messages[message_id] = time.monotonic()
+                            if len(messages) > 256:
+                                messages.pop(next(iter(messages)))
+                            async def record_gateway_sample():
+                                try:
+                                    await asyncio.to_thread(
+                                        client_telemetry.record,
+                                        sessions,
+                                        channel.user_id,
+                                        {
+                                            "message_id": message_id,
+                                            "sent_at": time.time() * 1000,
+                                            "outcome": "sent",
+                                            "channel": "desk"
+                                            if channel.kind == "mac"
+                                            else channel.kind,
+                                        },
+                                        None,
+                                    )
+                                except Exception:
+                                    _log.exception("Gateway turn sample unavailable")
+
+                            background(record_gateway_sample())
+                    except (ValueError, TypeError):
+                        pass
                     if media is not None:
                         command = None
                         try:
@@ -99,6 +161,24 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         await websocket.close(code=1003)
                         return
                     await websocket.send_text(message)
+                    try:
+                        frame = json.loads(message)
+                        if frame.get("type") in {"ack", "error"} and frame.get("id") in messages:
+                            identifier = frame["id"]
+                            await log_event(identifier, "gateway." + frame["type"], frame)
+                        elif frame.get("type") == "event":
+                            event = frame
+                            payload = event.get("payload", {})
+                            trace_id = payload.get("trace_id", "")
+                            if trace_id:
+                                await log_event(
+                                    "",
+                                    "server." + str(event.get("event_type", "event")),
+                                    payload,
+                                    trace_id,
+                                )
+                    except (ValueError, TypeError, AttributeError):
+                        pass
 
             tasks = [
                 asyncio.create_task(to_agent()),

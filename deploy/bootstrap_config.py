@@ -207,6 +207,7 @@ def prepare(path):
     for name, data in (
         ("casdoor-client-secret", credentials["client_secret"]),
         ("oath-auth-token", credentials["service_token"]),
+        ("oath-admin-token", credentials["oath_token"]),
         ("e2b-api-key", settings["e2b_api_key"]),
         ("daytona-api-key", settings["daytona_api_key"]),
         ("invitation-codes", "\n".join(settings["invitation_codes"])),
@@ -227,6 +228,7 @@ def prepare(path):
         daytona_snapshot=settings["daytona_snapshot"],
         admin_user_ids=settings["admin_user_ids"],
         device_api_targets=settings["device_api_targets"],
+        oath_admin_token_file="./private/oath-admin-token",
     )
     if settings["invitation_codes"]:
         backend["invitation_codes_file"] = "./private/invitation-codes"

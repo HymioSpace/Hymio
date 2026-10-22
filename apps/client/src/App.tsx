@@ -1,4 +1,5 @@
 import { HomePanel } from './HomePanel';
+import { enqueueTelemetry, flushTelemetry } from './telemetry';
 import { Home, MessageCircle, UserRound } from 'lucide-react';
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -36,7 +37,7 @@ import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 const client = new OathClient();
-client.channelKind = desktop ? 'mac' : 'web';
+client.channelKind = desktop ? 'desk' : 'web';
 export default function App() {
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const model = useMemo(
@@ -153,6 +154,140 @@ export default function App() {
       active = false;
     };
   }, [login.session?.user_id, login.backend]);
+  const telemetryReported = useRef(new Set<string>());
+  const stalledReported = useRef(new Set<string>());
+  type ResponseTiming = NonNullable<typeof state.responseTiming>;
+  function reportTelemetry(
+    timing: ResponseTiming,
+    outcome: string,
+    completedMs?: number,
+    stage?: string,
+  ) {
+    if (!login.session) return;
+    enqueueTelemetry(
+      {
+        id: `${login.session.user_id}:${timing.messageId}:${stage ?? outcome}`,
+        user: login.session.user_id,
+        backend: login.backend,
+        body: {
+          message_id: timing.messageId,
+          sent_at: timing.sentAt,
+          channel: timing.channel,
+          client_id: timing.clientId,
+          device_id: timing.deviceId,
+          trace_id: timing.traceId || '',
+          accepted_ms: timing.acceptedMs,
+          first_response_ms: timing.firstResponseMs,
+          first_renderable_ms: timing.firstRenderableMs,
+          first_paint_ms: timing.firstPaintMs,
+          completed_ms: completedMs,
+          outcome,
+          stage: stage ?? `client.${outcome}`,
+        },
+      },
+      login.session.access_token,
+    );
+  }
+  const lifecycleReported = useRef(new Set<string>());
+  useEffect(() => {
+    const timing = state.responseTiming;
+    if (!timing || !login.session) return;
+    const transitions = [
+      ['client.ack', timing.acceptedMs],
+      ['client.first_response', timing.firstResponseMs],
+      ['client.first_renderable', timing.firstRenderableMs],
+      ['client.first_paint', timing.firstPaintMs],
+    ] as const;
+    for (const [stage, value] of transitions) {
+      if (value === undefined) continue;
+      const key = `${timing.messageId}:${stage}`;
+      if (lifecycleReported.current.has(key)) continue;
+      lifecycleReported.current.add(key);
+      reportTelemetry(timing, 'in_progress', undefined, stage);
+    }
+  }, [state.responseTiming, login.session?.user_id]);
+  useEffect(() => {
+    if (!login.session) return;
+    const { user_id, access_token } = login.session;
+    const flush = () => {
+      void flushTelemetry(user_id, login.backend, access_token);
+    };
+    flush();
+    const timer = setInterval(flush, 10000);
+    window.addEventListener('online', flush);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('online', flush);
+    };
+  }, [login.session?.access_token, login.backend]);
+  useEffect(() => {
+    const timing = state.responseTiming;
+    if (
+      !login.session ||
+      !timing?.completedMs ||
+      !timing.outcome ||
+      telemetryReported.current.has(timing.messageId)
+    )
+      return;
+    const messageId = timing.messageId;
+    const timer = setTimeout(
+      () => {
+        const current = client.getSnapshot().responseTiming;
+        if (
+          !current ||
+          current.messageId !== messageId ||
+          !current.completedMs ||
+          !current.outcome ||
+          telemetryReported.current.has(messageId)
+        )
+          return;
+        telemetryReported.current.add(messageId);
+        reportTelemetry(
+          current,
+          current.outcome,
+          current.completedMs,
+          current.outcome === 'failed' ? 'client.error' : 'client.terminal',
+        );
+      },
+      timing.traceId ? 250 : 900,
+    );
+    return () => clearTimeout(timer);
+  }, [state.responseTiming, login.backend, login.session?.access_token]);
+  useEffect(() => {
+    const timing = state.responseTiming;
+    if (
+      !login.session ||
+      !timing ||
+      timing.completedMs ||
+      timing.firstResponseMs !== undefined ||
+      timing.outcome ||
+      stalledReported.current.has(timing.messageId)
+    )
+      return;
+    const messageId = timing.messageId;
+    const wait = Math.max(0, 30_000 - (Date.now() - timing.sentAt));
+    const timer = setTimeout(() => {
+      const current = client.getSnapshot().responseTiming;
+      if (
+        !current ||
+        current.messageId !== messageId ||
+        current.completedMs ||
+        current.firstResponseMs !== undefined ||
+        current.outcome ||
+        stalledReported.current.has(messageId)
+      )
+        return;
+      stalledReported.current.add(messageId);
+      reportTelemetry(current, 'stalled', undefined, 'client.stalled');
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [state.responseTiming, login.backend, login.session?.access_token]);
+  useEffect(() => {
+    if (state.responseTiming?.firstRenderableMs === undefined) return;
+    if (state.responseTiming.firstPaintMs !== undefined) return;
+    const frame = requestAnimationFrame(() => client.markFirstPaint());
+    return () => cancelAnimationFrame(frame);
+  }, [state.responseTiming?.firstRenderableMs, state.responseTiming?.firstPaintMs]);
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
@@ -307,6 +442,35 @@ export default function App() {
     client.allowTakeover();
     login.reconnect();
   }
+  useEffect(() => {
+    if (!login.session) {
+      client.setUserMessageObserver();
+      return;
+    }
+    const session = login.session;
+    client.setUserMessageObserver((message) => {
+      enqueueTelemetry(
+        {
+          id: `${session.user_id}:${message.messageId}:user.message`,
+          user: session.user_id,
+          backend: login.backend,
+          body: {
+            message_id: message.messageId,
+            sent_at: message.sentAt,
+            channel: message.channel,
+            client_id: message.clientId,
+            device_id: message.deviceId,
+            trace_id: '',
+            content: message.content,
+            outcome: 'sent',
+            stage: 'user.message',
+          },
+        },
+        session.access_token,
+      );
+    });
+    return () => client.setUserMessageObserver();
+  }, [login.backend, login.session?.access_token, login.session?.user_id]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
   async function send() {

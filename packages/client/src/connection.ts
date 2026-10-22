@@ -36,6 +36,28 @@ export interface ClientState {
   runtimeThrough?: number;
   latency?: number;
   history?: { before: number | null; hasMore: boolean };
+  responseTiming?: {
+    messageId: string;
+    sentAt: number;
+    channel: 'web' | 'ios' | 'desk' | 'chrome';
+    clientId: string;
+    deviceId: string;
+    traceId?: string;
+    acceptedMs?: number;
+    firstResponseMs?: number;
+    firstRenderableMs?: number;
+    firstPaintMs?: number;
+    completedMs?: number;
+    outcome?: 'completed' | 'failed' | 'cancelled' | 'partial' | 'stalled';
+  };
+}
+export interface UserMessageObservation {
+  messageId: string;
+  content: string;
+  sentAt: number;
+  channel: 'web' | 'ios' | 'desk' | 'chrome';
+  clientId: string;
+  deviceId: string;
 }
 export class OathClient {
   private state: ClientState = {
@@ -62,13 +84,18 @@ export class OathClient {
   private replaced = false;
   private pingAt = 0;
   private clientId = `hymio-${createIdentity()}`;
-  channelKind: 'web' | 'ios' | 'mac' = 'web';
+  channelKind: 'web' | 'ios' | 'desk' | 'chrome' = 'web';
   private sourceDeviceId = '';
+  private timingCommand?: { id: string; start: number; sentAt: number };
   private cursor = 0;
   private statusRequest?: { id: string; through: number };
   private ackTimer?: ReturnType<typeof setTimeout>;
+  private userMessageObserver?: (message: UserMessageObservation) => void;
   setSourceDevice(deviceId: string) {
     this.sourceDeviceId = deviceId;
+  }
+  setUserMessageObserver(observer?: (message: UserMessageObservation) => void) {
+    this.userMessageObserver = observer;
   }
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
@@ -117,6 +144,7 @@ export class OathClient {
       unread: undefined,
       history: undefined,
       latency: undefined,
+      responseTiming: undefined,
     });
     this.config = { ...config };
     this.retries = 0;
@@ -134,6 +162,7 @@ export class OathClient {
     this.socket = undefined;
     this.config = undefined;
     this.statusRequest = undefined;
+    this.timingCommand = undefined;
     this.update({ phase: 'disconnected', runtime: undefined, runtimeThrough: undefined });
   }
   signOut() {
@@ -151,6 +180,7 @@ export class OathClient {
       error: '',
       replay: undefined,
       unread: undefined,
+      responseTiming: undefined,
     });
   }
   private open() {
@@ -223,8 +253,40 @@ export class OathClient {
               this.seen.add(e.event_seq);
               await this.confirmMessages([e]);
               if (generation !== this.generation) return;
+              const active = this.timingCommand;
+              const timing = this.state.responseTiming;
+              let responseTiming = timing;
+              if (active && timing) {
+                const p = e.payload;
+                responseTiming = { ...timing };
+                if (e.event_type === 'assistant.delta') {
+                  if (responseTiming.firstResponseMs === undefined) {
+                    responseTiming.firstResponseMs = Math.round(performance.now() - active.start);
+                  }
+                  if (p.channel === 'content' && responseTiming.firstRenderableMs === undefined) {
+                    responseTiming.firstRenderableMs = Math.round(performance.now() - active.start);
+                  }
+                }
+                if (e.event_type === 'step.status') {
+                  if (typeof p.trace_id === 'string') responseTiming.traceId = p.trace_id;
+                  const response = [...this.state.events].reverse().find(event =>
+                    event.event_type === 'assistant.message' && event.payload.step_id === p.step_id);
+                  const continues = Array.isArray(response?.payload.tool_calls) && response.payload.tool_calls.length > 0;
+                  if (['completed', 'failed', 'cancelled'].includes(str(p.status)) && !(p.status === 'completed' && continues)) {
+                    responseTiming.completedMs = Math.round(performance.now() - active.start);
+                    responseTiming.outcome =
+                      p.status === 'cancelled'
+                        ? 'cancelled'
+                        : p.status === 'failed'
+                          ? 'failed'
+                          : 'completed';
+                    this.timingCommand = undefined;
+                  }
+                }
+              }
               this.update({
                 events: [...this.state.events, e].sort((a, b) => a.event_seq - b.event_seq),
+                responseTiming,
               });
             }
             if (e.event_seq > this.cursor + 1) {
@@ -282,6 +344,18 @@ export class OathClient {
               this.watchdog = setTimeout(() => socket.close(), 12000);
             }, 20000);
           } else if (frame.type === 'ack' && frame.id) {
+            const active = this.timingCommand;
+            const timing = this.state.responseTiming;
+            if (active?.id === frame.id && timing) {
+              const traceId = (frame as Frame & { trace_id?: unknown }).trace_id;
+              this.update({
+                responseTiming: {
+                  ...timing,
+                  ...(typeof traceId === 'string' ? { traceId } : {}),
+                  acceptedMs: Math.round(performance.now() - active.start),
+                },
+              });
+            }
             const pending = this.state.pending.find((p) => p.id === frame.id);
             if (
               pending?.command.type === 'user.message' &&
@@ -315,9 +389,21 @@ export class OathClient {
               const failed: Pending = { ...pending, delivery: 'failed' };
               await storage.saveCommand(failed);
               if (generation !== this.generation) return;
+              const active = this.timingCommand;
+              const timing = this.state.responseTiming;
+              const failedTiming =
+                active?.id === f.id && timing
+                  ? {
+                      ...timing,
+                      completedMs: Math.round(performance.now() - active.start),
+                      outcome: 'failed' as const,
+                    }
+                  : timing;
+              if (active?.id === f.id) this.timingCommand = undefined;
               this.update({
                 error: f.message || '命令被拒绝',
                 pending: this.state.pending.map((p) => (p.id === f.id ? failed : p)),
+                responseTiming: failedTiming,
               });
               this.sent.delete(f.id);
             } else if (f.code === 'connection_closed') {
@@ -432,19 +518,41 @@ export class OathClient {
     const generation = this.generation;
     const command: Command = { v: 2, id: createIdentity(), type, payload };
     const pending: Pending = { id: command.id, account: this.account, command, at: Date.now() };
+    let responseTiming = this.state.responseTiming;
     if (type === 'user.message') {
+      this.timingCommand = { id: command.id, start: performance.now(), sentAt: pending.at };
+      responseTiming = {
+        messageId: command.id,
+        sentAt: pending.at,
+        channel: this.channelKind,
+        clientId: this.clientId,
+        deviceId: this.sourceDeviceId,
+      };
       command.payload = {
         ...payload,
         user_context: { ...obj(payload.user_context), hymio_message_id: command.id },
       };
     }
     this.saving.add(command.id);
-    this.update({ pending: [...this.state.pending, pending], error: '' });
+    this.update({ pending: [...this.state.pending, pending], error: '', responseTiming });
+    if (type === 'user.message' && responseTiming) {
+      this.userMessageObserver?.({
+        messageId: command.id,
+        content: str(payload.content),
+        sentAt: responseTiming.sentAt,
+        channel: responseTiming.channel,
+        clientId: responseTiming.clientId,
+        deviceId: responseTiming.deviceId,
+      });
+    }
     try {
       await storage.saveCommand(pending);
     } catch (error) {
       if (generation === this.generation)
-        this.update({ pending: this.state.pending.filter((p) => p.id !== command.id) });
+        this.update({
+          pending: this.state.pending.filter((p) => p.id !== command.id),
+          responseTiming: type === 'user.message' ? undefined : this.state.responseTiming,
+        });
       throw error;
     } finally {
       this.saving.delete(command.id);
@@ -462,7 +570,19 @@ export class OathClient {
         time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         source_device_id: this.sourceDeviceId || null,
         client_id: this.clientId,
+        channel: this.channelKind,
         received_event_seq: this.cursor,
+      },
+    });
+  }
+  markFirstPaint() {
+    const timing = this.state.responseTiming;
+    const active = this.timingCommand;
+    if (!timing || !active || timing.firstPaintMs !== undefined) return;
+    this.update({
+      responseTiming: {
+        ...timing,
+        firstPaintMs: Math.round(performance.now() - active.start),
       },
     });
   }
