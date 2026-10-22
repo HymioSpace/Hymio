@@ -152,6 +152,7 @@ def generate(path):
         )
         + "\n"
     )
+    (OUTPUT / "hymio-metrics-targets.json").chmod(0o644)
     compose["services"]["backend"]["environment"] = {
         "HYMIO_PROMETHEUS_URL": settings.get("prometheus_url")
         or (

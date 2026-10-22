@@ -72,6 +72,11 @@ class CloudEntryTests(unittest.TestCase):
                     [{"targets": ["backend:8080"]}],
                 )
                 self.assertEqual(
+                    (cloud.OUTPUT / "hymio-metrics-targets.json").stat().st_mode
+                    & 0o777,
+                    0o644,
+                )
+                self.assertEqual(
                     compose["services"]["backend"]["environment"][
                         "HYMIO_PROMETHEUS_URL"
                     ],
