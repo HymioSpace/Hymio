@@ -151,7 +151,7 @@ struct MessageRow: View {
   }
   private func toolName(_ value: String) -> String {
     [
-      "bash": "执行命令", "devices": "查看设备", "device_command": "查询执行结果", "computer": "操作电脑",
+      "bash": "执行命令", "devices": "查看设备", "device_command": "查询设备调用", "computer": "操作电脑",
       "browser": "浏览网页", "skill": "使用技能",
     ][value] ?? value
   }
@@ -201,7 +201,11 @@ struct ProtectedImage: View {
       failed = false
       do {
         let data = try await account.image(source)
-        guard let decoded = UIImage(data: data) else { throw ServiceError.message("图片格式无效") }
+        guard
+          let decoded = await Task.detached(priority: .userInitiated, operation: {
+            ImagePipeline.display(data, maxPixel: thumbnail ? 720 : 4096)
+          }).value
+        else { throw ServiceError.message("图片格式无效") }
         image = decoded
       } catch { if !Task.isCancelled { failed = true } }
     }

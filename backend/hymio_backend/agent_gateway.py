@@ -12,6 +12,7 @@ from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 from . import client_telemetry
 from .devices.connections import ChannelConnection
+from .media.store import MAX_ITEMS
 from .session_store import Unauthorized
 
 _log = logging.getLogger(__name__)
@@ -80,6 +81,15 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         incoming = json.loads(raw)
                         if isinstance(incoming, dict) and incoming.get("type") == "user.message":
                             message_id = str(incoming.get("id", ""))[:128]
+                            channel_name = "desk" if channel.kind == "mac" else channel.kind
+                            _log.info(
+                                "Gateway received user message",
+                                extra={
+                                    "message_id": message_id,
+                                    "channel": channel_name,
+                                    "user_id": channel.user_id,
+                                },
+                            )
                             background(
                                 log_event(
                                     message_id,
@@ -127,7 +137,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                 if not isinstance(context, dict):
                                     raise ValueError("invalid_context")
                                 ids = context.get("attachment_ids", [])
-                                if not isinstance(ids, list) or len(ids) > 8:
+                                if not isinstance(ids, list) or len(ids) > MAX_ITEMS:
                                     raise ValueError("invalid_attachments")
                                 for identifier in ids:
                                     if not isinstance(identifier, str):
@@ -180,6 +190,20 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                 "gateway." + frame["type"],
                                 frame,
                                 trace_id,
+                            )
+                            log_method = _log.info if frame["type"] == "ack" else _log.warning
+                            log_method(
+                                (
+                                    "Gateway acknowledged user message"
+                                    if frame["type"] == "ack"
+                                    else "Gateway rejected user message"
+                                ),
+                                extra={
+                                    "message_id": identifier,
+                                    "trace_id": trace_id,
+                                    "channel": "desk" if channel.kind == "mac" else channel.kind,
+                                    "user_id": channel.user_id,
+                                },
                             )
                             if accepted_ms is not None:
 

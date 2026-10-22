@@ -79,13 +79,27 @@ def device_routes(settings, sessions, bearer, body):
                     if internal
                     else request.path_params.get("invocation_id")
                 )
-                result = await asyncio.to_thread(
-                    store.commands,
-                    user_id,
-                    device_id,
-                    invocation_id,
-                    int(request.query_params.get("limit", 20)),
-                )
+                try:
+                    result = await asyncio.to_thread(
+                        store.commands,
+                        user_id,
+                        device_id,
+                        invocation_id,
+                        int(request.query_params.get("limit", 20)),
+                    )
+                except KeyError as error:
+                    if error.args and error.args[0] == "command_not_found":
+                        return JSONResponse(
+                            {
+                                "error": "not_a_device_invocation",
+                                "notice": (
+                                    "This invocation is not a device command. Only bash, browser "
+                                    "and computer executions can be queried here."
+                                ),
+                            },
+                            404,
+                        )
+                    raise
                 return JSONResponse(result if invocation_id else {"commands": result})
             if path.endswith(("/pause", "/resume")):
                 result = await asyncio.to_thread(
@@ -145,7 +159,7 @@ def device_routes(settings, sessions, bearer, body):
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except ResourceDenied:
-            return JSONResponse({"error":"resource_access_denied"},403)
+            return JSONResponse({"error": "resource_access_denied"}, 403)
         except ResourceCapacity as error:
             return JSONResponse({"error": str(error)}, 409)
         except DeviceConflict as error:

@@ -180,10 +180,25 @@ export type TraceSearchResponse = {
   query: string;
   hours: number;
   channel: string;
+  source?: "application" | "otel" | "log";
   scanned: number;
   failed: number;
   matched: number;
   traces: TraceSearchMatch[];
+  logs?: SystemLog[];
+};
+
+export type SystemLog = {
+  id: number;
+  service: string;
+  level: string;
+  logger: string;
+  message: string;
+  occurred_at: number;
+  trace_id: string;
+  message_id: string;
+  channel: string;
+  attributes: Record<string, unknown>;
 };
 
 const storageKey = "hymio.admin.session";

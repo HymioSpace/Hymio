@@ -71,6 +71,23 @@ class EventLog:
                     channel TEXT NOT NULL,next_at REAL NOT NULL,expires_at REAL NOT NULL,
                     PRIMARY KEY(user_id,trace_id));
                 CREATE INDEX IF NOT EXISTS jobs_due ON trace_jobs(next_at);
+                CREATE TABLE IF NOT EXISTS system_logs (
+                    id INTEGER PRIMARY KEY, log_key TEXT UNIQUE NOT NULL,
+                    service TEXT NOT NULL, level TEXT NOT NULL, logger TEXT NOT NULL,
+                    message TEXT NOT NULL, occurred_at REAL NOT NULL,
+                    trace_id TEXT NOT NULL DEFAULT '', message_id TEXT NOT NULL DEFAULT '',
+                    channel TEXT NOT NULL DEFAULT 'unknown', attributes TEXT NOT NULL DEFAULT '{}',
+                    searchable TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS system_logs_time
+                    ON system_logs(occurred_at,service,level);
+                CREATE INDEX IF NOT EXISTS system_logs_trace ON system_logs(trace_id,message_id);
+                CREATE VIRTUAL TABLE IF NOT EXISTS logs_fts USING fts5(
+                    searchable, content='system_logs', content_rowid='id');
+                CREATE TRIGGER IF NOT EXISTS logs_insert AFTER INSERT ON system_logs BEGIN
+                    INSERT INTO logs_fts(rowid,searchable) VALUES(new.id,new.searchable); END;
+                CREATE TRIGGER IF NOT EXISTS logs_delete AFTER DELETE ON system_logs BEGIN
+                    INSERT INTO logs_fts(logs_fts,rowid,searchable)
+                        VALUES('delete',old.id,old.searchable); END;
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(events)")}
             if "source" not in columns:
@@ -178,6 +195,107 @@ class EventLog:
                 db.execute("DELETE FROM trace_jobs WHERE expires_at<?", (now,))
                 self.last_prune = now
         return inserted
+
+    def append_log(
+        self,
+        *,
+        service,
+        level,
+        logger,
+        message,
+        occurred_at=None,
+        trace_id="",
+        message_id="",
+        channel="unknown",
+        attributes=None,
+        key=None,
+    ):
+        now = time.time()
+        message = re.sub(r"(?i)Bearer\s+[A-Za-z0-9._~+/=-]+", "Bearer [redacted]", str(message))
+        message = message[:16000]
+        level = str(level).upper()[:16]
+        service = str(service)[:64]
+        logger = str(logger)[:160]
+        channel = str(channel or "unknown")[:32]
+        trace_id = str(trace_id or "")[:64]
+        message_id = str(message_id or "")[:160]
+        attrs = json.dumps(safe(attributes or {}), ensure_ascii=False, separators=(",", ":"))[
+            :16384
+        ]
+        identity = key or "|".join(
+            [service, level, logger, message_id, trace_id, str(occurred_at or now), message]
+        )
+        log_key = hashlib.sha256(identity.encode()).hexdigest()
+        with self.connect(write=True) as db:
+            inserted = (
+                db.execute(
+                    "INSERT OR IGNORE INTO system_logs(log_key,service,level,logger,message,"
+                    "occurred_at,trace_id,message_id,channel,attributes,searchable) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        log_key,
+                        service,
+                        level,
+                        logger,
+                        message,
+                        occurred_at or now,
+                        trace_id,
+                        message_id,
+                        channel,
+                        attrs,
+                        tokens(
+                            f"{service} {level} {logger} {message_id} {trace_id} "
+                            f"{channel} {message} {attrs}"
+                        ),
+                    ),
+                ).rowcount
+                > 0
+            )
+            if now - self.last_prune >= 60:
+                db.execute("DELETE FROM system_logs WHERE occurred_at<?", (now - self.retention,))
+                db.execute(
+                    "DELETE FROM system_logs WHERE id IN "
+                    "(SELECT id FROM system_logs ORDER BY id DESC LIMIT -1 OFFSET ?)",
+                    (self.max_events,),
+                )
+                self.last_prune = now
+        return inserted
+
+    def search_logs(self, query, *, since, channel="", level="", limit=200):
+        phrase = tokens(query)
+        clauses = ["l.occurred_at>=?"]
+        params = [since]
+        if channel:
+            clauses.append("l.channel=?")
+            params.append(channel)
+        if level:
+            clauses.append("l.level=?")
+            params.append(str(level).upper())
+        with self.connect() as db:
+            if phrase:
+                sql = (
+                    "SELECT l.* FROM logs_fts JOIN system_logs l ON l.id=logs_fts.rowid "
+                    "WHERE logs_fts MATCH ? AND "
+                    + " AND ".join(clauses)
+                    + " ORDER BY l.occurred_at DESC LIMIT ?"
+                )
+                rows = db.execute(sql, ('"' + phrase + '"', *params, min(limit, 500))).fetchall()
+            else:
+                rows = db.execute(
+                    "SELECT l.* FROM system_logs l WHERE "
+                    + " AND ".join(clauses)
+                    + " ORDER BY l.occurred_at DESC LIMIT ?",
+                    (*params, min(limit, 500)),
+                ).fetchall()
+        result = []
+        for row in rows:
+            value = dict(row)
+            try:
+                value["attributes"] = json.loads(value["attributes"])
+            except (TypeError, ValueError):
+                value["attributes"] = {}
+            result.append(value)
+        return result
 
     def search(self, query, *, since, channel="", source="application", limit=100):
         phrase = tokens(query)

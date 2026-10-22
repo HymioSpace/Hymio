@@ -59,6 +59,34 @@ SERIES: dict[str, str] = {
     "tool_terminal_rate": "sum(rate(oath_tool_terminals_total[10m]))",
     "rabbit_ready": "sum by (queue) (rabbitmq_queue_messages_ready)",
     "services_up": 'sum(up{job="oath"})',
+    "http_request_rate": (
+        'sum by (method, route) (rate(hymio_http_requests_total{route!="/metrics"}[5m]))'
+    ),
+    "http_success_rate": (
+        "(sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics",status=~"2.."}[5m])) '
+        "/ clamp_min(sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics"}[5m])), 0.000001)) '
+        "or (0 * sum by (method, route) "
+        '(rate(hymio_http_requests_total{route!="/metrics"}[5m])))'
+    ),
+    "http_avg": (
+        "sum by (method, route) (rate(hymio_http_request_duration_seconds_sum[5m])) "
+        "/ clamp_min(sum by (method, route) "
+        "(rate(hymio_http_request_duration_seconds_count[5m])), 0.000001)"
+    ),
+    "http_p50": (
+        "histogram_quantile(0.50, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "http_p90": (
+        "histogram_quantile(0.90, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
+    "http_p95": (
+        "histogram_quantile(0.95, sum by (method, route, le) "
+        "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
+    ),
 }
 
 
@@ -212,15 +240,36 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                 )
             if path == "/admin/api/monitoring/search":
                 query = request.query_params.get("q", "").strip()[:128]
-                if not query:
+                source = request.query_params.get("source", "application")
+                if source not in {"application", "otel", "log"}:
+                    raise ValueError("invalid_source")
+                if not query and source != "log":
                     raise ValueError("query_required")
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
                 channel = request.query_params.get("channel", "")
                 if channel and channel not in client_telemetry.CHANNELS:
                     raise ValueError("invalid_channel")
-                source = request.query_params.get("source", "application")
-                if source not in {"application", "otel"}:
-                    raise ValueError("invalid_source")
+                if source == "log":
+                    logs = await asyncio.to_thread(
+                        sessions.event_log.search_logs,
+                        query,
+                        since=time.time() - hours * 3600,
+                        channel=channel,
+                        level=request.query_params.get("level", ""),
+                    )
+                    return JSONResponse(
+                        {
+                            "query": query,
+                            "hours": hours,
+                            "channel": channel,
+                            "source": source,
+                            "scanned": len(logs),
+                            "failed": 0,
+                            "matched": len(logs),
+                            "traces": [],
+                            "logs": logs,
+                        }
+                    )
                 rows = await asyncio.to_thread(
                     sessions.event_log.search,
                     query,

@@ -1,9 +1,12 @@
 import type { Pending } from './storage';
 import { obj, str, list, type Data, type OathEvent } from '@hymio/protocol';
+import { parseQuickReplies } from './quick-replies.ts';
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  rawContent?: string;
+  suggestions?: string[];
   time: string;
   streaming?: boolean;
   attempt?: number;
@@ -76,6 +79,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
         messages.push(message);
       }
       if (attempt > (message.attempt ?? 0)) {
+        message.rawContent = '';
         message.content = '';
         message.reasoning = '';
         message.attempt = attempt;
@@ -85,7 +89,8 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
           message.reasoning = (message.reasoning || '') + str(p.text);
           message.thinking = true;
         } else {
-          message.content += str(p.text);
+          message.rawContent = (message.rawContent ?? '') + str(p.text);
+          message.content = parseQuickReplies(message.rawContent).content;
           message.thinking = false;
         }
       }
@@ -104,7 +109,10 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
         assistants.set(step, message);
         messages.push(message);
       }
-      message.content = str(p.content);
+      message.rawContent = str(p.content);
+      const parsed = parseQuickReplies(message.rawContent);
+      message.content = parsed.content;
+      message.suggestions = parsed.suggestions;
       // 定稿时间才是这条回复的时间。快照回放会丢掉已完结 step 的增量，
       // 不跟着改的话，实时流和刷新后的历史会算出两套时长。
       message.time = event.occur_dt;
@@ -197,7 +205,9 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
   }
   const latestStep = [...steps.values()].sort((a, b) => a.eventSeq - b.eventSeq).at(-1);
   return {
-    messages: messages.filter((m) => m.content || m.reasoning || m.calls?.length || m.streaming),
+    messages: messages.filter(
+      (m) => m.content || m.reasoning || m.calls?.length || m.streaming || m.suggestions?.length,
+    ),
     approvals: [...approvals.values()],
     tools: [...tools.values()],
     latestStep,

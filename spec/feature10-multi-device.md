@@ -63,6 +63,8 @@ ToolInvocation.user，不能从模型参数读取。所有查询和调用都校�
 工具：devices（列可用目标）、bash（device_id + command + cwd）、
 browser（device_id + action + 参数）、computer（device_id + action + 参数）、
 device_command（device_id + 原 invocation_id，只查询执行状态与结果）。
+它只接受 `bash`、`browser`、`computer` 产生的设备 invocation；媒体、任务、技能和
+subagent 结果不能通过它查询。非设备 invocation 返回明确的 `not_a_device_invocation`。
 结果始终包含 device_id。截图存为受鉴权媒体资源；工具返回引用，不把 Base64 塞进对话。
 模型通过设备清单了解能力；上下文明确宿主机与云电脑不同，不能猜默认设备。
 

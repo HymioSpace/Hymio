@@ -37,6 +37,14 @@ flowchart LR
 截图使用受保护媒体路径，经当前账号鉴权读取；不将 Bearer 发到其他域名。
 设备页展示真实在线状态，确保电脑逻辑复用 Backend；iPhone 自身只有对话能力。
 
+附件选择不把 PhotosPicker 嵌入菜单；照片图库使用独立系统 picker。图像在后台线程
+下采样到最长边 2048 px 后上传，上传结果按 attachment URL 进入有界内存缓存，tray 和对话
+缩略图直接解码缓存字节。图片/文件合计每条消息最多 12 个。
+
+探索记录首屏只请求 30 条，更多记录显式加载。Trace 详情先请求 summary，只返回节点和事件
+名称；完整模型事件按需加载。通用 JSON 解码与图片解码不占用 MainActor，避免阻塞滚动和
+导航。
+
 ## 发布与边界
 
 共享 Xcode scheme，Debug 连本机服务，Release 必须配置部署域名、开发团队及 Bundle ID。

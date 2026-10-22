@@ -81,7 +81,10 @@ class MiniMaxMedia:
         content = response["choices"][0]["message"]["content"]
         if not isinstance(content, str):
             raise ModelUnavailable("Provider returned no textual analysis")
-        return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        analysis = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        if not analysis:
+            raise ModelUnavailable("Provider returned empty analysis; do not retry automatically")
+        return analysis
 
     def transcribe(self, row):
         try:

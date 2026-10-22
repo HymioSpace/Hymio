@@ -7,6 +7,52 @@ public struct SurfacePart: Identifiable {
   public let complete: Bool
 }
 public enum AgentSurface {
+  public static func proseAndQuickReplies(_ source: String) -> (content: String, suggestions: [String]) {
+    var output: [String] = []
+    var block: [String]?
+    var suggestions: [String] = []
+    var otherFence = ""
+    for line in source.components(separatedBy: "\n") {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if block != nil {
+        if trimmed == "```" {
+          if let data = block?.joined(separator: "\n").data(using: .utf8),
+            let values = try? JSONDecoder().decode([String].self, from: data)
+          {
+            for value in values {
+              let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+              if !text.isEmpty, text.utf16.count <= 40, !suggestions.contains(text) {
+                suggestions.append(text)
+                if suggestions.count == 3 { break }
+              }
+            }
+          }
+          block = nil
+        } else {
+          block?.append(line)
+        }
+        continue
+      }
+      if otherFence.isEmpty && trimmed == "```hymio-quick" {
+        block = []
+        continue
+      }
+      if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+        let marker = String(trimmed.prefix(while: { $0 == trimmed.first }))
+        if otherFence.isEmpty {
+          otherFence = marker
+        } else if trimmed == otherFence {
+          otherFence = ""
+        }
+      }
+      output.append(line)
+    }
+    return (
+      output.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines),
+      Array(suggestions.prefix(3))
+    )
+  }
+
   public static func parts(_ source: String, streaming: Bool) -> [SurfacePart] {
     var result: [SurfacePart] = []
     var lines: [String] = []

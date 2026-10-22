@@ -74,6 +74,18 @@ E = t_terminal    - t0    # 首个 completed/failed/cancelled step.status，或�
 每个渠道同时返回 `turns / acknowledged / first_response / renderable / terminal / traced`
 覆盖计数。管理台先显示数据覆盖，再显示有分母的比率；缺失阶段不填成 0 ms。
 
+### HTTP 接口
+
+Hymio Backend 的 ASGI 中间件对每个完成的 HTTP 响应记录
+`hymio_http_requests_total{method,route,status}` 和
+`hymio_http_request_duration_seconds{method,route}`。`route` 使用路由模板，动态 ID 不进入
+label；`/metrics` 自抓取不进入业务接口指标。耗时从请求进入开始，到最后一个响应 body
+chunk 写完，因此包含 JSON 序列化、压缩和文件流。
+
+接口成功率严格定义为 `S_r = sum[200 <= status < 300] / N_r`。管理台对每个 route 显示
+请求速率、成功率、平均值和 P50/P90/P95；分位数用 5 分钟窗口的 histogram bucket 计算，
+平均值用 `duration_sum / duration_count`，不把客户端端到端耗时混入服务端接口耗时。
+
 Trace 派生量在样本上报时读取 span 快照：
 
 - `step_count` 是 `name=invoke_agent` 且 `parent_span_id=NULL` 的 span 数。
@@ -133,8 +145,24 @@ Trace 查询失败时派生字段为 NULL，不按 0 处理，也不进入对应
 trace 的 Span events 与生命周期，不是日志中心的另一份副本。Gateway 收到 ACK 时必须
 把 ACK 中的 `trace_id` 写入事件列并建立索引任务；旧 ACK 只在缺少关联时做一次幂等修复。
 
+管理台的“日志中心”明确区分三种来源：
+
+- 生命周期事件：结构化 command、ACK、队列与 step 状态，用于按 `message_id` 聚合。
+- OTel 事件：span 及其 attributes/events，用于链路解释。
+- 系统日志：Python `logging` 实际输出的 `service / level / logger / message / trace_id`
+  记录，独立写入 `system_logs` 与 FTS5 索引，不与生命周期事件共用一份数据。
+
+Backend 在 lifespan 内安装异步 `QueueHandler`，日志写入不阻塞请求；`/internal/logs`
+仅为持有内部服务凭据的进程提供结构化摄入。内置 logger 不记录凭据，Bearer 文本在落库前
+再次脱敏。日志中心不再把 lifecycle event 标成“应用日志”，也不会把同一行同时显示为
+OTel 事件和系统日志。
+
 管理 API 只允许配置的 admin 用户。跨用户 trace 查询由 Backend 使用内部服务凭据调用
 Oath Biz；浏览器不接触 Oath 服务凭据。
+
+移动端 Trace 详情先请求 `query_trace?summary=1`。摘要保留节点、父子关系、状态、耗时、
+attributes 和事件名称，但不传模型请求/响应等 event attributes 正文；用户选择查看原始
+数据时再请求 full trace。这样首屏不需要下载和解码大段模型输入输出。
 
 ## 部署
 

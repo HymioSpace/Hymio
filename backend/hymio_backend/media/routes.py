@@ -12,7 +12,10 @@ from starlette.routing import Route
 from ..session_store import Unauthorized
 from .conversion import DOCUMENTS, to_markdown
 from .providers import MiniMaxMedia, ModelUnavailable
-from .store import LIMIT
+from .store import LIMIT, MAX_ITEMS
+
+IMAGE_MAX_DIMENSION = 2560
+IMAGE_QUALITY = 82
 
 
 def normalize_image(content):
@@ -20,9 +23,9 @@ def normalize_image(content):
         if image.width * image.height > 40_000_000:
             raise ValueError("Image too large")
         image = ImageOps.exif_transpose(image).convert("RGB")
-        image.thumbnail((4096, 4096))
+        image.thumbnail((IMAGE_MAX_DIMENSION, IMAGE_MAX_DIMENSION))
         output = io.BytesIO()
-        image.save(output, format="JPEG", quality=90)
+        image.save(output, format="JPEG", quality=IMAGE_QUALITY, optimize=True)
         return output.getvalue()
 
 
@@ -124,7 +127,7 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
                 )
             if (
                 not isinstance(identifiers, list)
-                or len(identifiers) > 8
+                or len(identifiers) > MAX_ITEMS
                 or any(not isinstance(i, str) for i in identifiers)
             ):
                 raise ValueError("Invalid attachments")

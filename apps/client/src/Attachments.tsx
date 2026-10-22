@@ -2,6 +2,10 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Plus, X, LoaderCircle, FileText, Music2 } from 'lucide-react';
 import type { LoginState } from './useLogin';
 
+const MAX_ATTACHMENTS = 12;
+const IMAGE_MAX_EDGE = 2560;
+const IMAGE_QUALITY = 0.82;
+
 export interface Attachment {
   attachment_id: string;
   name: string;
@@ -10,6 +14,40 @@ export interface Attachment {
   size: number;
   preview?: string;
 }
+
+async function compressImage(file: File): Promise<File> {
+  if (
+    !file.type.startsWith('image/') ||
+    ['image/gif', 'image/svg+xml'].includes(file.type) ||
+    file.size <= 600 * 1024
+  )
+    return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      bitmap.close();
+      return file;
+    }
+    context.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', IMAGE_QUALITY),
+    );
+    if (!blob || blob.size >= file.size) return file;
+    const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], name, { type: 'image/jpeg', lastModified: file.lastModified });
+  } catch {
+    return file;
+  }
+}
+
 export function attachmentText(files: Attachment[]) {
   return files
     .map(
@@ -83,8 +121,8 @@ export function Attachments({
       onError('附件正在上传，完成后可继续粘贴');
       return;
     }
-    if (selected.length + files.length > 8) {
-      onError('每条消息最多添加 8 个附件');
+    if (selected.length + files.length > MAX_ATTACHMENTS) {
+      onError(`每条消息最多添加 ${MAX_ATTACHMENTS} 个附件`);
       return;
     }
     busy.current = true;
@@ -94,13 +132,14 @@ export function Attachments({
     try {
       for (const file of Array.from(selected)) {
         if (file.size > 20 * 1024 * 1024) throw new Error('单个文件不能超过 20 MB');
+        const uploadFile = await compressImage(file);
         const response = await fetch(login.session.backend + '/attachments', {
           method: 'POST',
           headers: {
             Authorization: 'Bearer ' + login.session.access_token,
-            'X-File-Name': encodeURIComponent(file.name),
+            'X-File-Name': encodeURIComponent(uploadFile.name),
           },
-          body: file,
+          body: uploadFile,
           signal: AbortSignal.timeout(60000),
           redirect: 'error',
         });
@@ -142,7 +181,7 @@ export function Attachments({
       <button
         className="attachment-add"
         type="button"
-        disabled={uploading || files.length >= 8}
+        disabled={uploading || files.length >= MAX_ATTACHMENTS}
         onClick={() => input.current?.click()}
         aria-label="添加图片或文件"
         title="添加图片、文件或音频"
