@@ -81,7 +81,7 @@ class MultimodalUnderstand(Tool):
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1,
-                        "maxItems": 8,
+                    "maxItems": 12,
                     },
                     "prompt": {"type": "string", "maxLength": 4000},
                 },

@@ -26,6 +26,7 @@ import UIKit
   private var ready = false
   private var turnTiming: TurnTiming?
   private var telemetryUploading = false
+  private var telemetryFlushAgain = false
   private let account: AccountService
   init(account: AccountService) { self.account = account }
   var connected: Bool { ready }
@@ -516,25 +517,47 @@ import UIKit
       queued["\(timing.messageID):\(stage ?? outcome)"] = sample
       if queued.count > 100, let oldest = queued.min(by: { $0.value["sent_at"].double < $1.value["sent_at"].double })?.key { queued.removeValue(forKey: oldest) }
       UserDefaults.standard.set(try? JSONEncoder().encode(queued), forKey: key)
-      guard !telemetryUploading else { return }
+      guard !telemetryUploading else {
+        telemetryFlushAgain = true
+        return
+      }
       telemetryUploading = true
       Task { [weak self] in
         guard let self else { return }
-        defer { self.telemetryUploading = false }
-        for attempt in 0..<3 {
-          guard key == self.telemetryKey else { return }
-          let pending = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: JSON].self, from: $0) }) ?? [:]
-          for (id, body) in pending {
-            do {
-              _ = try await self.account.request("telemetry/client", body: body)
-              var current = (UserDefaults.standard.data(forKey: key).flatMap { try? JSONDecoder().decode([String: JSON].self, from: $0) }) ?? [:]
-              current.removeValue(forKey: id)
-              UserDefaults.standard.set(try? JSONEncoder().encode(current), forKey: key)
-            } catch { break }
-          }
-          if attempt < 2 { try? await Task.sleep(for: .seconds(5)) }
+        await self.flushTelemetry(key)
+        self.telemetryUploading = false
+        if self.telemetryFlushAgain, key == self.telemetryKey {
+          self.telemetryFlushAgain = false
+          self.telemetryUploading = true
+          await self.flushTelemetry(key)
+          self.telemetryUploading = false
         }
       }
+  }
+  private func flushTelemetry(_ key: String) async {
+    for attempt in 0..<4 {
+      guard key == telemetryKey else { return }
+      let pending =
+        (UserDefaults.standard.data(forKey: key).flatMap {
+          try? JSONDecoder().decode([String: JSON].self, from: $0)
+        }) ?? [:]
+      if pending.isEmpty { return }
+      var progressed = false
+      for (id, body) in pending {
+        do {
+          _ = try await account.request("telemetry/client", body: body)
+          var current =
+            (UserDefaults.standard.data(forKey: key).flatMap {
+              try? JSONDecoder().decode([String: JSON].self, from: $0)
+            }) ?? [:]
+          current.removeValue(forKey: id)
+          UserDefaults.standard.set(try? JSONEncoder().encode(current), forKey: key)
+          progressed = true
+        } catch { break }
+      }
+      if !progressed || attempt == 3 { return }
+      try? await Task.sleep(for: .seconds(1))
+    }
   }
   func decide(_ id: String, _ approved: Bool) async {
     do {

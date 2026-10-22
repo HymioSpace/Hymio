@@ -505,7 +505,34 @@ export default function App() {
       setSending(false);
     }
   }
+  async function sendQuick(text: string) {
+    if (sending || uploading || !text.trim()) return;
+    if (!connected) {
+      reconnect();
+      setNotice('正在重新连接，连接后即可发送。');
+      return;
+    }
+    setSending(true);
+    following.current = true;
+    setNearBottom(true);
+    try {
+      await client.message(text, []);
+      requestAnimationFrame(() =>
+        viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' }),
+      );
+      input.current?.focus();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSending(false);
+    }
+  }
   const welcome = model.messages.length === 0;
+  const latestMessage = model.messages.at(-1);
+  const quickReplies =
+    latestMessage?.role === 'assistant' && !latestMessage.streaming
+      ? latestMessage.suggestions || []
+      : [];
   if (!login.session) return <LoginScreen login={login} />;
   return (
     <div className={`app ${debug ? 'trace-page-open' : ''} ${desktop ? 'desktop' : ''}`}>
@@ -847,6 +874,21 @@ export default function App() {
               <button onClick={() => setSettings(true)}>账号设置</button>
             </div>
           )}
+          {quickReplies.length > 0 && !sending && !streaming && (
+            <div className="quick-replies" aria-label="快捷回复">
+              {quickReplies.map((text) => (
+                <button
+                  key={text}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void sendQuick(text);
+                  }}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="composer" onClick={() => input.current?.focus()}>
             <Attachments
               login={login}
@@ -882,8 +924,8 @@ export default function App() {
                   disabled={!connected}
                   aria-label="停止当前任务"
                   title="停止当前任务"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={(event) => {
+                    event.stopPropagation();
                     void act(() => client.command('run.cancel', {}));
                   }}
                 >

@@ -124,6 +124,11 @@ class DeviceTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.store.commands("bob", self.device)
 
+    def test_non_device_invocation_has_specific_lookup_error(self):
+        with self.assertRaises(KeyError) as raised:
+            self.store.commands("alice", self.device, "multimodal-invocation")
+        self.assertEqual(raised.exception.args, ("command_not_found",))
+
     def test_control_cannot_clear_unknown_tool_lock(self):
         self.store.claim("alice", self.device, "tool1", {}, 10)
         self.store.finish("alice", "tool1", {"status": "outcome_unknown"}, release=False)

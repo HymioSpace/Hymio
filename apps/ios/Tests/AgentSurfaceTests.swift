@@ -72,4 +72,13 @@ final class AgentSurfaceTests: XCTestCase {
     let parts = AgentSurface.parts("Hello\n```hymio-ui\n{}\n```\nDone", streaming: false)
     XCTAssertEqual(parts.map(\.isUI), [false, true, false])
   }
+  func testQuickRepliesStayHiddenAndAreBounded() {
+    let result = AgentSurface.proseAndQuickReplies(
+      "先这样。\n\n```hymio-quick\n[\"先停下吧\",\"我改变主意了\",\"换个方向\",\"第四句\"]\n```")
+    XCTAssertEqual(result.content, "先这样。")
+    XCTAssertEqual(result.suggestions, ["先停下吧", "我改变主意了", "换个方向"])
+    XCTAssertEqual(
+      AgentSurface.proseAndQuickReplies("答案\n```hymio-quick\n[\"未完成\"").content,
+      "答案")
+  }
 }

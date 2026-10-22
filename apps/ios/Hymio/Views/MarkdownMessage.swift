@@ -78,7 +78,11 @@ private struct ConversationInlineImages: InlineImageProvider {
   let account: AccountService
   func image(with url: URL, label: String) async throws -> Image {
     let data = try await account.image(url.absoluteString)
-    guard let image = UIImage(data: data) else { throw ServiceError.message("图片格式无效") }
+    guard
+      let image = await Task.detached(priority: .userInitiated, operation: {
+        ImagePipeline.display(data, maxPixel: 2048)
+      }).value
+    else { throw ServiceError.message("图片格式无效") }
     return Image(uiImage: image)
   }
 }

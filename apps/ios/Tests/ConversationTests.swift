@@ -47,6 +47,14 @@ final class ConversationTests: XCTestCase {
     XCTAssertEqual(model.messages[0].content, "final")
     XCTAssertFalse(model.messages[0].streaming)
   }
+  func testFinalMessageAttachesHiddenQuickReplies() {
+    let content = "先这样。\n\n```hymio-quick\n[\"先停下吧\",\"换个方向\"]\n```"
+    let model = Conversation(events: [
+      event(1, "assistant.message", ["step_id": .string("s"), "content": .string(content)])
+    ])
+    XCTAssertEqual(model.messages[0].content, "先这样。")
+    XCTAssertEqual(model.messages[0].suggestions, ["先停下吧", "换个方向"])
+  }
   func testCacheAccountIsolationAndPendingCommandSurvivesRestart() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }

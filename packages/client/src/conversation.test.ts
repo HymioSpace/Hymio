@@ -25,6 +25,21 @@ test('a retried stream is replaced by its new attempt and final response', () =>
   assert.equal(result.messages[0].streaming, false);
 });
 
+test('hidden quick replies attach to the final assistant message', () => {
+  const content = '先这样。\n\n```hymio-quick\n["先停下吧","换个方向"]\n```';
+  const result = conversation([
+    event(1, 'assistant.delta', {
+      step_id: 'a',
+      attempt: 1,
+      channel: 'content',
+      text: content,
+    }),
+    event(2, 'assistant.message', { step_id: 'a', content, tool_calls: [] }),
+  ]);
+  assert.equal(result.messages[0].content, '先这样。');
+  assert.deepEqual(result.messages[0].suggestions, ['先停下吧', '换个方向']);
+});
+
 test('identical user text remains two distinct accepted inputs', () => {
   const result = conversation([
     event(1, 'user.message', { content: 'hello' }),

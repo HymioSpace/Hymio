@@ -11,11 +11,7 @@ from core.protocol.error import ToolExecutionError
 def call(invocation, operation, capability=None):
     config = json.loads(Path(__file__).with_name("_connection.local").read_text())
     budget = 110 if operation == "list" else 25
-    timeout = (
-        min(budget, invocation.deadline - time.monotonic())
-        if invocation.deadline
-        else budget
-    )
+    timeout = min(budget, invocation.deadline - time.monotonic()) if invocation.deadline else budget
     if timeout <= 0:
         raise ToolExecutionError("Device request deadline expired")
     data = {"user_id": invocation.user.user_id}
@@ -45,9 +41,16 @@ def call(invocation, operation, capability=None):
         with urlopen(request, timeout=timeout) as response:
             return ToolResult(json.loads(response.read(1024 * 1024)))
     except HTTPError as error:
-        raise ToolExecutionError(
-            "Device service rejected request: " + str(error.code)
-        ) from error
+        try:
+            failure = json.loads(error.read(65536))
+        except (ValueError, OSError):
+            failure = {}
+        if failure.get("error") == "not_a_device_invocation":
+            raise ToolExecutionError(
+                "Invocation is not a device command. Do not query multimodal, media, task, "
+                "skill or subagent results through device_command; wait for their tool event."
+            ) from error
+        raise ToolExecutionError("Device service rejected request: " + str(error.code)) from error
     except (URLError, TimeoutError) as error:
         if operation == "list":
             raise ToolExecutionError(

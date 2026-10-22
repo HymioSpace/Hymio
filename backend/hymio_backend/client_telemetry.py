@@ -202,6 +202,14 @@ def summary(sessions, *, since: float, channel: str = "") -> dict[str, Any]:
             {
                 "channel": name,
                 "turns": len(samples),
+                "acknowledged": sum(row["accepted_ms"] is not None for row in samples),
+                "first_response": sum(row["first_response_ms"] is not None for row in samples),
+                "renderable": sum(row["first_renderable_ms"] is not None for row in samples),
+                "terminal": sum(
+                    row["outcome"] in {"completed", "failed", "cancelled", "partial"}
+                    for row in samples
+                ),
+                "traced": sum(bool(row["trace_id"]) for row in samples),
                 "completed": outcomes["completed"],
                 "failed": outcomes["failed"],
                 "cancelled": outcomes["cancelled"],

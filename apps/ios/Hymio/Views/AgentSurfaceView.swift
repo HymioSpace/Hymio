@@ -14,9 +14,9 @@ private struct StreamingFadeRenderer: TextRenderer {
         for slice in run {
           let length = max(1, slice.characterIndices.count)
           let distance = max(0, total - index - length)
-          let settled = min(1, Double(distance) / 9)
-          context.opacity = 0.14 + settled * 0.86
-          let lift = distance < 5 ? CGFloat(5 - distance) * 0.45 : 0
+          let settled = min(1, Double(distance) / 18)
+          context.opacity = 0.04 + settled * 0.96
+          let lift = distance < 7 ? CGFloat(7 - distance) * 0.55 : 0
           context.translateBy(x: 0, y: lift)
           context.draw(slice)
           context.translateBy(x: 0, y: -lift)
@@ -127,7 +127,7 @@ struct BufferedProse: View {
         LinearGradient(
           colors: [.clear, Brand.surface.opacity(0.85)], startPoint: .leading, endPoint: .trailing
         )
-        .frame(width: 18, height: 20).allowsHitTesting(false).accessibilityHidden(true)
+        .frame(width: 28, height: 22).allowsHitTesting(false).accessibilityHidden(true)
       }
     }
     .task(id: source) {

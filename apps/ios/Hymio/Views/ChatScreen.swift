@@ -3,6 +3,10 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+private enum AttachmentLimits {
+  static let maxCount = 12
+}
+
 struct ChatScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
@@ -12,6 +16,7 @@ struct ChatScreen: View {
   @State private var uploading = false
   @State private var filesOpen = false
   @State private var cameraOpen = false
+  @State private var photosOpen = false
   @State private var following = true
   @State private var positioned = false
   @State private var atBottom = true
@@ -23,7 +28,7 @@ struct ChatScreen: View {
     NavigationStack {
       ScrollViewReader { proxy in
         ScrollView {
-          LazyVStack(alignment: .leading, spacing: 25) {
+          LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.model.turns.first?.id
@@ -72,7 +77,7 @@ struct ChatScreen: View {
             {
               HStack(spacing: 10) {
                 ProgressView().controlSize(.small)
-                Text(client.model.awaitingReply ? "正在等候回复…" : "正在继续处理…").font(.caption)
+                Text(client.model.awaitingReply ? "正在探索…" : "继续探索中…").font(.caption)
                   .foregroundStyle(.secondary)
               }.accessibilityIdentifier("chat.working")
             }
@@ -85,7 +90,7 @@ struct ChatScreen: View {
                 .font(.footnote).foregroundStyle(.secondary)
             }
             Color.clear.frame(height: 1).id("bottom")
-          }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
+          }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
             .animation(
               reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
@@ -98,8 +103,7 @@ struct ChatScreen: View {
         .defaultScrollAnchor(.top, for: .alignment)
         .defaultScrollAnchor(.top, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
-          geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
-            < 90
+          geometry.contentSize.height - geometry.visibleRect.maxY < 12
         } action: { _, near in
           atBottom = near
         }
@@ -112,6 +116,7 @@ struct ChatScreen: View {
         } action: { before, after in
           if after > before && following && !client.loadingHistory && positioned {
             proxy.scrollTo("bottom", anchor: .bottom)
+            atBottom = true
           }
         }
         .onChange(of: client.model.messages.count) { _, _ in
@@ -127,8 +132,14 @@ struct ChatScreen: View {
           if !atBottom && !client.model.messages.isEmpty {
             Button {
               following = true
+              atBottom = true
               withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
                 proxy.scrollTo("bottom", anchor: .bottom)
+              }
+              Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(180))
+                proxy.scrollTo("bottom", anchor: .bottom)
+                atBottom = true
               }
             } label: {
               Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())
@@ -153,13 +164,18 @@ struct ChatScreen: View {
               }
               ConnectionStatus(
                 text: client.connected && (client.model.working || client.model.awaitingReply)
-                  ? "正在处理" : client.phase, connected: client.connected)
+                  ? "探索中" : client.phase, connected: client.connected)
             }
           }.accessibilityElement(children: .combine)
         }
       }
       .onChange(of: selectedPhotos) { _, photos in
         guard !photos.isEmpty else { return }
+        guard photos.count + attachments.count <= AttachmentLimits.maxCount else {
+          selectedPhotos = []
+          client.error = "每条消息最多添加 \(AttachmentLimits.maxCount) 个附件"
+          return
+        }
         uploading = true
         Task {
           defer {
@@ -169,8 +185,10 @@ struct ChatScreen: View {
           do {
             for photo in photos {
               if let data = try await photo.loadTransferable(type: Data.self) {
-                guard let image = UIImage(data: data),
-                  let jpeg = image.jpegData(compressionQuality: 0.9)
+                guard
+                  let jpeg = try await Task.detached(priority: .userInitiated, operation: {
+                    ImagePipeline.attachment(data)
+                  }).value
                 else {
                   throw ServiceError.message("照片格式无法读取")
                 }
@@ -189,8 +207,8 @@ struct ChatScreen: View {
           defer { uploading = false }
           do {
             let urls = try result.get()
-            guard urls.count + attachments.count <= 8 else {
-              throw ServiceError.message("每条消息最多添加 8 个附件")
+            guard urls.count + attachments.count <= AttachmentLimits.maxCount else {
+              throw ServiceError.message("每条消息最多添加 \(AttachmentLimits.maxCount) 个附件")
             }
             for url in urls {
               let access = url.startAccessingSecurityScopedResource()
@@ -208,17 +226,32 @@ struct ChatScreen: View {
         CameraCapture { image in
           cameraOpen = false
           guard let image else { return }
+          guard attachments.count < AttachmentLimits.maxCount else {
+            client.error = "每条消息最多添加 \(AttachmentLimits.maxCount) 个附件"
+            return
+          }
           uploading = true
           Task {
             defer { uploading = false }
             do {
-              guard let data = image.jpegData(compressionQuality: 0.9) else { return }
+              guard
+                let data = try await Task.detached(priority: .userInitiated, operation: {
+                  ImagePipeline.attachment(image)
+                }).value
+              else { throw ServiceError.message("照片格式无法读取") }
               let value = try await account.upload(data, name: "camera.jpg")
               attachments.append(value)
             } catch { client.error = error.localizedDescription }
           }
         }.ignoresSafeArea()
       }
+      .modifier(
+        PhotoLibraryPickerModifier(
+          isPresented: $photosOpen,
+          selection: $selectedPhotos,
+          maxSelectionCount: max(1, AttachmentLimits.maxCount - attachments.count)
+        )
+      )
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
       .sensoryFeedback(.selection, trigger: sentCount)
     }
@@ -267,12 +300,28 @@ struct ChatScreen: View {
             }.padding(.horizontal, 4).padding(.top, 4)
           }
         }
+        if !quickReplies.isEmpty {
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+              ForEach(quickReplies, id: \.self) { reply in
+                Button {
+                  sendQuick(reply)
+                } label: {
+                  Text(reply).font(.caption).foregroundStyle(Brand.muted)
+                    .padding(.horizontal, 12).frame(minHeight: 34)
+                    .background(Brand.surface.opacity(0.82), in: Capsule())
+                    .overlay { Capsule().stroke(Brand.muted.opacity(0.18), lineWidth: 0.5) }
+                }.buttonStyle(.plain).disabled(!client.connected || sendBusy || uploading)
+                  .accessibilityHint("立即发送这条消息")
+              }
+            }.padding(.horizontal, 4)
+          }
+        }
         HStack(alignment: .bottom, spacing: 8) {
           Menu {
-            PhotosPicker(
-              selection: $selectedPhotos, maxSelectionCount: max(1, 8 - attachments.count),
-              matching: .images
-            ) {
+            Button {
+              photosOpen = true
+            } label: {
               Label("照片图库", systemImage: "photo.on.rectangle")
             }
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
@@ -287,12 +336,12 @@ struct ChatScreen: View {
             } label: {
               Label("选择文件", systemImage: "doc")
             }
-            PasteButton(supportedContentTypes: [.image]) { providers in pasteImages(providers) }
           } label: {
             Image(systemName: "plus").font(.system(size: 19, weight: .regular)).foregroundStyle(
               Brand.muted
             ).frame(width: 44, height: 44)
-          }.disabled(uploading || attachments.count >= 8).accessibilityLabel("添加附件")
+          }.disabled(uploading || attachments.count >= AttachmentLimits.maxCount)
+            .accessibilityLabel("添加附件")
           TextField("接着说，我在听…", text: $draft, axis: .vertical)
             .lineLimit(1...6).padding(.vertical, 9).focused($typing).accessibilityIdentifier(
               "chat.input")
@@ -315,45 +364,29 @@ struct ChatScreen: View {
       .modifier(ComposerSurface())
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }
-  private func pasteImages(_ providers: [NSItemProvider]) {
-    let images = providers.filter { $0.canLoadObject(ofClass: UIImage.self) }
-    guard !images.isEmpty else { return }
-    guard !uploading else {
-      client.error = "附件正在上传，完成后可继续粘贴。"
-      return
-    }
-    guard images.count + attachments.count <= 8 else {
-      client.error = "每条消息最多添加 8 个附件"
-      return
-    }
-    uploading = true
-    Task {
-      defer { uploading = false }
-      do {
-        for provider in images {
-          let image: UIImage = try await withCheckedThrowingContinuation { continuation in
-            _ = provider.loadObject(ofClass: UIImage.self) { object, error in
-              if let error {
-                continuation.resume(throwing: error)
-              } else if let image = object as? UIImage {
-                continuation.resume(returning: image)
-              } else {
-                continuation.resume(throwing: ServiceError.message("无法读取剪贴板图片"))
-              }
-            }
-          }
-          guard let data = image.jpegData(compressionQuality: 0.9) else {
-            throw ServiceError.message("无法读取剪贴板图片")
-          }
-          let value = try await account.upload(data, name: "screenshot.jpg")
-          attachments.append(value)
-        }
-      } catch { client.error = error.localizedDescription }
-    }
-  }
   private var canSend: Bool {
     client.connected && !sendBusy && !uploading
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
+  }
+  private var quickReplies: [String] {
+    guard !client.model.working, !client.model.awaitingReply,
+      let last = client.model.messages.last, last.role == "assistant", !last.streaming
+    else { return [] }
+    return last.suggestions
+  }
+  private func sendQuick(_ text: String) {
+    let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard client.connected, !sendBusy, !uploading, !value.isEmpty else { return }
+    sendBusy = true
+    atBottom = true
+    following = true
+    Task {
+      do {
+        try await client.message(value)
+        sentCount += 1
+      } catch { client.error = error.localizedDescription }
+      sendBusy = false
+    }
   }
   private func send() {
     let originalDraft = draft
@@ -442,6 +475,21 @@ private struct CameraCapture: UIViewControllerRepresentable {
   }
 }
 
+private struct PhotoLibraryPickerModifier: ViewModifier {
+  @Binding var isPresented: Bool
+  @Binding var selection: [PhotosPickerItem]
+  let maxSelectionCount: Int
+
+  func body(content: Content) -> some View {
+    content.photosPicker(
+      isPresented: $isPresented,
+      selection: $selection,
+      maxSelectionCount: maxSelectionCount,
+      matching: .images
+    )
+  }
+}
+
 private struct ComposerAttachment: View {
   let file: JSON
   @ObservedObject var account: AccountService
@@ -486,7 +534,13 @@ private struct ComposerAttachment: View {
       }
       .task(id: file["attachment_id"].text) {
         guard isImage else { return }
-        if let data = try? await account.image(file["url"].text) { image = UIImage(data: data) }
+        if let data = try? await account.image(file["url"].text),
+          let decoded = await Task.detached(priority: .userInitiated, operation: {
+            ImagePipeline.display(data, maxPixel: 480)
+          }).value
+        {
+          image = decoded
+        }
       }
   }
 }

@@ -46,8 +46,10 @@ class DeviceCommandTool(Tool):
     def definition(self):
         return ToolDefinition(
             "device_command",
-            "Query an existing invocation without repeating it. "
-            "Requires the original device_id and invocation_id.",
+            "Query an existing bash, browser or computer invocation on the same device without "
+            "repeating it. Requires the original device_id and invocation_id. Never use this for "
+            "multimodal_understand, image_generate, tasks, skills, subagents or other tool calls: "
+            "those are not device invocations; their results arrive as tool events automatically.",
             schema(
                 {"device_id": DEVICE, "invocation_id": TEXT},
                 ["device_id", "invocation_id"],

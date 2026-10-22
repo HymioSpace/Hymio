@@ -12,6 +12,7 @@ from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 from . import client_telemetry
 from .devices.connections import ChannelConnection
+from .media.store import MAX_ITEMS
 from .session_store import Unauthorized
 
 _log = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
 
-        async def log_event(message_id, stage, data, trace_id=""):
+        async def log_event(message_id, stage, data, trace_id="", source="application"):
             if not getattr(sessions, "event_log", None):
                 return
             try:
@@ -47,6 +48,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                     data,
                     trace_id=trace_id,
                     channel="desk" if channel.kind == "mac" else channel.kind,
+                    source=source,
                 )
             except Exception:
                 _log.exception("Message lifecycle log unavailable")
@@ -79,6 +81,15 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         incoming = json.loads(raw)
                         if isinstance(incoming, dict) and incoming.get("type") == "user.message":
                             message_id = str(incoming.get("id", ""))[:128]
+                            channel_name = "desk" if channel.kind == "mac" else channel.kind
+                            _log.info(
+                                "Gateway received user message",
+                                extra={
+                                    "message_id": message_id,
+                                    "channel": channel_name,
+                                    "user_id": channel.user_id,
+                                },
+                            )
                             background(
                                 log_event(
                                     message_id,
@@ -89,6 +100,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                             messages[message_id] = time.monotonic()
                             if len(messages) > 256:
                                 messages.pop(next(iter(messages)))
+
                             async def record_gateway_sample():
                                 try:
                                     await asyncio.to_thread(
@@ -125,7 +137,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                 if not isinstance(context, dict):
                                     raise ValueError("invalid_context")
                                 ids = context.get("attachment_ids", [])
-                                if not isinstance(ids, list) or len(ids) > 8:
+                                if not isinstance(ids, list) or len(ids) > MAX_ITEMS:
                                     raise ValueError("invalid_attachments")
                                 for identifier in ids:
                                     if not isinstance(identifier, str):
@@ -165,7 +177,62 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                         frame = json.loads(message)
                         if frame.get("type") in {"ack", "error"} and frame.get("id") in messages:
                             identifier = frame["id"]
-                            await log_event(identifier, "gateway." + frame["type"], frame)
+                            trace_id = (
+                                str(frame.get("trace_id", "")) if frame.get("type") == "ack" else ""
+                            )
+                            started = None
+                            accepted_ms = None
+                            if frame.get("type") == "ack":
+                                started = messages.pop(identifier)
+                                accepted_ms = max(0, round((time.monotonic() - started) * 1000, 3))
+                            await log_event(
+                                identifier,
+                                "gateway." + frame["type"],
+                                frame,
+                                trace_id,
+                            )
+                            log_method = _log.info if frame["type"] == "ack" else _log.warning
+                            log_method(
+                                (
+                                    "Gateway acknowledged user message"
+                                    if frame["type"] == "ack"
+                                    else "Gateway rejected user message"
+                                ),
+                                extra={
+                                    "message_id": identifier,
+                                    "trace_id": trace_id,
+                                    "channel": "desk" if channel.kind == "mac" else channel.kind,
+                                    "user_id": channel.user_id,
+                                },
+                            )
+                            if accepted_ms is not None:
+
+                                async def record_gateway_ack(
+                                    message_id=identifier,
+                                    accepted=accepted_ms,
+                                    trace=trace_id,
+                                ):
+                                    try:
+                                        await asyncio.to_thread(
+                                            client_telemetry.record,
+                                            sessions,
+                                            channel.user_id,
+                                            {
+                                                "message_id": message_id,
+                                                "sent_at": time.time() * 1000 - accepted,
+                                                "accepted_ms": accepted,
+                                                "trace_id": trace,
+                                                "outcome": "accepted",
+                                                "channel": "desk"
+                                                if channel.kind == "mac"
+                                                else channel.kind,
+                                            },
+                                            None,
+                                        )
+                                    except Exception:
+                                        _log.exception("Gateway ACK sample unavailable")
+
+                                background(record_gateway_ack())
                         elif frame.get("type") == "event":
                             event = frame
                             payload = event.get("payload", {})
@@ -176,6 +243,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                     "server." + str(event.get("event_type", "event")),
                                     payload,
                                     trace_id,
+                                    source="otel",
                                 )
                     except (ValueError, TypeError, AttributeError):
                         pass
