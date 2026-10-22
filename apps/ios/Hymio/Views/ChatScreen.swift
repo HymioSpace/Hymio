@@ -98,8 +98,7 @@ struct ChatScreen: View {
         .defaultScrollAnchor(.top, for: .alignment)
         .defaultScrollAnchor(.top, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
-          geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
-            < 90
+          geometry.contentSize.height - geometry.visibleRect.maxY < 12
         } action: { _, near in
           atBottom = near
         }
@@ -112,6 +111,7 @@ struct ChatScreen: View {
         } action: { before, after in
           if after > before && following && !client.loadingHistory && positioned {
             proxy.scrollTo("bottom", anchor: .bottom)
+            atBottom = true
           }
         }
         .onChange(of: client.model.messages.count) { _, _ in
@@ -127,8 +127,14 @@ struct ChatScreen: View {
           if !atBottom && !client.model.messages.isEmpty {
             Button {
               following = true
+              atBottom = true
               withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
                 proxy.scrollTo("bottom", anchor: .bottom)
+              }
+              Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(180))
+                proxy.scrollTo("bottom", anchor: .bottom)
+                atBottom = true
               }
             } label: {
               Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())

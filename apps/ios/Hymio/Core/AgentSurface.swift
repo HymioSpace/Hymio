@@ -222,7 +222,7 @@ public struct PresentationBuffer {
       return
     }
     let backlog = characters.count - shown
-    let rate = min(180, max(90, Double(backlog) * 7))
+    let rate = min(150, max(54, Double(backlog) * 6))
     credit += elapsed * rate
     let amount = Int(credit)
     shown = min(characters.count, shown + amount)
