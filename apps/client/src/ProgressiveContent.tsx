@@ -20,25 +20,28 @@ export function useBufferedText(target: string, streaming: boolean) {
   const [visible, setVisible] = useState(buffer.current.value);
   useEffect(() => {
     const b = buffer.current!;
-    setVisible(b.set(target, performance.now(), reduced || document.hidden));
-    let timer = 0;
-    const tick = () => {
-      setVisible(b.tick(performance.now()));
-      if (b.pending) timer = window.setTimeout(tick, 32);
-    };
-    if (b.pending) timer = window.setTimeout(tick, 32);
+    const next = b.set(target, performance.now(), reduced || document.hidden);
+    setVisible((current) => (current === next ? current : next));
     const resume = () => {
       if (!document.hidden) {
-        clearTimeout(timer);
-        setVisible(b.set(target, performance.now(), true));
+        const next = b.set(target, performance.now(), true);
+        setVisible((current) => (current === next ? current : next));
       }
     };
     document.addEventListener('visibilitychange', resume);
     return () => {
-      clearTimeout(timer);
       document.removeEventListener('visibilitychange', resume);
     };
   }, [target, reduced]);
+  useEffect(() => {
+    const b = buffer.current!;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      const next = b.tick(performance.now());
+      setVisible((current) => (current === next ? current : next));
+    }, 32);
+    return () => clearInterval(timer);
+  }, []);
   return { text: visible, pending: visible !== target };
 }
 const TextMotion = createContext(false);
