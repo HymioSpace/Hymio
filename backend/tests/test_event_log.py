@@ -83,6 +83,15 @@ class EventLogTests(unittest.TestCase):
             )
             log.append(
                 "user-1",
+                "",
+                "invoke_agent",
+                {"name": "invoke_agent"},
+                trace_id=trace_id,
+                channel="ios",
+                source="otel",
+            )
+            log.append(
+                "user-1",
                 "message-1",
                 "gateway.ack",
                 {"type": "ack", "trace_id": trace_id},
@@ -95,6 +104,13 @@ class EventLogTests(unittest.TestCase):
             self.assertEqual(link["user_id"], "user-1")
             self.assertEqual(link["message_id"], "message-1")
             self.assertEqual(link["trace_id"], trace_id)
+            self.assertEqual(
+                [
+                    span["name"]
+                    for span in log.detail("user-1", message_id="message-1", source="otel")
+                ],
+                ["message.lifecycle"],
+            )
 
 
 if __name__ == "__main__":

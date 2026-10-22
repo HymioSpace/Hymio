@@ -84,7 +84,10 @@ class EventLog:
             db.execute(
                 """UPDATE events SET source='otel'
                 WHERE source='application' AND (
-                  stage IN ('server.step.status','invoke_agent','queue.publish','queue.consume')
+                  stage IN (
+                    'server.step.status','gateway.accept','invoke_agent',
+                    'queue.publish','queue.consume'
+                  )
                   OR stage LIKE 'oath.%'
                   OR stage LIKE 'chat %'
                   OR stage LIKE 'gen_ai.%'
@@ -284,7 +287,7 @@ class EventLog:
             rows = list(
                 db.execute(
                     "SELECT id,user_id,message_id,channel,body FROM events "
-                    "WHERE trace_id='' AND stage IN ('gateway.ack','client.ack') "
+                    "WHERE stage IN ('gateway.ack','client.ack') "
                     "ORDER BY id DESC LIMIT 10000"
                 )
             )
@@ -299,6 +302,11 @@ class EventLog:
                 db.execute(
                     "UPDATE events SET trace_id=? WHERE user_id=? AND message_id=? AND trace_id=''",
                     (trace_id, row["user_id"], row["message_id"]),
+                )
+                db.execute(
+                    "UPDATE events SET message_id=? WHERE user_id=? AND trace_id=? "
+                    "AND message_id=''",
+                    (row["message_id"], row["user_id"], trace_id),
                 )
                 db.execute(
                     "INSERT INTO trace_jobs VALUES(?,?,?,?,?,?) "

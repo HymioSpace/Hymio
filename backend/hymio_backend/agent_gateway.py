@@ -35,7 +35,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
 
-        async def log_event(message_id, stage, data, trace_id=""):
+        async def log_event(message_id, stage, data, trace_id="", source="application"):
             if not getattr(sessions, "event_log", None):
                 return
             try:
@@ -47,6 +47,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                     data,
                     trace_id=trace_id,
                     channel="desk" if channel.kind == "mac" else channel.kind,
+                    source=source,
                 )
             except Exception:
                 _log.exception("Message lifecycle log unavailable")
@@ -218,6 +219,7 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                     "server." + str(event.get("event_type", "event")),
                                     payload,
                                     trace_id,
+                                    source="otel",
                                 )
                     except (ValueError, TypeError, AttributeError):
                         pass
