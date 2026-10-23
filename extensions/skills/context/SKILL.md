@@ -4,8 +4,12 @@ description: Find personal information, earlier decisions, preferences and sourc
 priority: 20
 ---
 
+Use the `recall` tool before answering questions about the user's earlier preferences, history,
+relationships, goals or routines.
+Use the `remember` tool when the user asks Hymio to retain a statement or explicitly shares a
+durable personal fact. Preserve the statement verbatim; do not claim success before the result.
 Use nostalgia action=injection for the published short index and recent pending buffer.
-For remembered topics call action=search with data={target:"all",mode:"text",query:"..."}.
+For precise searches call action=search with data={target:"all",mode:"text",query:"..."}.
 Use filters for source, topic, time or root_id; follow next_cursor for exact filtered lists.
 Read full source records using records.read and full cards using artifacts.read.
 Use records.list with query.root_id to inspect source changes over time.

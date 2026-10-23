@@ -4,6 +4,9 @@
 
 Nostalgia 保存原始记录、整理草稿和生效制品；Hymio 保存用户到服务的绑定、派发回执，提供工具和 skill；Oath 使用现有 Gateway、AgentBrain 和工具系统执行。不增加 Oath 协议或第二个 Agent。
 
+Agent 通过 `remember` 工具把用户明确要求保留的个人信息写入 Nostalgia，再用 dreaming
+流程提炼。系统不按关键词自动保存全部对话，也不把模型调用工具这件事藏在 gateway。
+
 ## 路径
 
 采集端通过 Hymio 追加 context 或 command。它只表达输入或意图，原始写入成功不表示删除、修改已经执行。主 Agent 使用 Hymio extension 的 `nostalgia` 工具读取 injection、搜索和按 ID/根 ID 读取，必要时追加用户的明确请求。

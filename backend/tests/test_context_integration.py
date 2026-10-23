@@ -31,7 +31,7 @@ from core.compaction.llm import LlmCompactor
 from core.consumer import ToolConsumer, UserConsumer
 from core.detail import DETAIL_READ, DetailReadTool, ResultShrinker
 from core.journal.runtime_store import RuntimeStore
-from core.protocol.datatype import User
+from core.protocol.datatype import ToolInvocation, User
 from core.protocol.datatype.config import AgentConfig, ServicesConfig
 from core.protocol.datatype.inbound import Inbound
 from core.protocol.datatype.llm import LlmResponse, LlmToolCall
@@ -164,6 +164,43 @@ def test_identity_idempotence_and_closed_mapping(stack):
         stack.context.call(stack.user.user_id, "http://evil.example")
     with pytest.raises(ValueError):
         stack.context.call(stack.user.user_id, "records.append", data={})
+
+
+def test_semantic_context_tools_remember_and_recall(stack):
+    extensions_path = stack.tmp / "semantic-tools"
+    shutil.copytree(
+        Path(__file__).resolve().parents[2] / "extensions",
+        extensions_path,
+        ignore=shutil.ignore_patterns("_connection.local", "__pycache__"),
+    )
+    (extensions_path / "tools/_connection.local").write_text(
+        json.dumps({"url": stack.url, "token": "s" * 40})
+    )
+    extensions = load_extensions((extensions_path,))
+    tools = {tool.definition.name: tool for tool in extensions.tools}
+    assert {"remember", "recall", "nostalgia"} <= set(tools)
+    invocation = ToolInvocation(
+        user=stack.user,
+        invocation_id="remember-spicy-food",
+        arguments={"text": "我喜欢吃辣。", "topic": "饮食"},
+        deadline=time.monotonic() + 20,
+    )
+    saved = tools["remember"].execute(invocation)
+    assert saved.content["data"]["source"]["kind"] == "conversation"
+    assert saved.content["data"]["context"]["text"] == "我喜欢吃辣。"
+    repeated = tools["remember"].execute(invocation)
+    assert repeated.content["data"]["id"] == saved.content["data"]["id"]
+    recalled = tools["recall"].execute(
+        ToolInvocation(
+            user=stack.user,
+            invocation_id="recall-spicy-food",
+            arguments={"query": "辣"},
+            deadline=time.monotonic() + 20,
+        )
+    )
+    assert [item["id"] for item in recalled.content["data"]["items"]] == [
+        saved.content["data"]["id"]
+    ]
 
 
 def test_failed_dispatch_retains_draft_for_abort(stack):
