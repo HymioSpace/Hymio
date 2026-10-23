@@ -3778,23 +3778,17 @@ a {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  padding: 40px 0 64px;
-}
-.understanding-empty .companion {
-  width: 94px;
-  height: 94px;
-}
-.understanding-empty h2 {
-  margin: 4px 0 0;
-  font-size: 19px;
+  gap: 18px;
+  max-width: 470px;
+  padding: 76px 0 52px;
 }
 .understanding-empty p {
   max-width: 440px;
-  margin: 0 0 4px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.75;
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  line-height: 1.65;
+  font-weight: 560;
 }
 .understanding-reader {
   width: min(640px, calc(100vw - 32px));

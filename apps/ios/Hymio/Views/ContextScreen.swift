@@ -64,7 +64,6 @@ final class ContextStore: ObservableObject {
   @Published private(set) var error = ""
   @Published private(set) var feedback = ""
   @Published private(set) var imported = false
-  @Published private(set) var refined = false
   @Published private(set) var busy = false
   @Published private(set) var moreBusy = false
 
@@ -74,10 +73,12 @@ final class ContextStore: ObservableObject {
   private(set) var insightCursor = ""
   private(set) var recordCursor = ""
 
-  init(account: AccountService, preview: Bool = false) {
+  init(account: AccountService, preview: Bool = false, installFixtures: Bool = true) {
     self.account = account
     self.preview = preview
-    if preview { installPreview() }
+    if preview {
+      if installFixtures { installPreview() } else { loading = false }
+    }
   }
 
   var isEmpty: Bool { insights.isEmpty && records.isEmpty }
@@ -169,39 +170,6 @@ final class ContextStore: ObservableObject {
     }
   }
 
-  func refine() async {
-    guard !busy, let account, !preview else { return }
-    busy = true
-    error = ""
-    feedback = "Hymio 正在重新整理对你的理解…"
-    defer { busy = false }
-    do {
-      let key = UUID().uuidString
-      let result = try await account.request(
-        "context/dreams", body: .object([:]), timeout: 30, idempotencyKey: key)
-      let id = result["dream_id"].text
-      for _ in 0..<90 {
-        try await Task.sleep(for: .seconds(2))
-        let status = try await account.request("context/dreams/" + id)
-        if status["state"].text == "committed" {
-          refined = true
-          feedback = "整理好了。新的理解已和来处一起放进页面。"
-          await load(showBusy: false)
-          return
-        }
-        if ["aborted", "failed"].contains(status["state"].text) {
-          feedback = ""
-          error = "这次整理没有完成，原来的内容仍然保留。"
-          return
-        }
-      }
-      feedback = "Hymio 还在慢慢整理，稍后回来看看。"
-    } catch {
-      feedback = ""
-      self.error = "整理结果还没有确认，原来的内容没有被替换。"
-    }
-  }
-
   private func installPreview() {
     let artifactA = previewArtifact(
       id: "preview-direction",
@@ -287,9 +255,11 @@ struct ContextPreviewScreen: View {
   @StateObject private var store: ContextStore
   @State private var selected = ProductTab.moments
 
-  init(account: AccountService?) {
+  init(account: AccountService?, empty: Bool = false) {
     self.account = account
-    _store = StateObject(wrappedValue: ContextStore(account: account ?? AccountService(), preview: true))
+    _store = StateObject(
+      wrappedValue: ContextStore(
+        account: account ?? AccountService(), preview: true, installFixtures: !empty))
   }
 
   var body: some View {
@@ -319,31 +289,14 @@ private struct ContextPage: View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 0) {
         topBar
-        hero
-        if !store.feedback.isEmpty {
-          Label(store.feedback, systemImage: "sparkles")
-            .font(.footnote)
-            .foregroundStyle(Brand.muted)
-            .padding(.top, 16)
-            .transition(.opacity)
-        }
-        if !store.error.isEmpty {
-          HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "arrow.clockwise.circle").foregroundStyle(Brand.attention)
-            Text(store.error).font(.footnote).foregroundStyle(Brand.muted)
-            Spacer(minLength: 4)
-            Button("重试") { Task { await store.load() } }
-              .font(.footnote.weight(.semibold))
-              .foregroundStyle(Brand.blue)
-              .frame(minHeight: 44)
-          }
-          .padding(.vertical, 8)
-        }
         if store.loading && store.isEmpty {
           loadingState
         } else if store.isEmpty {
+          feedback
           emptyState
         } else {
+          hero
+          feedback
           insightSection
           sourceSection
           closingNote
@@ -361,7 +314,6 @@ private struct ContextPage: View {
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Menu {
-          Button("重新整理", systemImage: "sparkles") { Task { await store.refine() } }
           Button("回看最近对话", systemImage: "bubble.left.and.bubble.right") {
             Task { await store.importConversation() }
           }
@@ -373,6 +325,28 @@ private struct ContextPage: View {
       }
     }
     .refreshable { await store.load(showBusy: false) }
+  }
+
+  @ViewBuilder private var feedback: some View {
+    if !store.feedback.isEmpty {
+      Label(store.feedback, systemImage: "sparkles")
+        .font(.footnote)
+        .foregroundStyle(Brand.muted)
+        .padding(.top, 16)
+        .transition(.opacity)
+    }
+    if !store.error.isEmpty {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: "arrow.clockwise.circle").foregroundStyle(Brand.attention)
+        Text(store.error).font(.footnote).foregroundStyle(Brand.muted)
+        Spacer(minLength: 4)
+        Button("重试") { Task { await store.load() } }
+          .font(.footnote.weight(.semibold))
+          .foregroundStyle(Brand.blue)
+          .frame(minHeight: 44)
+      }
+      .padding(.vertical, 8)
+    }
   }
 
   private var topBar: some View {
@@ -564,21 +538,20 @@ private struct ContextPage: View {
   }
 
   private var emptyState: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Companion(size: 70, mood: .waiting)
-      Text("我还不太认识你。")
-        .font(.title3.weight(.semibold))
+    VStack(alignment: .leading, spacing: 18) {
+      Text("和 Hymio 聊一件想让我记住的事，我会从这里慢慢认识你。")
+        .font(.system(.title3, design: .rounded, weight: .medium))
+        .lineSpacing(5)
         .foregroundStyle(Brand.ink)
-      Text("从一段对话、一件事或一个偏好开始。等有真实来处时，我会把理解写在这里。")
-        .font(.subheadline)
-        .lineSpacing(4)
-        .foregroundStyle(Brand.muted)
       Button("和 Hymio 聊聊", action: onChat)
         .font(.subheadline.weight(.semibold))
-        .foregroundStyle(Brand.blue)
+        .padding(.horizontal, 16)
         .frame(minHeight: 44)
+        .foregroundStyle(Brand.onAccent)
+        .background(Brand.blue, in: Capsule())
     }
-    .padding(.vertical, 52)
+    .padding(.top, 76)
+    .padding(.bottom, 40)
   }
 
   private func sectionHeading(_ title: String, note: String) -> some View {

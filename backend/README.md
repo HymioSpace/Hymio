@@ -78,7 +78,7 @@ Restart Backend. An absent binding is denied, never routed to another user's def
 Backend must be able to reach the configured Nostalgia URL. From Docker, use service DNS or a
 host gateway instead of localhost. No context token is sent to the browser, Oath or the model.
 
-The unified launcher prepares `extensions/tools/_connection.local` and mounts the context tool
+The unified launcher prepares `extensions/tools/_connection.local` and mounts the context tools
 and skills along with the device tools. For a separately managed Oath deployment, mount
 `extensions/tools` and `extensions/skills`, disable built-in Bash as described in the extensions
 guide, and privately create `_connection.local` containing
@@ -92,19 +92,14 @@ curl http://localhost:8080/context/records \
   -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN" \
   -H 'Content-Type: application/json' -H 'Idempotency-Key: capture-example-1' \
   -d '{"item_type":"context","context_type":"text","context":{"text":"I use Vim"}}'
-curl http://localhost:8080/context/dreams \
-  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN" \
-  -H 'Content-Type: application/json' -H 'Idempotency-Key: dream-example-1' -d '{}'
-curl http://localhost:8080/context/dreams/DREAM_ID \
-  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN"
 ```
 
-`202` means Oath accepted the task; poll the returned dream ID until `committed` or inspect a
-remaining draft. Resume with `POST /context/dreams/DREAM_ID/resume`, `{}` and a new key. After an
-uncertain transport response, retry the original route with its original key. Abort uses the same
-path ending in `/abort`. Published artifacts and buffer can be inspected with
-`GET /context/injection`. Main-agent queries use the `nostalgia` tool; dreaming explicitly puts
-summary and buffer in model-visible task text. There is no periodic scheduler in this MVP.
+Dreaming is owned by Nostalgia. Its scheduler creates a bounded draft on a configured interval
+(default 600 seconds), calls a configured proposal provider, validates the result through the
+Nostalgia state machine and commits atomically. Hymio exposes a stateless internal proposal
+adapter at `/internal/dreaming/propose`; it is not an Agent tool and cannot be called from the
+public edge. The normal Agent only receives `remember` and `recall`. Published artifacts and the
+pending buffer are available through `GET /context/injection`.
 
 Run Backend regressions and the cross-repository Oath/Nostalgia integration from `backend/`:
 
@@ -113,9 +108,9 @@ uv run python -m pytest -q
 uv run --with-editable ../../Oath --with-editable ../../Nostalgia python -m pytest -q
 ```
 
-The second command uses real HTTP, Oath Gateway/Brain and threaded tools with a deterministic
-model. It verifies transport and publication, not live model quality. See
-[Context and dreaming](../spec/feature17-context-dreaming.md) for the protocol and limitations.
+The second command uses real HTTP for both services and loads the Hymio context extension into
+the generic Oath tool registry. It verifies context transport and tool behavior, not live model
+quality.
 
 ## Registration and Google sign-in
 

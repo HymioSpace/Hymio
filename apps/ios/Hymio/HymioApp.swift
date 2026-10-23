@@ -14,7 +14,10 @@ import SwiftUI
       Group {
         #if DEBUG
           if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
-            ContextPreviewScreen(account: account.session == nil ? nil : account)
+            ContextPreviewScreen(
+              account: account.session == nil ? nil : account,
+              empty: ProcessInfo.processInfo.arguments.contains("-HymioContextEmptyPreview")
+            )
           } else if account.session != nil {
             ProductShell(account: account, client: client).id(account.session?.user_id)
           } else {

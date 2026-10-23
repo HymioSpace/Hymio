@@ -7,7 +7,7 @@ from starlette.routing import Route
 
 from ..session_store import Unauthorized
 from .client import ContextError, NostalgiaClient
-from .dreaming import dispatch
+from .dream_proposal import propose
 from .ingress import import_conversation
 
 
@@ -28,8 +28,6 @@ def context_routes(settings, sessions, bearer, body):
                 user_id = data.pop("user_id")
                 if not isinstance(user_id, str) or not user_id:
                     raise ValueError("Invalid user")
-                if data.get("action") == "dreams.begin":
-                    raise ValueError("Start dreams through Hymio, not a tool")
                 result = await asyncio.to_thread(client.call, user_id, **data)
                 return JSONResponse(result)
             identity = await asyncio.to_thread(sessions.verify, bearer(request))
@@ -105,38 +103,7 @@ def context_routes(settings, sessions, bearer, body):
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "search", data=data))["data"]
                 )
-            key = request_key(request) if request.method == "POST" else None
-            if path == "/context/dreams":
-                if data:
-                    raise ValueError("Dream start has no body fields")
-                result = await asyncio.to_thread(
-                    client.call, user_id, "dreams.begin", operation_id="begin:" + key
-                )
-                dream_id = result["data"]["dream_id"]
-            else:
-                dream_id = request.path_params["dream_id"]
-            current = await asyncio.to_thread(
-                client.call, user_id, "dreams.read", dream_id=dream_id
-            )
-            dream = current["data"]
-            if request.method == "GET" or dream["state"] != "draft":
-                return JSONResponse(dream)
-            if path.endswith("/abort"):
-                result = await asyncio.to_thread(
-                    client.call,
-                    user_id,
-                    "dreams.abort",
-                    dream_id=dream_id,
-                    operation_id="abort:" + key,
-                )
-                return JSONResponse(result["data"])
-            if data:
-                raise ValueError("Resume has no body fields")
-            injection = await asyncio.to_thread(client.call, user_id, "injection")
-            result = await dispatch(
-                settings, bearer(request), user_id, dream, injection["data"], key
-            )
-            return JSONResponse(result, 202)
+            raise ValueError("Unknown context route")
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except ContextError as exc:
@@ -146,8 +113,25 @@ def context_routes(settings, sessions, bearer, body):
         except Exception:
             return JSONResponse({"error": "context_unavailable"}, 503)
 
+    async def dream_endpoint(request):
+        try:
+            expected = settings.service_token_file.read_text().strip()
+            if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
+                raise Unauthorized()
+            result = await asyncio.to_thread(propose, settings, await body(request, limit=262144))
+            return JSONResponse(result)
+        except Unauthorized:
+            return JSONResponse({"error": "unauthorized"}, 401)
+        except ContextError as exc:
+            return JSONResponse(exc.data, exc.status)
+        except (ValueError, KeyError, TypeError):
+            return JSONResponse({"error": "bad_request"}, 400)
+        except Exception:
+            return JSONResponse({"error": "dreaming_unavailable"}, 503)
+
     return [
         Route("/internal/context/call", endpoint, methods=["POST"]),
+        Route("/internal/dreaming/propose", dream_endpoint, methods=["POST"]),
         Route("/context/imports/conversation", endpoint, methods=["POST"]),
         Route("/context/assembly", endpoint),
         Route("/context/events", endpoint),
@@ -157,10 +141,6 @@ def context_routes(settings, sessions, bearer, body):
         Route("/context/injection", endpoint),
         Route("/context/records", endpoint, methods=["GET", "POST"]),
         Route("/context/search", endpoint, methods=["POST"]),
-        Route("/context/dreams", endpoint, methods=["POST"]),
-        Route("/context/dreams/{dream_id}", endpoint),
-        Route("/context/dreams/{dream_id}/resume", endpoint, methods=["POST"]),
-        Route("/context/dreams/{dream_id}/abort", endpoint, methods=["POST"]),
     ]
 
 

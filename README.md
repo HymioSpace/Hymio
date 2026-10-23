@@ -6,7 +6,7 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 [Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, Kits, clients and deployment.
 
-**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; A local stack launcher is available; Nostalgia integration remains future work. A single-host cloud deployment entry is available; production rollout still requires domain, identity and network setup.
+**Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; a local stack launcher is available; Nostalgia integrates source-aware context, Agent-facing `remember` / `recall` tools, and internally scheduled dreaming. A single-host cloud deployment entry is available; production rollout still requires domain, identity and network setup.
 
 <p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
@@ -60,7 +60,10 @@ navigation and can evolve independently from the product clients.
 
 Oath and Nostalgia remain independent projects. Integrate through their public protocols and versioned artifacts; keep their core implementations out of Hymio. No Git submodules are required by this scaffold.
 
-Hymio's deployment layer starts the local backend, Casdoor and Oath; Nostalgia remains future work. Clients connect to the configured services. The current Oath command already accepts external extension directories; Hymio provides the directories in [extensions](extensions/README.md).
+Hymio's deployment layer starts the local backend, Casdoor and Oath; Nostalgia runs as its own
+context service with a configured dreaming provider. Clients connect to the configured services.
+The Oath command accepts external extension directories; Hymio provides the directories in
+[extensions](extensions/README.md).
 
 ## Start here
 

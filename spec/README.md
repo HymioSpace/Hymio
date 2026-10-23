@@ -33,7 +33,6 @@
 | 27 | [Resource access and administration](feature27-resource-access-administration.md) | Implemented |
 | 28 | [Observability and evaluation](feature28-observability.md) | Implemented |
 | 30 | [记忆与 Context foundation](feature30-context-foundation.md) | Implemented：基础协议与双端入口 |
-| 31 | [Context 与 dreaming 接入](feature31-context-dreaming.md) | Implemented：手动整理闭环 |
 
 
 ## 设计与实现

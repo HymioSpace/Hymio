@@ -35,7 +35,3 @@ def request_context(invocation, arguments):
         raise ToolExecutionError(
             "Context connection unavailable. Retry uncertain writes with the same operation_id."
         ) from exc
-
-
-def call_context(invocation):
-    return request_context(invocation, invocation.arguments)

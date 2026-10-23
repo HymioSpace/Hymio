@@ -2,7 +2,7 @@
 
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
-当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 已接入原始写入、Agent 查询与手动 dreaming，见 [feature31](feature31-context-dreaming.md)。本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。
+当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 已接入原始写入、Agent 查询、内部周期 dreaming 与稳定 context assembly，见 [feature30](feature30-context-foundation.md)。本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。
 
 ## 产品边界
 
@@ -17,7 +17,7 @@ iOS 原生客户端位于 apps/ios，接入同一账号与单一会话，见 [fe
 
 Context 的入口只有导入与同步：文字、语音、照片、文件和历史快照都属于一次性导入；绑定来源后持续获取变化属于同步。采集、连接器和媒体处理归 Hymio，Context 的规范与检索归 Nostalgia。
 
-现有 MVP 提供手动写入与整理 API。Hymio 的 `nostalgia` tool 经 Backend 访问对应用户的 Nostalgia；dreaming skill 由 Oath 执行。整理发布前继续读取旧制品与近期输入，提交后原子切换；采集 UI 和周期调度尚未实现。
+现有 MVP 提供原始写入、检索和内部周期 dreaming API。Nostalgia 自己调度草稿、调用可配置的 proposal provider 并原子发布；Hymio 只配置 provider、代理用户请求并向 Agent 提供 `remember` / `recall`。Oath 不包含 context 业务工具或 dreaming 语义。
 
 Kit 同时提供 Agent 可调用操作和用户体验。业务数据与约束归 Kit；Nostalgia 可保存其 context projection；Agent 和 UI 使用相同业务 API。
 

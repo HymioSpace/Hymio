@@ -21,16 +21,12 @@ class NostalgiaClient:
         "records.list",
         "records.read",
         "artifacts.read",
-        "dreams.read",
     }
     WRITES = {
         "records.append",
         "records.mark",
         "artifacts.put",
         "artifacts.delete",
-        "dreams.begin",
-        "dreams.commit",
-        "dreams.abort",
     }
 
     def __init__(self, settings):
@@ -75,7 +71,6 @@ class NostalgiaClient:
         action,
         *,
         item_id=None,
-        dream_id=None,
         data=None,
         query=None,
         etag=None,
@@ -88,18 +83,6 @@ class NostalgiaClient:
             not isinstance(operation_id, str) or not 1 <= len(operation_id) <= 160
         ):
             raise ValueError("Writes require a stable operation_id of 1..160 characters")
-        if (
-            action
-            in {
-                "records.mark",
-                "artifacts.put",
-                "artifacts.delete",
-                "dreams.commit",
-                "dreams.abort",
-            }
-            and not dream_id
-        ):
-            raise ValueError("This operation requires dream_id")
         if action in {
             "records.read",
             "records.mark",
@@ -108,10 +91,7 @@ class NostalgiaClient:
             "artifacts.delete",
         } and not isinstance(item_id, str):
             raise ValueError("This operation requires item_id")
-        if action == "dreams.read" and not dream_id:
-            raise ValueError("This operation requires dream_id")
         component = quote(str(item_id), safe="")
-        dream = quote(str(dream_id), safe="")
         routes = {
             "assembly": ("GET", "/v1/assembly"),
             "events": ("GET", "/v1/events"),
@@ -124,29 +104,10 @@ class NostalgiaClient:
             "artifacts.put": ("PUT", f"/v1/artifacts/{component}"),
             "artifacts.delete": ("DELETE", f"/v1/artifacts/{component}"),
             "search": ("POST", "/v1/search"),
-            "dreams.begin": ("POST", "/v1/dreams"),
-            "dreams.read": ("GET", f"/v1/dreams/{dream}"),
-            "dreams.commit": ("POST", f"/v1/dreams/{dream}/commit"),
-            "dreams.abort": ("POST", f"/v1/dreams/{dream}/abort"),
         }
         method, path = routes[action]
         params = dict(query or {})
         payload = dict(data or {})
-        if dream_id and action in {
-            "records.list",
-            "records.read",
-            "records.mark",
-            "artifacts.read",
-            "artifacts.put",
-            "artifacts.delete",
-        }:
-            if params.get("dream_id", dream_id) != dream_id:
-                raise ValueError("Conflicting dream scopes")
-            params["dream_id"] = dream_id
-        if action == "search" and dream_id:
-            if payload.get("dream_id", dream_id) != dream_id:
-                raise ValueError("Conflicting dream scopes")
-            payload["dream_id"] = dream_id
         if action == "records.list":
             params.setdefault("limit", 10)
         if action == "search":

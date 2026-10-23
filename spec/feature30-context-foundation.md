@@ -13,9 +13,17 @@ Kit 表示业务投影，对话表示陈述，连接器保留外部身份/版本
 这些分类不能充当授权或执行成功证明。采集/解析归 Hymio，来源和检索归 Nostalgia。
 
 Agent 通过语义化的 `remember` 工具保存用户明确要求保留、或明确陈述的稳定个人信息，
-通过 `recall` 在回答过往偏好与经历前检索。`nostalgia` 只承担来源核对、纠正、更新和
-dreaming 等高级操作。工具调用由模型决定，不按关键词拦截消息；保存成功前模型不得声称
-已经记住。用户主动选择历史导入时，才把既有对话转成原始 conversation record。
+通过 `recall` 在回答过往偏好与经历前检索。工具调用由模型决定，不按关键词拦截消息；
+保存成功前模型不得声称已经记住。用户主动选择历史导入时，才把既有对话转成原始
+conversation record。
+
+`assembly`、`events` 与 `injection` 是 context builder 的内部读取路径，不是 Agent 工具。
+Dreaming 是 Nostalgia 内部的周期机制，不是普通对话可调用的动作。
+
+Oath 只提供通用工具注册与运行机制，不定义 Hymio 的 `remember`、`recall`、`tasks` 或
+context 业务语义。所有 Hymio 工具都位于本仓库 `extensions/tools/`，由部署时挂载。
+Nostalgia owns context storage and scheduled dreaming; Hymio Backend wraps its API for clients,
+and a stateless internal adapter supplies structured dream proposals when configured.
 
 产品入口叫「认识」：Web 侧栏、iOS 第五个原生 tab。页面不是来源管理列表，而是 Hymio
 当前对用户的编辑式理解：先呈现提炼后的判断，再在下方保留可追溯的原始记录。对话引文、

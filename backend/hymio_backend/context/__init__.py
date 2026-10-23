@@ -1,1 +1,1 @@
-"""Personal context access and Oath dreaming orchestration."""
+"""Personal context access and the internal adapter for Nostalgia-owned dreaming."""

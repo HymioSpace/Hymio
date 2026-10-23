@@ -349,32 +349,6 @@ export function MomentsPanel({ login, onChat }: { login: LoginState; onChat: () 
     }
   }
 
-  async function refine() {
-    setNotice('Hymio 正在重新整理对你的理解…');
-    setError('');
-    try {
-      const value = await request('dreams', {});
-      const id = value.dream_id;
-      if (!id) throw new Error('这次整理没有开始，请稍后再试。');
-      for (let attempt = 0; attempt < 30; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const state: { state?: string } = await request(`dreams/${encodeURIComponent(id)}`);
-        if (state.state === 'committed') {
-          setNotice('新的理解已经和来处一起放回页面。');
-          await load();
-          return;
-        }
-        if (state.state === 'aborted' || state.state === 'failed') {
-          throw new Error('这次整理没有完成，原来的内容仍然保留。');
-        }
-      }
-      setNotice('Hymio 还在慢慢整理，稍后回来看看。');
-    } catch (reason) {
-      setNotice('');
-      setError((reason as Error).message);
-    }
-  }
-
   const sourceCounts = records.reduce<Record<string, number>>((result, item) => {
     const kind = item.source?.kind || 'legacy';
     result[kind] = (result[kind] || 0) + 1;
@@ -384,32 +358,30 @@ export function MomentsPanel({ login, onChat }: { login: LoginState; onChat: () 
   return (
     <main className="understanding-page">
       <div className="understanding-content">
-        <header className="understanding-hero">
-          <div className="understanding-intro">
-            <span className="understanding-kicker">
-              <i aria-hidden="true" />
-              Hymio 正在认识你
-              <span>
-                {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}
+        {!loading && !error && !insights.length && !records.length ? null : (
+          <header className="understanding-hero">
+            <div className="understanding-intro">
+              <span className="understanding-kicker">
+                <i aria-hidden="true" />
+                Hymio 正在认识你
+                <span>
+                  {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}
+                </span>
               </span>
-            </span>
-            <h1>我眼中的你</h1>
-            <p>我一边陪你做事，一边慢慢认识你。这些理解都能回到它们发生的地方。</p>
-          </div>
-          <div className="understanding-companion">
-            <Companion mood="idle" />
-          </div>
-        </header>
+              <h1>我眼中的你</h1>
+              <p>我一边陪你做事，一边慢慢认识你。这些理解都能回到它们发生的地方。</p>
+            </div>
+            <div className="understanding-companion">
+              <Companion mood="idle" />
+            </div>
+          </header>
+        )}
 
         <details className="understanding-menu">
           <summary aria-label="整理 Hymio 对你的理解">
             <MoreHorizontal size={19} aria-hidden="true" />
           </summary>
           <div>
-            <button onClick={() => void refine()}>
-              <Sparkles size={15} />
-              重新整理
-            </button>
             <button onClick={() => void importConversation()}>
               <RefreshCw size={15} />
               回看最近对话
@@ -437,11 +409,9 @@ export function MomentsPanel({ login, onChat }: { login: LoginState; onChat: () 
           </div>
         ) : !insights.length && !records.length ? (
           <section className="understanding-empty">
-            <Companion mood="waiting" />
-            <h2>我还不太认识你。</h2>
-            <p>从一段对话、一件事或一个偏好开始。等有真实来处时，我会把理解写在这里。</p>
+            <p>和 Hymio 聊一件想让我记住的事，我会从这里慢慢认识你。</p>
             <button onClick={onChat}>
-              和 Hymio 聊聊
+              开始聊聊
               <ArrowRight size={16} />
             </button>
           </section>
