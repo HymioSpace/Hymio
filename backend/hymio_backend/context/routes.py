@@ -6,6 +6,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ..session_store import Unauthorized
+from .browse import CATEGORIES, browse
 from .client import ContextError, NostalgiaClient
 from .dream_proposal import propose
 from .ingress import import_conversation
@@ -63,8 +64,11 @@ def context_routes(settings, sessions, bearer, body):
                     )["data"]
                 )
             if path == "/context/saves":
-                if set(data) != {"text"} or not isinstance(data["text"], str):
+                if set(data) - {"text", "category"} or not isinstance(data.get("text"), str):
                     raise ValueError("Provide text")
+                category = data.get("category", "uncategorized")
+                if not isinstance(category, str) or category not in CATEGORIES:
+                    raise ValueError("Invalid category")
                 text = data["text"].strip()
                 if not 1 <= len(text) <= 16000:
                     raise ValueError("Invalid text length")
@@ -77,7 +81,10 @@ def context_routes(settings, sessions, bearer, body):
                     data={
                         "item_type": "context",
                         "context_type": "text",
-                        "context": {"text": text},
+                        "context": {
+                            "text": text,
+                            **({"category": category} if "category" in data else {}),
+                        },
                         "source": {
                             "kind": "user",
                             "namespace": "hymio.saved",
@@ -99,6 +106,8 @@ def context_routes(settings, sessions, bearer, body):
                     client.call, user_id, "records.append", data=data, operation_id=key
                 )
                 return JSONResponse(result["data"], result["status_code"])
+            if path == "/context/browse":
+                return JSONResponse(await asyncio.to_thread(browse, client, user_id, data))
             if path == "/context/search":
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "search", data=data))["data"]
@@ -141,6 +150,7 @@ def context_routes(settings, sessions, bearer, body):
         Route("/context/injection", endpoint),
         Route("/context/records", endpoint, methods=["GET", "POST"]),
         Route("/context/search", endpoint, methods=["POST"]),
+        Route("/context/browse", endpoint, methods=["POST"]),
     ]
 
 

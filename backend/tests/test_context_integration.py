@@ -163,12 +163,40 @@ def test_semantic_context_tools_remember_and_recall(stack):
     invocation = ToolInvocation(
         user=stack.user,
         invocation_id="remember-spicy-food",
-        arguments={"text": "我喜欢吃辣。", "topic": "饮食"},
+        arguments={
+            "summary": "喜欢吃辣。",
+            "text": "我喜欢吃辣。",
+            "topic": "饮食",
+            "title": "喜欢辣味",
+            "category": "life",
+        },
         deadline=time.monotonic() + 20,
     )
     saved = tools["remember"].execute(invocation)
     assert saved.content["data"]["source"]["kind"] == "conversation"
     assert saved.content["data"]["context"]["text"] == "我喜欢吃辣。"
+    assert saved.content["data"]["context"]["memory"] == {
+        "summary": "喜欢吃辣。",
+        "state": "proposed",
+        "title": "喜欢辣味",
+        "category": "life",
+    }
+    assert saved.content["data"]["context"]["provenance"] == {
+        "kind": "provided_quote",
+        "invocation_id": "remember-spicy-food",
+    }
+    assert saved.content["data"]["source"]["parser"] == "hymio.remember.v2"
+    from core.protocol.error import ToolExecutionError
+
+    with pytest.raises(ToolExecutionError):
+        tools["remember"].execute(
+            ToolInvocation(
+                user=stack.user,
+                invocation_id="missing-extraction",
+                arguments={"text": "随便聊两句。"},
+                deadline=time.monotonic() + 20,
+            )
+        )
     repeated = tools["remember"].execute(invocation)
     assert repeated.content["data"]["id"] == saved.content["data"]["id"]
     recalled = tools["recall"].execute(
@@ -236,3 +264,194 @@ def test_moments_proxy_and_event_callback_recovery(stack):
         )["has_more"]
         is False
     )
+
+
+def test_recall_reads_full_originals_and_rejects_ambiguous_requests(stack):
+    from core.protocol.error import ToolExecutionError
+
+    extensions_path = stack.tmp / "read-tools"
+    shutil.copytree(
+        Path(__file__).resolve().parents[2] / "extensions",
+        extensions_path,
+        ignore=shutil.ignore_patterns("_connection.local", "__pycache__"),
+    )
+    (extensions_path / "tools/_connection.local").write_text(
+        json.dumps({"url": stack.url, "token": "s" * 40})
+    )
+    tool = next(
+        tool
+        for tool in load_extensions((extensions_path,)).tools
+        if tool.definition.name == "recall"
+    )
+    original = "学习西语。" + "原始依据需要完整保留。" * 200
+    record = append(stack, original, "long-original")
+
+    def recall(arguments):
+        return tool.execute(
+            ToolInvocation(
+                user=stack.user,
+                invocation_id="read-original",
+                arguments=arguments,
+                deadline=time.monotonic() + 20,
+            )
+        ).content["data"]
+
+    hit = recall({"query": "西语"})["items"][0]
+    assert hit["truncated"] is True
+    full = recall({"action": "read", "kind": "record", "id": hit["id"]})
+    assert full["id"] == record["id"]
+    assert full["context"]["text"] == original
+    # Publish an interpretation, then follow its reference through the same Agent tool.
+    url, token = stack.context.connection(stack.user.user_id)
+    with httpx.Client(
+        base_url=url, headers={"Authorization": "Bearer " + token}, trust_env=False
+    ) as api:
+        started = api.post("/v1/dreams", headers={"Idempotency-Key": "start-read-test"})
+        assert started.status_code < 300, started.text
+        dream_id = started.json()["dream_id"]
+        record_path = f"/v1/records/{record['id']}?dream_id={dream_id}"
+        etag = api.get(record_path).headers["etag"]
+        marked = api.patch(
+            record_path,
+            json={"processing_state": "applied", "status": "active"},
+            headers={"Idempotency-Key": "mark-read-test", "If-Match": etag},
+        )
+        assert marked.status_code < 300, marked.text
+        for item_id, body in [
+            (
+                "learning",
+                {
+                    "content": "学习西语",
+                    "fields": {"title": "散步时学西语", "category": "learning"},
+                    "references": [{"record_id": record["id"], "root_id": record["root_id"]}],
+                },
+            ),
+            ("_index", {"content": "学习", "links": ["learning"]}),
+        ]:
+            result = api.put(
+                f"/v1/artifacts/{item_id}?dream_id={dream_id}",
+                json=body,
+                headers={"Idempotency-Key": "put-" + item_id, "If-None-Match": "*"},
+            )
+            assert result.status_code < 300, result.text
+        etag = api.get(f"/v1/dreams/{dream_id}").headers["etag"]
+        published = api.post(
+            f"/v1/dreams/{dream_id}/commit",
+            headers={"Idempotency-Key": "commit-read-test", "If-Match": etag},
+        )
+        assert published.status_code < 300, published.text
+    categorized = stack.public.post(
+        "/context/browse", json={"target": "artifacts", "category": "learning"}
+    ).json()
+    assert [v["id"] for v in categorized["items"]] == ["learning"]
+    assert categorized["items"][0]["title"] == "散步时学西语"
+    assert (
+        stack.public.post(
+            "/context/browse", json={"target": "artifacts", "category": "work"}
+        ).json()["items"]
+        == []
+    )
+    interpretation = recall({"action": "read", "kind": "artifact", "id": "learning"})
+    assert interpretation["content"] == "学习西语"
+    assert interpretation["references"][0]["record_id"] == record["id"]
+    with pytest.raises(ToolExecutionError):
+        recall({"action": "read", "id": record["id"]})
+    with pytest.raises(ToolExecutionError):
+        recall({"action": "read", "kind": "record", "id": record["id"], "query": "西语"})
+    with pytest.raises(ToolExecutionError):
+        recall({"action": "delete", "kind": "record", "id": record["id"]})
+
+
+def test_ui_save_search_and_pending_understanding(stack):
+    saved = stack.public.post(
+        "/context/saves",
+        json={"text": "每天散步时听西语。"},
+        headers={"Idempotency-Key": "ui-save-spanish"},
+    )
+    assert saved.status_code == 201
+    record = saved.json()
+    found = stack.public.post(
+        "/context/search",
+        json={
+            "target": "records",
+            "mode": "text",
+            "query": "西语",
+            "filters": {},
+            "limit": 30,
+        },
+    ).json()
+    assert found["items"][0]["source"]["kind"] == "user"
+    injection = stack.context.call(stack.user.user_id, "injection")["data"]
+    assert injection["buffer"][0]["id"] == record["id"]
+    # A confirmed save is an original, not fabricated synthesized understanding.
+    artifacts = stack.public.post(
+        "/context/search",
+        json={
+            "target": "artifacts",
+            "mode": "filter",
+            "query": None,
+            "filters": {},
+            "limit": 30,
+        },
+    ).json()
+    assert not [item for item in artifacts["items"] if not item["id"].startswith("_")]
+    conflict = stack.public.post(
+        "/context/saves",
+        json={"text": "不同的正文"},
+        headers={"Idempotency-Key": "ui-save-spanish"},
+    )
+    assert conflict.status_code == 409
+
+
+def test_browse_classification_and_cursor(stack):
+    # Classification must search beyond the first upstream page, with no loss or repeats.
+    expected = []
+    for index in range(35):
+        category = "learning" if index in {3, 31, 34} else "work"
+        res = stack.public.post(
+            "/context/saves",
+            json={"text": f"browse fixture {index}", "category": category},
+            headers={"Idempotency-Key": f"category-{index}"},
+        )
+        assert res.status_code == 201, res.text
+        if category == "learning":
+            expected.append(res.json()["id"])
+    params = {"target": "records", "category": "learning", "limit": 2}
+    first = stack.public.post("/context/browse", json=params)
+    assert first.status_code == 200, first.text
+    page = first.json()
+    assert [v["id"] for v in page["items"]] == expected[:2]
+    assert all(v["category"] == "learning" for v in page["items"])
+    assert page["next_cursor"]
+    second = stack.public.post(
+        "/context/browse", json={**params, "cursor": page["next_cursor"]}
+    ).json()
+    assert [v["id"] for v in second["items"]] == expected[2:]
+    assert not second["next_cursor"]
+    assert (
+        stack.public.post(
+            "/context/browse", json={**params, "category": "life", "cursor": page["next_cursor"]}
+        ).status_code
+        == 400
+    )
+    assert (
+        stack.public.post("/context/browse", json={**params, "cursor": "invalid"}).status_code
+        == 400
+    )
+    assert (
+        stack.public.post(
+            "/context/saves",
+            json={"text": "invalid", "category": "guess"},
+            headers={"Idempotency-Key": "invalid-category"},
+        ).status_code
+        == 400
+    )
+    legacy = stack.public.post(
+        "/context/saves",
+        json={"text": "legacy without category"},
+        headers={"Idempotency-Key": "legacy-category"},
+    ).json()
+    unclassified = stack.public.post(
+        "/context/browse", json={"target": "records", "category": "uncategorized"}
+    ).json()
+    assert [v["id"] for v in unclassified["items"]] == [legacy["id"]]

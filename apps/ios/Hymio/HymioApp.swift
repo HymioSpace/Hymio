@@ -18,6 +18,13 @@ import SwiftUI
               account: account.session == nil ? nil : account,
               empty: ProcessInfo.processInfo.arguments.contains("-HymioContextEmptyPreview")
             )
+            .environment(
+              \.dynamicTypeSize,
+              ProcessInfo.processInfo.arguments.contains("-HymioContextLargeTextPreview")
+                ? .accessibility3 : .large
+            )
+            .preferredColorScheme(
+              ProcessInfo.processInfo.arguments.contains("-HymioContextDarkPreview") ? .dark : nil)
           } else if account.session != nil {
             ProductShell(account: account, client: client).id(account.session?.user_id)
           } else {

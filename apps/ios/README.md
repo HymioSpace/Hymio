@@ -10,7 +10,7 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
 - Foreground reconnect, offline progress, account/device view and connection diagnostics.
 
-Kits, personal context, uploads, voice input, push notifications and native phone control are not included.
+The Memory tab (记忆) has understanding and original footprints, text search, direct text saving and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md). Automated context collectors and health connectors are not included.
 
 ## Run locally
 
@@ -118,3 +118,12 @@ See [Apple's upload guide](https://developer.apple.com/help/app-store-connect/ma
 and [internal tester guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers/).
 
 UI catalog, progressive rendering and model skill integration: [feature20](../../spec/feature20-progressive-ui.md). Run `testNativeSurfaceInteraction` only against a development Backend with open registration; it uses real model calls and may provision an E2B computer before cleanup.
+
+## Memory UI previews
+
+Debug includes synthetic, account-independent memory previews. Launch the built Simulator app
+with `-HymioContextPreview`; add `-HymioContextEmptyPreview` for first use,
+`-HymioContextDarkPreview` for dark appearance, or `-HymioContextLargeTextPreview` for
+accessibility text size. These flags do not alter the real account or system appearance.
+For actual persistence across clients, `backend/scripts/memory_preview.py` serves a loopback-only
+synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http://127.0.0.1:1422`.

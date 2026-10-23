@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from nostalgia.api import create_app
 from nostalgia.bootstrap.config import Settings
 from starlette.applications import Starlette
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
@@ -31,7 +32,7 @@ settings = SimpleNamespace(
     access_seconds=86400,
     refresh_seconds=86400,
     public_url="http://127.0.0.1:18480",
-    origins=(),
+    origins=("http://127.0.0.1:1422",),
     service_token_file=root / "service-token",
     nostalgia_connections_file=root / "connections.json",
     oath_ws="ws://127.0.0.1:18480/agent/ws",
@@ -78,7 +79,17 @@ for text, kind, namespace in [
             {
                 "item_type": "context",
                 "context_type": "text",
-                "context": {"text": text},
+                "context": {
+                    "text": text,
+                    "category": ["work", "life", "learning", "life", "work"][len(records)],
+                    "title": [
+                        "先看结论，再看依据",
+                        "自然一点的表达",
+                        "散步时学西语",
+                        "下午的饮品偏好",
+                        "首页方案讨论",
+                    ][len(records)],
+                },
                 "source": {
                     "kind": kind,
                     "namespace": namespace,
@@ -92,14 +103,31 @@ for record in records:
     path = f"/v1/records/{record['id']}?dream_id={dream}"
     etag = call("GET", path).headers["etag"]
     call("PATCH", path, {"processing_state": "applied", "status": "active"}, {"If-Match": etag})
-for id, text, topic, indices in [
+for id, text, topic, title, category, indices in [
     (
         "communication",
         "你喜欢直接、自然的交流。讨论方案时，先给结论和可操作的版本，再展开依据。",
         "交流方式",
+        "先看结论，再看依据",
+        "work",
         [0, 1],
     ),
-    ("learning", "你正在学习西班牙语，想把每天散步的时间，留一点给语言学习。", "正在关注", [2]),
+    (
+        "learning",
+        "我喜欢在散步时听西语日常对话，利用碎片时间学习，希望轻松一点、容易坚持。",
+        "语言学习",
+        "散步时学西语",
+        "learning",
+        [2],
+    ),
+    (
+        "daily-drinks",
+        "下午尽量不喝咖啡，选择清淡的茶。",
+        "日常习惯",
+        "下午，喝一点清茶",
+        "life",
+        [3],
+    ),
 ]:
     call(
         "PUT",
@@ -107,6 +135,7 @@ for id, text, topic, indices in [
         {
             "content": text,
             "topics": [topic],
+            "fields": {"title": title, "category": category},
             "references": [
                 {"root_id": records[i]["root_id"], "record_id": records[i]["id"]} for i in indices
             ],
@@ -148,11 +177,19 @@ app = Starlette(
     routes=[
         Route("/auth/options", options),
         Route("/auth/account", login, methods=["POST"]),
+        Route("/auth/logout", empty, methods=["POST"]),
         Route("/tasks", empty),
         Route("/models", empty),
     ]
     + context_routes(settings, sessions, bearer, body)
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list(settings.origins),
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+)
+
 print(
     "Synthetic memory fixture ready at http://127.0.0.1:18480; login demo / memory-demo", flush=True
 )

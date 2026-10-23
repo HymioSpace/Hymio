@@ -33,6 +33,7 @@
 | 27 | [Resource access and administration](feature27-resource-access-administration.md) | Implemented |
 | 28 | [Observability and evaluation](feature28-observability.md) | Implemented |
 | 30 | [记忆与 Context foundation](feature30-context-foundation.md) | Implemented：基础协议与双端入口 |
+| 31 | [记忆空间](feature31-memory-space.md) | Implemented：理解、足迹与按需星图 |
 
 
 ## 设计与实现

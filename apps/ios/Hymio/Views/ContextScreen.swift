@@ -1,9 +1,13 @@
 import SwiftUI
 
+private let memoryCategories: [(key: String, label: String)] = [
+  ("all", "全部"), ("work", "工作"), ("learning", "学习"), ("life", "生活"), ("uncategorized", "未分类"),
+]
+
 /// A user-facing view of the context Hymio has assembled, with each synthesized
 /// statement still traceable to its source records.
-struct ContextEntry: Identifiable, Hashable {
-  enum Entity: String {
+struct ContextEntry: Identifiable, Hashable, Sendable {
+  enum Entity: String, Sendable {
     case artifact
     case record
   }
@@ -14,6 +18,8 @@ struct ContextEntry: Identifiable, Hashable {
   let sourceKind: String
   let namespace: String
   let createdAt: String
+  let title: String
+  let category: String
   let topics: [String]
   let referenceCount: Int
   let value: JSON
@@ -22,10 +28,10 @@ struct ContextEntry: Identifiable, Hashable {
   var isInsight: Bool { entity == .artifact }
   var sourceTitle: String {
     switch sourceKind {
-    case "conversation": return "对话"
+    case "conversation": return "对话原话"
     case "connector": return namespace.isEmpty ? "连接服务" : connectorName(namespace)
     case "kit": return "应用"
-    case "user": return "你留下的"
+    case "user": return "主动记下"
     default: return "其他来源"
     }
   }
@@ -40,7 +46,7 @@ struct ContextEntry: Identifiable, Hashable {
   }
   var dateLabel: String {
     guard let date = contextDate(createdAt) else { return "" }
-    return date.formatted(.dateTime.month(.abbreviated).day())
+    return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
   }
 
   init(_ value: JSON) {
@@ -50,7 +56,19 @@ struct ContextEntry: Identifiable, Hashable {
     preview = contextReadable(value["preview"].text)
     sourceKind = value["source"]["kind"].text.isEmpty ? "legacy" : value["source"]["kind"].text
     namespace = value["source"]["namespace"].text
-    createdAt = value["created_at"].text
+    createdAt =
+      value["updated_at"].text.isEmpty ? value["created_at"].text : value["updated_at"].text
+    let metadata = entity == .artifact ? value["fields"] : value["context"]["memory"]
+    title =
+      value["title"].text.isEmpty
+      ? (metadata["title"].text.isEmpty ? value["context"]["title"].text : metadata["title"].text)
+      : value["title"].text
+    let storedCategory =
+      value["category"].text.isEmpty ? metadata["category"].text : value["category"].text
+    category =
+      storedCategory.isEmpty
+      ? (value["context"]["category"].text.isEmpty
+        ? "uncategorized" : value["context"]["category"].text) : storedCategory
     topics = value["topics"].items.map(\.text).filter { !$0.isEmpty }
     referenceCount = value["references"].items.count
   }
@@ -63,113 +81,184 @@ final class ContextStore: ObservableObject {
   @Published private(set) var loading = true
   @Published private(set) var error = ""
   @Published private(set) var feedback = ""
-  @Published private(set) var imported = false
-  @Published private(set) var busy = false
   @Published private(set) var moreBusy = false
-
+  @Published private(set) var saving = false
+  @Published var draft = ""
+  @Published var draftCategory = "uncategorized"
+  @Published private(set) var category = "all"
+  @Published private(set) var saveError = ""
+  @Published private(set) var pendingSave = false
+  @Published private(set) var insightCursor = ""
+  @Published private(set) var recordCursor = ""
+  @Published private(set) var partial = false
   private let account: AccountService?
   private let preview: Bool
   private var details: [String: JSON] = [:]
-  private(set) var insightCursor = ""
-  private(set) var recordCursor = ""
+  private var allPreviewInsights: [ContextEntry] = []
+  private var allPreviewRecords: [ContextEntry] = []
+  private var generation = UUID()
+  private(set) var query = ""
+  private var confirmedSaves: [ContextEntry] = []
+  private var saveOperation: (key: String, text: String, category: String)?
 
   init(account: AccountService, preview: Bool = false, installFixtures: Bool = true) {
     self.account = account
     self.preview = preview
     if preview {
       if installFixtures { installPreview() } else { loading = false }
+      allPreviewInsights = insights
+      allPreviewRecords = records
     }
   }
-
   var isEmpty: Bool { insights.isEmpty && records.isEmpty }
 
-  func load(showBusy: Bool = true) async {
+  private func search(_ target: String, cursor: String = "") async throws -> JSON {
+    guard let account else { throw ServiceError.message("暂时读不到记忆。") }
+    return try await account.request(
+      "context/browse",
+      body: .object([
+        "target": .string(target), "category": .string(category),
+        "query": query.isEmpty ? .null : .string(query),
+        "limit": .number(30), "cursor": cursor.isEmpty ? .null : .string(cursor),
+      ]))
+  }
+  func load(query nextQuery: String? = nil, category nextCategory: String? = nil) async {
+    let next = nextQuery ?? query
+    let changed = next != query || (nextCategory != nil && nextCategory != category)
+    category = nextCategory ?? category
+    query = next
+    let current = UUID()
+    generation = current
+    loading = true
+    error = ""
+    moreBusy = false
+    if changed {
+      insights = []
+      records = []
+      insightCursor = ""
+      recordCursor = ""
+    }
     if preview {
+      insights = allPreviewInsights.filter {
+        (category == "all" || $0.category == category)
+          && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
+      }
+      records = allPreviewRecords.filter {
+        (category == "all" || $0.category == category)
+          && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
+      }
       loading = false
       return
     }
-    guard let account else { return }
-    if showBusy && isEmpty { loading = true }
-    error = ""
     do {
-      async let artifactResult = account.request(
-        "context/search",
-        body: .object([
-          "target": .string("artifacts"), "mode": .string("filter"), "query": .null,
-          "filters": .object([:]), "limit": .number(30), "cursor": .null,
-        ]))
-      async let recordResult = account.request(
-        "context/search",
-        body: .object([
-          "target": .string("records"), "mode": .string("filter"), "query": .null,
-          "filters": .object([:]), "limit": .number(30), "cursor": .null,
-        ]))
-      let (artifactValue, recordValue) = try await (artifactResult, recordResult)
-      insights = artifactValue["items"].items.map(ContextEntry.init).filter {
-        !$0.id.hasPrefix("_")
+      async let artifactResult = search("artifacts")
+      async let recordResult = search("records")
+      let (a, r) = try await (artifactResult, recordResult)
+      guard current == generation, !Task.isCancelled else { return }
+      insights = a["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
+      let fetched = r["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
+      let recent = confirmedSaves.filter {
+        (category == "all" || $0.category == category)
+          && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
-      records = recordValue["items"].items.map(ContextEntry.init).filter {
-        !$0.id.hasPrefix("_")
-      }
-      insightCursor = artifactValue["next_cursor"].text
-      recordCursor = recordValue["next_cursor"].text
-    } catch is CancellationError {
-      return
+      let recentIDs = Set(recent.map(\.compositeID))
+      records = recent + fetched.filter { !recentIDs.contains($0.compositeID) }
+      insightCursor = a["next_cursor"].text
+      recordCursor = r["next_cursor"].text
+      partial = a["partial"] == .bool(true) || r["partial"] == .bool(true)
+      details.removeAll()
     } catch {
-      self.error = "暂时没能接回 Hymio 对你的了解。"
+      guard current == generation else { return }
+      if !Task.isCancelled { self.error = "暂时读不到记忆，请稍后重试。" }
     }
-    loading = false
+    if current == generation { loading = false }
   }
-
-  func loadMoreRecords() async {
-    guard !moreBusy, !recordCursor.isEmpty, let account, !preview else { return }
+  func loadMore(insights targetInsights: Bool) async {
+    let cursor = targetInsights ? insightCursor : recordCursor
+    guard !cursor.isEmpty, !moreBusy, !loading, !preview else { return }
+    let current = generation
     moreBusy = true
-    defer { moreBusy = false }
+    defer { if current == generation { moreBusy = false } }
     do {
-      let value = try await account.request(
-        "context/search",
-        body: .object([
-          "target": .string("records"), "mode": .string("filter"), "query": .null,
-          "filters": .object([:]), "limit": .number(30), "cursor": .string(recordCursor),
-        ]))
-      let known = Set(records.map(\.compositeID))
-      records += value["items"].items.map(ContextEntry.init).filter {
-        !$0.id.hasPrefix("_") && !known.contains($0.compositeID)
+      let result = try await search(targetInsights ? "artifacts" : "records", cursor: cursor)
+      guard current == generation, !Task.isCancelled else { return }
+      let items = result["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
+      if targetInsights {
+        let known = Set(insights.map(\.compositeID))
+        insights += items.filter { !known.contains($0.compositeID) }
+        insightCursor = result["next_cursor"].text
+      } else {
+        let known = Set(records.map(\.compositeID))
+        records += items.filter { !known.contains($0.compositeID) }
+        recordCursor = result["next_cursor"].text
       }
-      recordCursor = value["next_cursor"].text
-    } catch {
-      self.error = "还有更早的来处没有接回，请稍后再试。"
-    }
+    } catch { if current == generation { self.error = "未能读取更多记忆，请重试。" } }
   }
-
   func detail(for entry: ContextEntry) async throws -> JSON {
-    if let cached = details[entry.compositeID] { return cached }
-    guard let account else { throw ServiceError.message("这份内容暂时无法打开。") }
+    if let value = details[entry.compositeID] { return value }
+    guard let account else { throw ServiceError.message("暂时无法读取完整内容。") }
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+    guard let encoded = entry.id.addingPercentEncoding(withAllowedCharacters: allowed) else {
+      throw ServiceError.message("记录地址无效。")
+    }
     let value = try await account.request(
-      "context/\(entry.isInsight ? "artifacts" : "records")/\(entry.id)")
+      "context/\(entry.isInsight ? "artifacts" : "records")/\(encoded)")
     details[entry.compositeID] = value
     return value
   }
-
-  func importConversation() async {
-    guard !busy, let account, !preview else { return }
-    busy = true
-    error = ""
-    feedback = "Hymio 正在回看最近的对话…"
-    defer { busy = false }
+  func original(_ id: String) async throws -> ContextEntry {
+    let stub = ContextEntry(.object(["id": .string(id), "kind": .string("record")]))
+    let value = try await detail(for: stub)
+    return ContextEntry(
+      .object([
+        "id": .string(id), "kind": .string("record"), "preview": .string(contextContent(value)),
+        "source": value["source"], "created_at": value["created_at"], "context": value["context"],
+      ]))
+  }
+  func save() async -> Bool {
+    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty, text.unicodeScalars.count <= 16000, !saving else { return false }
+    if saveOperation == nil { saveOperation = (UUID().uuidString, text, draftCategory) }
+    guard let operation = saveOperation else { return false }
+    saving = true
+    saveError = ""
+    pendingSave = true
+    defer { saving = false }
     do {
-      let result = try await account.request(
-        "context/imports/conversation", body: .object(["limit": .number(10)]), timeout: 90)
-      let count = result["record_ids"].items.count
-      imported = true
-      feedback = count == 0 ? "最近的对话已经在这里了。" : "接回了 \(count) 段真实对话。"
-      await load(showBusy: false)
+      if preview {
+        let id = UUID().uuidString
+        let value = previewRecord(
+          id: id, kind: "user", namespace: "hymio.saved", content: operation.text,
+          title: "主动记下", subtitle: "预览", date: ISO8601DateFormatter().string(from: Date()))
+        allPreviewRecords.insert(ContextEntry(value), at: 0)
+        details["record:\(id)"] = value
+      } else {
+        guard let account else { throw ServiceError.message("暂时无法保存。") }
+        let saved = try await account.request(
+          "context/saves",
+          body: .object(["text": .string(operation.text), "category": .string(operation.category)]),
+          idempotencyKey: operation.key)
+        let entry = ContextEntry(
+          .object([
+            "id": saved["id"], "kind": .string("record"),
+            "preview": .string(contextContent(saved)), "source": saved["source"],
+            "created_at": saved["created_at"], "category": .string(operation.category),
+          ]))
+        confirmedSaves = [entry] + confirmedSaves.filter { $0.id != entry.id }
+        confirmedSaves = Array(confirmedSaves.prefix(20))
+        records = [entry] + records.filter { $0.id != entry.id }
+      }
+      saveOperation = nil
+      pendingSave = false
+      draft = ""
+      feedback = preview ? "预览：已添加一条足迹。" : "已保存到足迹。理解会在后续整理中形成。"
+      await load(query: "", category: "all")
+      return true
     } catch {
-      feedback = ""
-      self.error = "这次没有回看完，已经接回的内容不会重复保存。"
+      saveError = "暂时无法确认保存结果。输入仍保留在这里，重试会沿用同一条记录。"
+      return false
     }
   }
-
   private func installPreview() {
     let artifactA = previewArtifact(
       id: "preview-direction",
@@ -235,33 +324,23 @@ final class ContextStore: ObservableObject {
 
 struct ContextScreen: View {
   @StateObject private var store: ContextStore
-  let onChat: () -> Void
-
-  init(account: AccountService, onChat: @escaping () -> Void) {
+  init(account: AccountService) {
     _store = StateObject(wrappedValue: ContextStore(account: account))
-    self.onChat = onChat
   }
-
   var body: some View {
-    NavigationStack {
-      ContextPage(store: store, onChat: onChat)
-    }
-    .task { await store.load() }
+    NavigationStack { ContextPage(store: store) }
+      .task { await store.load() }
   }
 }
 
 struct ContextPreviewScreen: View {
-  let account: AccountService?
   @StateObject private var store: ContextStore
   @State private var selected = ProductTab.moments
-
   init(account: AccountService?, empty: Bool = false) {
-    self.account = account
     _store = StateObject(
       wrappedValue: ContextStore(
         account: account ?? AccountService(), preview: true, installFixtures: !empty))
   }
-
   var body: some View {
     TabView(selection: $selected) {
       Tab("此刻", systemImage: "house.fill", value: ProductTab.today) { Color.clear }
@@ -269,697 +348,700 @@ struct ContextPreviewScreen: View {
         Color.clear
       }
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) { Color.clear }
-      Tab("认识", systemImage: "person.crop.circle.badge.checkmark.fill", value: ProductTab.moments) {
-        NavigationStack { ContextPage(store: store, onChat: {}) }
+      Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
+        NavigationStack { ContextPage(store: store) }
       }
       Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) { Color.clear }
-    }
-    .tint(Brand.blue)
+    }.tint(Brand.blue)
   }
 }
 
 private struct ContextPage: View {
   @ObservedObject var store: ContextStore
-  let onChat: () -> Void
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var showAllInsights = false
-  @State private var showAllSources = false
+  @State private var insights = true
+  @State private var searchText = ""
+  @State private var showCollect = false
+  @State private var showGraph = false
+  @State private var selectedEntry: ContextEntry?
+  @State private var lastOpenedID = ""
+  @Environment(\.dynamicTypeSize) private var typeSize
+  private var items: [ContextEntry] { insights ? store.insights : store.records }
+  private var cursor: String { insights ? store.insightCursor : store.recordCursor }
 
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 0) {
-        topBar
-        if store.loading && store.isEmpty {
-          loadingState
-        } else if store.isEmpty {
-          feedback
-          emptyState
-        } else {
-          hero
-          feedback
-          insightSection
-          sourceSection
-          closingNote
+      LazyVStack(alignment: .leading, spacing: 12) {
+        searchField
+        viewControls
+        categoryPicker
+        if !store.feedback.isEmpty {
+          HStack(spacing: 10) {
+            Companion(size: 30)
+            Text(store.feedback).font(.footnote).foregroundStyle(Brand.blue)
+          }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 12))
         }
-      }
-      .padding(.horizontal, 22)
-      .padding(.bottom, 36)
-      .frame(maxWidth: 700)
-      .frame(maxWidth: .infinity)
-    }
-    .scrollIndicators(.hidden)
-    .background(Brand.surface)
-    .navigationTitle("")
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
-        Menu {
-          Button("回看最近对话", systemImage: "bubble.left.and.bubble.right") {
-            Task { await store.importConversation() }
+        if !store.error.isEmpty {
+          VStack(alignment: .leading, spacing: 10) {
+            Text(store.isEmpty ? "暂时读不到记忆" : "暂时没能刷新，仍显示上次读取的内容").font(.headline)
+            Text(store.error).font(.subheadline).foregroundStyle(Brand.muted)
+            Button("重试") { Task { await store.load() } }.frame(minHeight: 44)
+          }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Brand.mist, in: RoundedRectangle(cornerRadius: 15))
+        }
+        if store.loading && items.isEmpty {
+          ProgressView("正在读取记忆…").frame(maxWidth: .infinity).padding(.vertical, 70)
+        } else if !items.isEmpty {
+          ForEach(items, id: \.compositeID) { entry in
+            Button {
+              lastOpenedID = entry.compositeID
+              selectedEntry = entry
+            } label: {
+              ContextCard(entry: entry)
+                .overlay(
+                  RoundedRectangle(cornerRadius: 18).stroke(
+                    lastOpenedID == entry.compositeID ? Brand.blue : Color.clear, lineWidth: 1))
+            }.buttonStyle(GentlePress())
           }
-        } label: {
-          Image(systemName: "ellipsis")
-            .frame(width: 44, height: 44)
-        }
-        .accessibilityLabel("整理你的 context")
-      }
-    }
-    .refreshable { await store.load(showBusy: false) }
-  }
-
-  @ViewBuilder private var feedback: some View {
-    if !store.feedback.isEmpty {
-      Label(store.feedback, systemImage: "sparkles")
-        .font(.footnote)
-        .foregroundStyle(Brand.muted)
-        .padding(.top, 16)
-        .transition(.opacity)
-    }
-    if !store.error.isEmpty {
-      HStack(alignment: .top, spacing: 10) {
-        Image(systemName: "arrow.clockwise.circle").foregroundStyle(Brand.attention)
-        Text(store.error).font(.footnote).foregroundStyle(Brand.muted)
-        Spacer(minLength: 4)
-        Button("重试") { Task { await store.load() } }
-          .font(.footnote.weight(.semibold))
-          .foregroundStyle(Brand.blue)
-          .frame(minHeight: 44)
-      }
-      .padding(.vertical, 8)
-    }
-  }
-
-  private var topBar: some View {
-    HStack {
-      HStack(spacing: 7) {
-        Circle().fill(Brand.blue).frame(width: 7, height: 7)
-        Text("Hymio 正在认识你")
-          .font(.caption.weight(.medium))
-          .foregroundStyle(Brand.muted)
-      }
-      Spacer()
-      Text(Date.now.formatted(.dateTime.month().day()))
-        .font(.caption)
-        .foregroundStyle(Brand.muted)
-    }
-    .padding(.top, 6)
-  }
-
-  private var hero: some View {
-    HStack(alignment: .center, spacing: 8) {
-      VStack(alignment: .leading, spacing: 10) {
-        Text("我眼中的你")
-          .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-          .tracking(-1.1)
-          .foregroundStyle(Brand.ink)
-        Text("我一边陪你做事，一边慢慢认识你。这些理解都能回到它们发生的地方。")
-          .font(.subheadline)
-          .lineSpacing(3)
-          .foregroundStyle(Brand.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      ZStack {
-        Circle()
-          .fill(Brand.softBlue)
-          .frame(width: 112, height: 112)
-          .offset(x: 8, y: 8)
-        Companion(size: 98, mood: .greeting)
-          .offset(x: 6, y: 5)
-      }
-      .frame(width: 112, height: 126, alignment: .trailing)
-      .accessibilityHidden(true)
-    }
-    .padding(.top, 16)
-    .padding(.bottom, 22)
-  }
-
-  private var insightSection: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      sectionHeading("我慢慢看懂的", note: "\(store.insights.count) 个理解")
-      ForEach(
-        Array((showAllInsights ? store.insights : Array(store.insights.prefix(4))).enumerated()),
-        id: \.element.compositeID
-      ) {
-        index, entry in
-        NavigationLink {
-          ContextDetailScreen(store: store, entry: entry, onChat: onChat)
-        } label: {
-          ContextInsightBlock(entry: entry, first: index == 0)
-        }
-        .buttonStyle(GentlePress())
-        .accessibilityHint("查看这条理解以及它来自的原始记录")
-      }
-      if store.insights.isEmpty {
-        HStack(spacing: 12) {
-          Image(systemName: "ellipsis.bubble")
-            .font(.title3)
-            .foregroundStyle(Brand.blue)
-          Text("还没有形成稳定的理解。再多聊几次，Hymio 会从这里慢慢写下来。")
-            .font(.subheadline)
-            .foregroundStyle(Brand.muted)
-        }
-        .padding(.vertical, 22)
-      } else if !showAllInsights && store.insights.count > 4 {
-        Button("再看 \(store.insights.count - 4) 个理解") {
-          showAllInsights = true
-        }
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(Brand.blue)
-        .frame(minHeight: 44)
-      }
-    }
-  }
-
-  private var sourceSection: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      sectionHeading("这些从哪里知道", note: "\(store.records.count) 条来处")
-      if store.records.isEmpty {
-        Text("原始记录会在这里保留。它们不会因为提炼而消失。")
-          .font(.subheadline)
-          .foregroundStyle(Brand.muted)
-          .padding(.vertical, 20)
-      } else {
-        sourceSummary
-        ForEach(
-          Array((showAllSources ? store.records : Array(store.records.prefix(4))).enumerated()),
-          id: \.element.compositeID
-        ) {
-          index, entry in
-          NavigationLink {
-            ContextDetailScreen(store: store, entry: entry, onChat: onChat)
-          } label: {
-            ContextSourceRow(entry: entry, first: index == 0)
-          }
-          .buttonStyle(GentlePress())
-          .accessibilityHint("打开原始记录")
-        }
-        if !showAllSources && store.records.count > 4 {
-          Button("查看全部 \(store.records.count) 条来处") {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.22)) {
-              showAllSources = true
+          HStack {
+            Text("已显示 \(items.count) 条\(store.partial ? " · 结果尚不完整" : "")")
+              .font(.caption).foregroundStyle(Brand.muted)
+            Spacer()
+            if !cursor.isEmpty {
+              Button(store.moreBusy ? "正在读取…" : "继续查看") {
+                Task { await store.loadMore(insights: insights) }
+              }.disabled(store.moreBusy || store.loading).frame(minHeight: 44)
             }
           }
-          .font(.subheadline.weight(.medium))
-          .foregroundStyle(Brand.blue)
-          .frame(minHeight: 44)
-        } else if showAllSources && !store.recordCursor.isEmpty {
-          Button(store.moreBusy ? "正在接回更早的记录…" : "继续往前看") {
-            Task { await store.loadMoreRecords() }
+        } else if store.error.isEmpty {
+          emptyState
+          if !cursor.isEmpty {
+            Button("继续读取更多内容") { Task { await store.loadMore(insights: insights) } }
+              .disabled(store.moreBusy).frame(minHeight: 44)
           }
-          .font(.subheadline.weight(.medium))
-          .foregroundStyle(Brand.blue)
-          .frame(minHeight: 44)
-          .disabled(store.moreBusy)
         }
       }
+      .padding(.horizontal, 16).padding(.bottom, 30)
+      .frame(maxWidth: 700).frame(maxWidth: .infinity)
     }
-  }
-
-  private var sourceSummary: some View {
-    let grouped = Dictionary(grouping: store.records, by: \.sourceKind)
-    return HStack(spacing: 8) {
-      ForEach(["conversation", "connector", "user", "kit"], id: \.self) { kind in
-        if let count = grouped[kind]?.count {
-          HStack(spacing: 4) {
-            Image(systemName: sourceSummarySymbol(kind))
-              .font(.system(size: 9, weight: .semibold))
-            Text("\(sourceSummaryTitle(kind)) \(count)")
+    .background(Brand.surface).navigationTitle("").navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .topBarLeading) {
+        Text("记忆").font(.title.weight(.bold)).foregroundStyle(Brand.ink).fixedSize()
+      }
+      ToolbarItem(placement: .topBarTrailing) {
+        Button {
+          showCollect = true
+        } label: {
+          Label("收集", systemImage: "plus").labelStyle(.titleAndIcon).font(.body.weight(.medium))
+            .fixedSize()
+            .padding(.horizontal, 12).frame(minHeight: 40)
+            .foregroundStyle(Brand.onAccent)
+            .background(Brand.blue, in: RoundedRectangle(cornerRadius: 13))
+        }.buttonStyle(.plain).accessibilityIdentifier("context.collect")
+      }
+    }
+    .refreshable { await store.load() }
+    .sheet(isPresented: $showCollect) {
+      ContextCollectSheet(store: store) {
+        searchText = ""
+        insights = false
+        showCollect = false
+      }
+    }
+    .sheet(item: $selectedEntry) { entry in
+      NavigationStack {
+        ContextDetailScreen(store: store, entry: entry)
+          .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+              Button {
+                selectedEntry = nil
+              } label: {
+                Image(systemName: "xmark")
+              }
+              .accessibilityLabel("关闭详情")
+            }
           }
-          .font(.caption2.weight(.medium))
-          .foregroundStyle(Brand.muted)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 5)
-          .background(Brand.mist, in: Capsule())
+      }.presentationDetents([.large]).presentationDragIndicator(.visible)
+    }
+    .sheet(isPresented: $showGraph) {
+      NavigationStack {
+        ContextGraphScreen(store: store, initial: store.insights.first)
+          .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { Button("完成") { showGraph = false } }
+          }
+      }
+    }
+  }
+  private var categoryPicker: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 9) {
+        ForEach(memoryCategories, id: \.key) { option in
+          Button {
+            Task { await store.load(category: option.key) }
+          } label: {
+            Text(option.label).font(
+              .subheadline.weight(store.category == option.key ? .semibold : .regular)
+            )
+            .padding(.horizontal, 17).frame(minHeight: 36)
+            .foregroundStyle(store.category == option.key ? Brand.onAccent : Brand.ink)
+            .background(store.category == option.key ? Brand.blue : Brand.mist, in: Capsule())
+            .frame(minHeight: 44)
+          }.buttonStyle(.plain)
+            .accessibilityAddTraits(store.category == option.key ? .isSelected : [])
+            .accessibilityLabel("分类，\(option.label)")
         }
       }
-      Spacer(minLength: 0)
-    }
-    .padding(.bottom, 14)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel("来源分布")
+    }.dynamicTypeSize(...DynamicTypeSize.xxxLarge)
   }
-
-  private var closingNote: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      Rectangle()
-        .fill(Brand.paperLine)
-        .frame(height: 1)
-      Text("这些不是关于你的档案。\n只是我此刻的理解，会随着我们继续相处而改变。")
-        .font(.system(.subheadline, design: .rounded, weight: .medium))
-        .lineSpacing(5)
-        .foregroundStyle(Brand.ink)
-      Button(action: onChat) {
-        HStack(spacing: 8) {
-          Text("告诉 Hymio 更多")
-          Image(systemName: "arrow.right")
-        }
-        .font(.subheadline.weight(.semibold))
-        .padding(.horizontal, 16)
-        .frame(minHeight: 44)
-        .foregroundStyle(Brand.onAccent)
-        .background(Brand.blue, in: Capsule())
+  @ViewBuilder private var viewControls: some View {
+    if typeSize.isAccessibilitySize {
+      VStack(alignment: .trailing, spacing: 6) {
+        layerPicker
+        graphButton
       }
-      .buttonStyle(GentlePress())
-      .accessibilityIdentifier("context.chat")
-    }
-    .padding(.top, 30)
-    .padding(.bottom, 8)
-  }
-
-  private var loadingState: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      ProgressView().controlSize(.small)
-      Text("正在接回 Hymio 对你的了解…")
-        .font(.subheadline)
-        .foregroundStyle(Brand.muted)
-    }
-    .padding(.vertical, 64)
-  }
-
-  private var emptyState: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      Text("和 Hymio 聊一件想让我记住的事，我会从这里慢慢认识你。")
-        .font(.system(.title3, design: .rounded, weight: .medium))
-        .lineSpacing(5)
-        .foregroundStyle(Brand.ink)
-      Button("和 Hymio 聊聊", action: onChat)
-        .font(.subheadline.weight(.semibold))
-        .padding(.horizontal, 16)
-        .frame(minHeight: 44)
-        .foregroundStyle(Brand.onAccent)
-        .background(Brand.blue, in: Capsule())
-    }
-    .padding(.top, 76)
-    .padding(.bottom, 40)
-  }
-
-  private func sectionHeading(_ title: String, note: String) -> some View {
-    HStack(alignment: .firstTextBaseline) {
-      Text(title)
-        .font(.system(.headline, design: .rounded, weight: .semibold))
-        .foregroundStyle(Brand.ink)
-      Spacer()
-      Text(note)
-        .font(.caption)
-        .foregroundStyle(Brand.muted)
-    }
-    .padding(.top, 24)
-    .padding(.bottom, 10)
-  }
-}
-
-private struct ContextInsightBlock: View {
-  let entry: ContextEntry
-  let first: Bool
-  private var copy: (title: String, detail: String) { contextSplit(entry.preview) }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 7) {
-        Image(systemName: "sparkle")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Brand.blue)
-        Text(entry.topics.first ?? "我注意到的")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Brand.blue)
-        Spacer()
-        Image(systemName: "arrow.up.right")
-          .font(.caption2.weight(.semibold))
-          .foregroundStyle(Brand.muted.opacity(0.75))
-      }
-      Text(copy.title)
-        .font(.system(.headline, design: .rounded, weight: first ? .semibold : .medium))
-        .lineSpacing(3)
-        .foregroundStyle(Brand.ink)
-        .fixedSize(horizontal: false, vertical: true)
-      if !copy.detail.isEmpty {
-        Text(copy.detail)
-          .font(.subheadline)
-          .lineSpacing(3)
-          .foregroundStyle(Brand.muted)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      if entry.referenceCount > 0 {
-        Label(
-          "沿着 \(entry.referenceCount) 条原始记录看到这句话",
-          systemImage: "arrow.turn.down.right")
-          .font(.caption2)
-          .foregroundStyle(Brand.muted)
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 15)
-    .overlay(alignment: .bottom) {
-      Rectangle().fill(Brand.paperLine).frame(height: 1)
-    }
-    .contentShape(Rectangle())
-  }
-}
-
-private struct ContextSourceRow: View {
-  let entry: ContextEntry
-  let first: Bool
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 7) {
-        Image(systemName: entry.sourceSymbol)
-          .font(.system(size: 10, weight: .semibold))
-          .foregroundStyle(sourceAccent(entry.sourceKind))
-          .frame(width: 18, height: 18)
-          .background(sourceAccent(entry.sourceKind).opacity(0.1), in: RoundedRectangle(cornerRadius: 5))
-        Text(entry.sourceTitle)
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(Brand.ink)
-        Text("·")
-          .font(.caption)
-          .foregroundStyle(Brand.muted)
-        Text(entry.dateLabel.isEmpty ? "刚刚留下" : entry.dateLabel)
-          .font(.caption)
-          .foregroundStyle(Brand.muted)
-        Spacer()
-        if !entry.isInsight {
-          Image(systemName: "chevron.right")
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(Brand.muted.opacity(0.75))
-        }
-      }
-      switch entry.sourceKind {
-      case "conversation":
-        conversation
-      case "user":
-        savedNote
-      case "connector":
-        connector
-      default:
-        activity
-      }
-    }
-    .padding(.vertical, first ? 2 : 14)
-    .overlay(alignment: .bottom) {
-      if !first {
-        Rectangle().fill(Brand.paperLine.opacity(0.75)).frame(height: 1).padding(.leading, 26)
-      }
-    }
-    .contentShape(Rectangle())
-  }
-
-  private var conversation: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Text("“")
-        .font(.system(size: 31, weight: .medium, design: .rounded))
-        .foregroundStyle(Brand.blue.opacity(0.75))
-        .frame(width: 18, alignment: .leading)
-      Text(entry.preview)
-        .font(.body)
-        .lineSpacing(4)
-        .foregroundStyle(Brand.ink)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-    .padding(15)
-    .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 18))
-  }
-
-  private var savedNote: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Image(systemName: "bookmark.fill")
-        .font(.caption)
-        .foregroundStyle(Brand.noteLine)
-        .padding(.top, 3)
-      Text(entry.preview)
-        .font(.subheadline)
-        .lineSpacing(4)
-        .foregroundStyle(Brand.ink)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-    .padding(15)
-    .background(Brand.notePaper, in: RoundedRectangle(cornerRadius: 5))
-    .overlay(alignment: .topTrailing) {
-      Triangle()
-        .fill(Brand.noteLine.opacity(0.65))
-        .frame(width: 18, height: 18)
-        .accessibilityHidden(true)
+    } else {
+      HStack(spacing: 12) {
+        layerPicker
+        graphButton
+      }.frame(minHeight: 44)
     }
   }
-
-  private var connector: some View {
-    HStack(alignment: .center, spacing: 12) {
-      VStack(spacing: 1) {
-        Text(contextMonth(entry.createdAt))
-          .font(.system(size: 9, weight: .bold))
-          .textCase(.uppercase)
-        Text(contextDay(entry.createdAt))
-          .font(.system(size: 20, weight: .semibold, design: .rounded))
-      }
-      .foregroundStyle(Brand.blue)
-      .frame(width: 42, height: 46)
-      .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 11))
-      VStack(alignment: .leading, spacing: 4) {
-        Text(entry.preview)
-          .font(.subheadline.weight(.medium))
-          .foregroundStyle(Brand.ink)
-          .lineLimit(3)
-        if entry.namespace.lowercased().contains("calendar") {
-          Text("来自日历")
-            .font(.caption2)
-            .foregroundStyle(Brand.muted)
-        }
-      }
-    }
-    .padding(14)
-    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 16))
-    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.paperLine))
+  private var layerPicker: some View {
+    Picker("记忆类型", selection: $insights) {
+      Text("理解").tag(true)
+      Text("足迹").tag(false)
+    }.pickerStyle(.segmented).frame(maxWidth: .infinity).accessibilityIdentifier("context.tabs")
   }
-
-  private var activity: some View {
-    HStack(alignment: .top, spacing: 12) {
-      Image(systemName: entry.sourceSymbol)
-        .font(.system(size: 14, weight: .semibold))
-        .foregroundStyle(Brand.blue)
-        .frame(width: 34, height: 34)
+  private var graphButton: some View {
+    Button {
+      showGraph = true
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: "point.3.connected.trianglepath.dotted")
+        Text("星图")
+      }.font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
+        .padding(.horizontal, 12).frame(minHeight: typeSize.isAccessibilitySize ? 44 : 32)
         .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 10))
-      Text(entry.preview)
-        .font(.subheadline)
-        .lineSpacing(3)
-        .foregroundStyle(Brand.ink)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-    .padding(14)
-    .background(Brand.paper, in: RoundedRectangle(cornerRadius: 14))
+        .frame(minHeight: 44)
+    }.buttonStyle(.plain)
+      .disabled(store.loading || (!store.error.isEmpty && store.insights.isEmpty))
+      .accessibilityIdentifier("context.graph")
+      .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
   }
+  private var searchField: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "magnifyingglass").foregroundStyle(Brand.muted)
+      TextField("搜索你的记忆", text: $searchText)
+        .submitLabel(.search).onSubmit {
+          Task {
+            await store.load(query: searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+          }
+        }
+        .accessibilityIdentifier("context.search")
+      if !searchText.isEmpty {
+        Button {
+          searchText = ""
+          Task { await store.load(query: "") }
+        } label: {
+          Image(systemName: "xmark.circle.fill").foregroundStyle(Brand.muted)
+        }.accessibilityLabel("清除搜索").frame(minWidth: 44, minHeight: 44)
+      }
+    }.padding(.horizontal, 14).frame(minHeight: 48)
+      .background(Brand.mist, in: RoundedRectangle(cornerRadius: 12))
+      .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+  }
+  private var emptyState: some View {
+    VStack(spacing: 16) {
+      Image(systemName: "bookmark").font(.title2).foregroundStyle(Brand.blue)
+      Text(
+        store.category != "all"
+          ? "这个分类还没有\(insights ? "理解" : "足迹")"
+          : !store.query.isEmpty ? "暂时没找到相关记忆" : store.isEmpty ? "留下第一条足迹" : "已收好，理解会慢慢形成"
+      )
+      .font(.title3.weight(.semibold))
+      Text(
+        store.category != "all"
+          ? "试试其他分类，或收集一条相关的原始内容。"
+          : !store.query.isEmpty
+            ? "换个关键词试试，或清除搜索。"
+            : store.isEmpty ? "想法、偏好，或一段值得保留的话，都可以从这里开始。" : "原文已保存在足迹中，不必等待整理就能查看。"
+      )
+      .font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
+      Button(
+        store.category != "all"
+          ? "查看全部" : !store.query.isEmpty ? "清除搜索" : store.isEmpty ? "记一笔" : "查看足迹"
+      ) {
+        if store.category != "all" {
+          Task { await store.load(category: "all") }
+        } else if !store.query.isEmpty {
+          searchText = ""
+          Task { await store.load(query: "") }
+        } else if store.isEmpty {
+          showCollect = true
+        } else {
+          insights = false
+        }
+      }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+    }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.vertical, 65)
+  }
+}
+
+private struct ContextCard: View {
+  let entry: ContextEntry
+  @Environment(\.dynamicTypeSize) private var typeSize
+  @ScaledMetric(relativeTo: .subheadline) private var symbolSize: CGFloat = 30
+  private var copy: (title: String, summary: String) {
+    if !entry.title.isEmpty { return (entry.title, entry.preview) }
+    guard let end = entry.preview.firstIndex(where: { "。！？!?\n".contains($0) })
+    else {
+      return (String(entry.preview.prefix(48)), entry.preview.count > 48 ? entry.preview : "")
+    }
+    let next = entry.preview.index(after: end)
+    return (
+      String(entry.preview[..<next]),
+      String(entry.preview[next...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    )
+  }
+  private var sourceTint: Color { entry.sourceKind == "user" ? Brand.attention : Brand.blue }
+  var body: some View {
+    Group {
+      if entry.isInsight { understanding } else { footprint }
+    }
+    .padding(18)
+    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Brand.line, lineWidth: 1))
+    .contentShape(RoundedRectangle(cornerRadius: 18))
+  }
+  private var understanding: some View { cardContent }
+  private var footprint: some View { cardContent }
+  private var cardContent: some View {
+    let layout =
+      typeSize.isAccessibilitySize
+      ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+      : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+    return layout {
+      Image(systemName: entry.isInsight ? "book" : entry.sourceSymbol)
+        .font(.title3.weight(.medium)).foregroundStyle(Brand.blue)
+        .frame(width: symbolSize + 14, height: symbolSize + 14)
+        .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 13))
+      VStack(alignment: .leading, spacing: 7) {
+        Text(copy.title.isEmpty ? "打开查看内容" : copy.title)
+          .font(.headline).foregroundStyle(Brand.ink).lineSpacing(3)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        if !copy.summary.isEmpty {
+          Text(copy.summary).font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 3)
+        }
+        Label(
+          entry.isInsight ? "基于 \(entry.referenceCount) 条原始依据" : entry.sourceTitle,
+          systemImage: "doc.text"
+        ).font(.caption).foregroundStyle(Brand.muted)
+          .padding(.top, 3)
+        if !entry.dateLabel.isEmpty {
+          Label("\(entry.isInsight ? "最近更新：" : "")\(entry.dateLabel)", systemImage: "clock")
+            .font(.caption).foregroundStyle(Brand.muted)
+        }
+      }
+    }.frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct ContextCollectSheet: View {
+  @ObservedObject var store: ContextStore
+  let onSaved: () -> Void
+  @Environment(\.dismiss) private var dismiss
+  var body: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: 18) {
+        Text("先留下原文，理解会慢慢形成。").font(.subheadline).foregroundStyle(Brand.muted)
+        Picker("分类", selection: $store.draftCategory) {
+          ForEach(memoryCategories.filter { $0.key != "all" }, id: \.key) { option in
+            Text(option.label).tag(option.key)
+          }
+        }.disabled(store.saving || store.pendingSave)
+        ZStack(alignment: .topLeading) {
+          if store.draft.isEmpty {
+            Text("想留下什么？").foregroundStyle(Brand.muted)
+              .padding(.horizontal, 13).padding(.top, 16).allowsHitTesting(false)
+          }
+          TextEditor(text: $store.draft).scrollContentBackground(.hidden).font(.body)
+            .frame(minHeight: 140, maxHeight: 300).padding(8)
+            .accessibilityLabel("想保留的内容").accessibilityIdentifier("context.draft")
+            .disabled(store.saving || store.pendingSave)
+        }.background(Brand.mist, in: RoundedRectangle(cornerRadius: 12))
+        if !store.saveError.isEmpty {
+          Text(store.saveError).font(.footnote).foregroundStyle(Brand.ink).accessibilityAddTraits(
+            .updatesFrequently)
+        }
+        HStack {
+          Text("\(store.draft.count) / 16000").font(.caption).foregroundStyle(Brand.muted)
+          Spacer()
+          Button(store.saving ? "正在保存…" : store.pendingSave ? "重试保存" : "保存到足迹") {
+            Task { if await store.save() { onSaved() } }
+          }.buttonStyle(.borderedProminent)
+            .disabled(
+              store.saving || store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || store.draft.unicodeScalars.count > 16000
+            )
+            .accessibilityIdentifier("context.save")
+        }
+      }.padding(22).navigationTitle("记一笔").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItem(placement: .topBarTrailing) {
+            Button("关闭") { dismiss() }.disabled(store.saving)
+          }
+        }
+    }.presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+      .interactiveDismissDisabled(
+        store.saving)
+  }
+}
+
+private struct ContextEvidence: Identifiable, Sendable {
+  let id: String
+  let entry: ContextEntry?
 }
 
 private struct ContextDetailScreen: View {
   @ObservedObject var store: ContextStore
   let entry: ContextEntry
-  let onChat: () -> Void
   @State private var value: JSON = .null
-  @State private var related: [ContextEntry] = []
-  @State private var error = ""
+  @State private var evidence: [ContextEvidence] = []
   @State private var loading = true
-
-  private var content: String {
-    let direct = value["content"].text
-    if !direct.isEmpty { return direct }
-    let nested = value["context"]["text"].text
-    if !nested.isEmpty { return nested }
-    return entry.preview
-  }
-
+  @State private var error = ""
+  @State private var evidenceLimit = 12
+  @State private var evidenceTotal = 0
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 0) {
-        VStack(alignment: .leading, spacing: 12) {
-          HStack(spacing: 8) {
-            Image(systemName: entry.isInsight ? "sparkle" : entry.sourceSymbol)
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(Brand.blue)
-            Text(entry.isInsight ? (entry.topics.first ?? "Hymio 的理解") : entry.sourceTitle)
-              .font(.caption.weight(.semibold))
-              .foregroundStyle(Brand.blue)
-            Spacer()
-            Text(entry.dateLabel)
-              .font(.caption)
-              .foregroundStyle(Brand.muted)
-          }
-          if loading {
-            ProgressView("沿着来处找一找…")
-              .font(.subheadline)
-              .padding(.vertical, 80)
-          } else {
-            Text(content)
-              .font(
-                entry.isInsight
-                  ? .system(.title2, design: .rounded, weight: .medium)
-                  : .system(.title3, design: .rounded, weight: .regular)
-              )
-              .lineSpacing(7)
-              .foregroundStyle(Brand.ink)
-              .textSelection(.enabled)
-              .fixedSize(horizontal: false, vertical: true)
-            if !error.isEmpty {
-              Label(error, systemImage: "exclamationmark.circle")
-                .font(.footnote)
-                .foregroundStyle(Brand.muted)
-                .padding(.top, 14)
-            }
-            if entry.isInsight {
-              insightProvenance
-            } else {
-              rawSourceDetail
+      VStack(alignment: .leading, spacing: 22) {
+        if loading {
+          ProgressView("正在读取完整内容与依据…").padding(.vertical, 70)
+        } else if !error.isEmpty {
+          Text("暂时无法读取完整内容").font(.headline)
+          Text(error).font(.subheadline).foregroundStyle(Brand.muted)
+          Button("重试") { Task { await load() } }.frame(minHeight: 44)
+        } else {
+          if !entry.isInsight {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+              Label(
+                entry.isInsight ? entry.topics.first ?? "当前理解" : entry.sourceTitle,
+                systemImage: entry.isInsight ? "sparkles" : entry.sourceSymbol
+              ).font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+              Spacer(minLength: 0)
+              Text(entry.dateLabel).font(.caption).foregroundStyle(Brand.muted)
             }
           }
-        }
-        .padding(.horizontal, 22)
-        .padding(.top, 18)
-        .padding(.bottom, 34)
-      }
-      .frame(maxWidth: 680)
-      .frame(maxWidth: .infinity)
-    }
-    .background(Brand.surface)
-    .navigationTitle(entry.isInsight ? "我这样理解" : "原始来处")
-    .navigationBarTitleDisplayMode(.inline)
-    .task { await load() }
-  }
-
-  private var insightProvenance: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Rectangle()
-        .fill(Brand.paperLine)
-        .frame(height: 1)
-        .padding(.vertical, 10)
-      HStack {
-        Text("这些话从哪里来")
-          .font(.headline)
-          .foregroundStyle(Brand.ink)
-        Spacer()
-        Text("\(related.count) 条")
-          .font(.caption)
-          .foregroundStyle(Brand.muted)
-      }
-      if related.isEmpty {
-        Text("这一条暂时没有可打开的原始记录。")
-          .font(.footnote)
-          .foregroundStyle(Brand.muted)
-      } else {
-        ForEach(Array(related.enumerated()), id: \.element.compositeID) { index, source in
-          NavigationLink {
-            ContextDetailScreen(store: store, entry: source, onChat: onChat)
-          } label: {
-            ContextSourceRow(entry: source, first: index == 0)
+          if entry.isInsight {
+            Text(entry.title.isEmpty ? "Hymio 的理解" : entry.title).font(.title2.weight(.bold))
+            HStack {
+              Text("当前理解").font(.headline)
+              Spacer()
+              Text("Hymio 的理解").font(.caption).foregroundStyle(Brand.muted)
+            }
           }
-          .buttonStyle(GentlePress())
+          Text(contextContent(value).isEmpty ? "这条记录没有文字内容。" : contextContent(value))
+            .font(.body).lineSpacing(6).foregroundStyle(Brand.ink)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(18)
+            .background(
+              Brand.mist,
+              in: RoundedRectangle(cornerRadius: 16))
+          if !entry.isInsight && !value["context"]["memory"]["summary"].text.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+              Label("提炼草稿", systemImage: "sparkles").font(.caption.weight(.medium)).foregroundStyle(
+                Brand.blue)
+              Text(value["context"]["memory"]["summary"].text).font(.body).lineSpacing(4)
+              Text("与原文一起保留，尚未发布为理解。").font(.caption).foregroundStyle(Brand.muted)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+              .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 14))
+          }
+          if entry.isInsight {
+            HStack {
+              Text("原始依据（\(evidenceTotal)）").font(.headline)
+              Spacer()
+              NavigationLink {
+                ContextGraphScreen(store: store, initial: entry)
+              } label: {
+                Label("查看关联", systemImage: "point.3.connected.trianglepath.dotted")
+                  .font(.subheadline).frame(minHeight: 44)
+              }
+            }
+            ContextEvidenceList(store: store, evidence: evidence)
+            if evidenceTotal > evidenceLimit {
+              Button("继续读取依据") {
+                evidenceLimit += 12
+                Task { await load() }
+              }.frame(minHeight: 44)
+            }
+          }
+          DisclosureGroup("来源信息") {
+            VStack(alignment: .leading, spacing: 10) {
+              Text("记录时间：\(value["created_at"].text.isEmpty ? "未提供" : value["created_at"].text)")
+              if !value["produced_at"].text.isEmpty { Text("发生时间：\(value["produced_at"].text)") }
+              if !entry.namespace.isEmpty { Text("\(entry.sourceTitle) · \(entry.namespace)") }
+            }.font(.caption).foregroundStyle(Brand.muted).padding(.top, 12)
+          }.font(.subheadline)
         }
-      }
-      Text("Hymio 的整理会变，但这些原始记录会保留下来。")
-        .font(.caption)
-        .foregroundStyle(Brand.muted)
-        .padding(.top, 8)
-    }
-    .padding(.top, 26)
+      }.padding(16).frame(maxWidth: 700).frame(maxWidth: .infinity, alignment: .leading)
+    }.background(Brand.surface).toolbar(.visible, for: .navigationBar).navigationTitle(
+      entry.isInsight ? "Hymio 的理解" : "原始足迹"
+    )
+    .navigationBarTitleDisplayMode(.inline).task(id: entry.compositeID) { await load() }
   }
-
-  private var rawSourceDetail: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      Rectangle()
-        .fill(Brand.paperLine)
-        .frame(height: 1)
-        .padding(.vertical, 8)
-      HStack(spacing: 10) {
-        Image(systemName: entry.sourceSymbol)
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(Brand.blue)
-          .frame(width: 38, height: 38)
-          .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 11))
-        VStack(alignment: .leading, spacing: 2) {
-          Text(entry.sourceTitle)
-            .font(.subheadline.weight(.semibold))
-          Text(
-            entry.namespace.isEmpty
-              ? "保留原始内容，不做改写" : "\(connectorName(entry.namespace)) · 原始内容"
-          )
-          .font(.caption)
-          .foregroundStyle(Brand.muted)
-        }
-      }
-      Text("原始记录是 Hymio 了解你的依据，不是一段后来补上的解释。")
-        .font(.subheadline)
-        .lineSpacing(4)
-        .foregroundStyle(Brand.muted)
-      Button(action: onChat) {
-        Label("和 Hymio 聊聊这条", systemImage: "bubble.left")
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(Brand.blue)
-          .frame(minHeight: 44)
-      }
-    }
-    .padding(.top, 24)
-  }
-
   private func load() async {
     loading = true
     error = ""
+    evidence = []
     do {
-      value = try await store.detail(for: entry)
-      related = []
-      for reference in value["references"].items {
-        let id = reference["record_id"].text
-        if let cached = store.records.first(where: { $0.id == id }) {
-          related.append(cached)
-        } else if !id.isEmpty,
-          let fetched = try? await store.detail(
-            for: ContextEntry(
-              .object([
-                "id": .string(id), "kind": .string("record"),
-                "preview": .string("原始记录"), "source": .object([:]),
-              ])))
-        {
-          related.append(ContextEntry(fetched))
-        }
-      }
-    } catch {
-      self.error = "暂时没能接回来处。"
-    }
+      let detail = try await store.detail(for: entry)
+      evidenceTotal = detail["references"].items.count
+      let sources = await contextEvidence(store: store, value: detail, limit: evidenceLimit)
+      guard !Task.isCancelled else { return }
+      value = detail
+      evidence = sources
+    } catch { if !Task.isCancelled { self.error = "请稍后再试。" } }
     loading = false
   }
 }
 
-private struct Triangle: Shape {
+private struct ContextEvidenceList: View {
+  @ObservedObject var store: ContextStore
+  let evidence: [ContextEvidence]
+  var body: some View {
+    if evidence.isEmpty {
+      Text("这条理解暂时没有可展示的原始关联。").font(.subheadline).foregroundStyle(Brand.muted)
+    }
+    ForEach(evidence) { reference in
+      if let entry = reference.entry {
+        NavigationLink {
+          ContextDetailScreen(store: store, entry: entry)
+        } label: {
+          VStack(alignment: .leading, spacing: 12) {
+            Label(entry.sourceTitle, systemImage: entry.sourceSymbol).font(.caption)
+              .foregroundStyle(Brand.blue)
+            if !entry.title.isEmpty { Text(entry.title).font(.headline).foregroundStyle(Brand.ink) }
+            Text(entry.preview.isEmpty ? "无文字内容" : entry.preview).font(.subheadline)
+              .foregroundStyle(Brand.ink)
+              .lineLimit(3).lineSpacing(4).frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+              Text(entry.dateLabel)
+              Spacer()
+              Label("查看原文", systemImage: "chevron.right")
+            }
+            .font(.caption).foregroundStyle(Brand.blue)
+          }.padding(16).background(Brand.mist, in: RoundedRectangle(cornerRadius: 14))
+        }.buttonStyle(GentlePress())
+      } else {
+        VStack(alignment: .leading, spacing: 8) {
+          Label("这条原始依据暂时无法读取。", systemImage: "exclamationmark.circle")
+          NavigationLink("重新打开原始依据") {
+            ContextDetailScreen(
+              store: store,
+              entry: ContextEntry(
+                .object(["id": .string(reference.id), "kind": .string("record")])))
+          }.frame(minHeight: 44)
+        }.font(.footnote).foregroundStyle(Brand.muted)
+      }
+    }
+  }
+}
+
+private struct ContextGraphScreen: View {
+  @ObservedObject var store: ContextStore
+  let initial: ContextEntry?
+  @State private var selectedID = ""
+  @State private var evidence: [ContextEvidence] = []
+  @State private var centerContent = ""
+  @State private var loading = false
+  @State private var error = ""
+  @State private var evidenceLimit = 12
+  @State private var evidenceTotal = 0
+  private var center: ContextEntry? { store.insights.first { $0.id == selectedID } ?? initial }
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        if !store.insights.isEmpty {
+          Menu {
+            Picker("聚焦理解", selection: $selectedID) {
+              ForEach(store.insights, id: \.compositeID) { entry in
+                Text(String(entry.preview.prefix(32))).tag(entry.id)
+              }
+            }
+          } label: {
+            HStack(spacing: 8) {
+              Image(systemName: "sparkles").foregroundStyle(Brand.blue)
+              Text(center?.topics.first ?? "当前理解").foregroundStyle(Brand.ink)
+              Spacer()
+              Text("切换理解").font(.caption).foregroundStyle(Brand.muted)
+              Image(systemName: "chevron.down").font(.caption2).foregroundStyle(Brand.muted)
+            }.font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
+              .background(Brand.mist, in: RoundedRectangle(cornerRadius: 12))
+          }.accessibilityIdentifier("context.graph.focus")
+        }
+        Text("一条理解，连着它的原始足迹。").font(.footnote).foregroundStyle(Brand.muted)
+        if let entry = center {
+          VStack(spacing: 0) {
+            NavigationLink {
+              ContextDetailScreen(store: store, entry: entry)
+            } label: {
+              VStack(alignment: .leading, spacing: 12) {
+                Label(entry.topics.first ?? "Hymio 的理解", systemImage: "sparkles")
+                  .font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+                Text(
+                  (centerContent.isEmpty ? entry.preview : centerContent).components(
+                    separatedBy: "。"
+                  ).first ?? entry.preview
+                )
+                .font(.headline).foregroundStyle(Brand.ink).lineSpacing(4).lineLimit(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                  Text("\(evidenceTotal) 条原始依据")
+                  Spacer()
+                  Image(systemName: "arrow.up.right")
+                }.font(.caption).foregroundStyle(Brand.muted)
+              }.padding(16).background(Brand.surface, in: RoundedRectangle(cornerRadius: 15))
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke(Brand.blue.opacity(0.35)))
+            }.buttonStyle(GentlePress()).padding(.horizontal, 20)
+            if !evidence.isEmpty {
+              ContextGraphLines(count: min(evidence.count, 2)).stroke(
+                Brand.blue.opacity(0.5), lineWidth: 1.5
+              )
+              .frame(height: 64).accessibilityHidden(true)
+              LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible()), count: min(evidence.count, 2)),
+                spacing: 12
+              ) {
+                ForEach(Array(evidence.prefix(2))) { reference in
+                  if let source = reference.entry {
+                    NavigationLink {
+                      ContextDetailScreen(store: store, entry: source)
+                    } label: {
+                      VStack(alignment: .leading, spacing: 9) {
+                        Label(source.sourceTitle, systemImage: source.sourceSymbol).font(
+                          .caption.weight(.medium)
+                        ).foregroundStyle(Brand.blue)
+                        Text(source.preview).font(.caption).foregroundStyle(Brand.ink).lineLimit(3)
+                          .frame(maxWidth: .infinity, alignment: .leading)
+                      }.padding(14).frame(
+                        maxWidth: .infinity, minHeight: 115, alignment: .topLeading
+                      )
+                      .background(Brand.surface, in: RoundedRectangle(cornerRadius: 13))
+                      .overlay(RoundedRectangle(cornerRadius: 13).stroke(Brand.line))
+                    }.buttonStyle(GentlePress())
+                  } else {
+                    Text("依据暂不可用").font(.caption).frame(maxWidth: .infinity, minHeight: 115)
+                      .background(Brand.surface, in: RoundedRectangle(cornerRadius: 13))
+                  }
+                }
+              }
+            }
+          }.padding(14).background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 20))
+          if loading {
+            ProgressView("正在读取原始依据…")
+          } else if !error.isEmpty {
+            Text(error).font(.subheadline).foregroundStyle(Brand.muted)
+            Button("重试") { Task { await load() } }.frame(minHeight: 44)
+          } else {
+            if evidence.count > 2 {
+              Text("图中展示前 2 条，完整依据可逐条查看。").font(.caption).foregroundStyle(Brand.muted)
+            }
+            DisclosureGroup("逐条查看依据（\(evidenceTotal)）") {
+              VStack(alignment: .leading, spacing: 12) {
+                ContextEvidenceList(store: store, evidence: evidence)
+                if evidenceTotal > evidenceLimit {
+                  Button("继续读取依据") {
+                    evidenceLimit += 12
+                    Task { await load() }
+                  }.frame(minHeight: 44)
+                }
+              }.padding(.top, 14)
+            }.font(.subheadline.weight(.medium))
+          }
+        } else {
+          ContentUnavailableView(
+            "理解形成后，会在这里连起来", systemImage: "point.3.connected.trianglepath.dotted",
+            description: Text("现在可以先收集足迹，或继续浏览原文。"))
+        }
+        if !store.insightCursor.isEmpty {
+          Button("读取更多理解") { Task { await store.loadMore(insights: true) } }
+            .disabled(store.moreBusy || store.loading).frame(minHeight: 44)
+        }
+      }.padding(16).frame(maxWidth: 700).frame(maxWidth: .infinity)
+    }.background(Brand.surface).navigationTitle("记忆星图").navigationBarTitleDisplayMode(.inline)
+      .onAppear {
+        if selectedID.isEmpty { selectedID = initial?.id ?? store.insights.first?.id ?? "" }
+      }
+      .task(id: selectedID) { await load() }
+  }
+  private func load() async {
+    evidence = []
+    centerContent = ""
+    evidenceTotal = 0
+    error = ""
+    guard let entry = center else { return }
+    loading = true
+    do {
+      let value = try await store.detail(for: entry)
+      guard !Task.isCancelled else { return }
+      centerContent = contextContent(value)
+      evidenceTotal = value["references"].items.count
+      let sources = await contextEvidence(store: store, value: value, limit: evidenceLimit)
+      guard !Task.isCancelled else { return }
+      evidence = sources
+    } catch { if !Task.isCancelled { self.error = "暂时无法读取关联，请稍后重试。" } }
+    loading = false
+  }
+}
+
+private struct ContextGraphLines: Shape {
+  let count: Int
   func path(in rect: CGRect) -> Path {
     var path = Path()
-    path.move(to: CGPoint(x: rect.maxX, y: rect.minY))
-    path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-    path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-    path.closeSubpath()
+    // Each branch represents a reference; rows below remain an accessible list.
+    for index in 0..<min(count, 2) {
+      let x =
+        count == 1 ? rect.midX : rect.width * (index == 0 ? 0.25 : 0.75) + (index == 0 ? -3 : 3)
+      path.move(to: CGPoint(x: rect.midX, y: 0))
+      path.addCurve(
+        to: CGPoint(x: x, y: rect.maxY), control1: CGPoint(x: rect.midX, y: rect.midY),
+        control2: CGPoint(x: x, y: rect.midY))
+    }
     return path
   }
 }
 
-private func sourceAccent(_ kind: String) -> Color {
-  switch kind {
-  case "user": return Brand.attention
-  case "conversation": return Brand.blue
-  case "connector", "kit": return Brand.ink.opacity(0.72)
-  default: return Brand.muted
+@MainActor private func contextEvidence(store: ContextStore, value: JSON, limit: Int) async
+  -> [ContextEvidence]
+{
+  var seen = Set<String>()
+  let ids = value["references"].items.map { $0["record_id"].text }.filter {
+    !$0.isEmpty && seen.insert($0).inserted
+  }
+  return await withTaskGroup(of: (Int, ContextEvidence).self) { group in
+    for (index, id) in ids.prefix(limit).enumerated() {
+      group.addTask {
+        let entry = try? await store.original(id)
+        return (index, ContextEvidence(id: id, entry: entry))
+      }
+    }
+    var result: [(Int, ContextEvidence)] = []
+    for await entry in group { result.append(entry) }
+    return result.sorted { $0.0 < $1.0 }.map { $0.1 }
   }
 }
 
-private func sourceSummarySymbol(_ kind: String) -> String {
-  switch kind {
-  case "conversation": return "bubble.left.and.bubble.right.fill"
-  case "connector": return "link"
-  case "user": return "bookmark.fill"
-  case "kit": return "square.grid.2x2.fill"
-  default: return "doc.text"
+private func contextContent(_ value: JSON) -> String {
+  if !value["content"].text.isEmpty { return value["content"].text }
+  for key in ["text", "content", "title"] {
+    if !value["context"][key].text.isEmpty { return value["context"][key].text }
   }
+  if value["context"] != .null { return value["context"].pretty }
+  if value["command"] != .null { return value["command"].pretty }
+  return ""
 }
-
-private func sourceSummaryTitle(_ kind: String) -> String {
-  ["conversation": "对话", "connector": "连接", "user": "记下", "kit": "应用"][kind] ?? "其他"
-}
-
 private func connectorName(_ namespace: String) -> String {
   let lower = namespace.lowercased()
   if lower.contains("calendar") { return "日历" }
@@ -987,30 +1069,10 @@ private func contextReadable(_ text: String) -> String {
   return text
 }
 
-private func contextSplit(_ text: String) -> (title: String, detail: String) {
-  if let end = text.firstIndex(where: { "。！？!?".contains($0) }) {
-    let next = text.index(after: end)
-    let title = String(text[..<next]).trimmingCharacters(in: .whitespacesAndNewlines)
-    let detail = String(text[next...]).trimmingCharacters(in: .whitespacesAndNewlines)
-    if !detail.isEmpty { return (title, detail) }
-  }
-  return (text, "")
-}
-
 private func contextDate(_ value: String) -> Date? {
   let fractional = ISO8601DateFormatter()
   fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
   return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
-}
-
-private func contextMonth(_ value: String) -> String {
-  guard let date = contextDate(value) else { return "" }
-  return date.formatted(.dateTime.month(.abbreviated)).uppercased()
-}
-
-private func contextDay(_ value: String) -> String {
-  guard let date = contextDate(value) else { return "·" }
-  return date.formatted(.dateTime.day())
 }
 
 private func previewArtifact(

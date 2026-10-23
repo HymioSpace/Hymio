@@ -84,8 +84,8 @@ struct ProductShell: View {
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) {
         NavigationStack { TasksScreen(account: account, board: board) }
       }
-      Tab("认识", systemImage: "person.crop.circle.badge.checkmark.fill", value: ProductTab.moments) {
-        ContextScreen(account: account, onChat: { selected = .chat })
+      Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
+        ContextScreen(account: account)
       }
       Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) {
         AccountScreen(account: account, client: client)

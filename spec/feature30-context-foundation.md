@@ -13,7 +13,8 @@ Kit 表示业务投影，对话表示陈述，连接器保留外部身份/版本
 这些分类不能充当授权或执行成功证明。采集/解析归 Hymio，来源和检索归 Nostalgia。
 
 Agent 通过语义化的 `remember` 工具保存用户明确要求保留、或明确陈述的稳定个人信息，
-通过 `recall` 在回答过往偏好与经历前检索。工具调用由模型决定，不按关键词拦截消息；
+通过 `recall` 在回答过往偏好与经历前检索。remember 同时提交精炼摘要与对应原文，只有
+有跨轮价值或用户明确要求的信息才保存，详见 feature31。工具调用由模型决定，不按关键词拦截消息；
 保存成功前模型不得声称已经记住。用户主动选择历史导入时，才把既有对话转成原始
 conversation record。
 
@@ -25,15 +26,14 @@ context 业务语义。所有 Hymio 工具都位于本仓库 `extensions/tools/`
 Nostalgia owns context storage and scheduled dreaming; Hymio Backend wraps its API for clients,
 and a stateless internal adapter supplies structured dream proposals when configured.
 
-产品入口叫「认识」：Web 侧栏、iOS 第五个原生 tab。页面不是来源管理列表，而是 Hymio
-当前对用户的编辑式理解：先呈现提炼后的判断，再在下方保留可追溯的原始记录。对话引文、
-日程、文件和主动记下沿用各自的视觉形态；来源数量不是筛选控件。详情同时显示理解与
-原始来处，用户可沿引用继续抵达原记录。暂不提供搜索；整理与回看对话收在次级操作。
-客户端复用系统字体、导航和 Dynamic Type，Web 保留键盘焦点与安全区域。
+产品入口叫「记忆」：Web 侧栏和 iOS 原生 tab，分为「理解 / 足迹」。默认简约卡片，
+搜索和直接文字收集可用，详情读取完整内容与依据，星图按需展示真实引用关系。
+两类结果分别分页；读取失败不显示首次使用空态。产品机制、平台交互及演进边界见
+[feature31](feature31-memory-space.md)。
 
 参考检索为精确读取、过滤与全文子串，保留游标/来源/索引水位。后续 ranked/hybrid
 provider 需保留这些契约并说明实际覆盖率；没有标注语料前不承诺高召回率。
-不包含自动连接器采集、自动整理调度或 embedding 服务。
+不包含自动连接器采集或 embedding 服务；整理调度由 Nostalgia 内部负责。
 
 
 ## 来源场景与策略

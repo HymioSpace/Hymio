@@ -70,6 +70,10 @@ export default function App() {
         ? 'chat'
         : 'home',
   );
+  const [memoryVisited, setMemoryVisited] = useState(page === 'moments');
+  useEffect(() => {
+    if (page === 'moments') setMemoryVisited(true);
+  }, [page]);
   function navigate(next: 'home' | 'chat' | 'moments') {
     setPage(next);
     changeDebug(false);
@@ -571,7 +575,7 @@ export default function App() {
             onClick={() => navigate('moments')}
           >
             <Bookmark size={19} />
-            <span>认识</span>
+            <span>记忆</span>
           </button>
           <button className={`rail-button ${tasksOpen ? 'active' : ''}`} onClick={() => openTask()}>
             <Flag size={19} />
@@ -604,12 +608,10 @@ export default function App() {
           onTask={openTask}
         />
       )}
-      {!debug && page === 'moments' && (
-        <MomentsPanel
-          key={`${login.session.backend}|${login.session.user_id}`}
-          login={login}
-          onChat={() => navigate('chat')}
-        />
+      {memoryVisited && (
+        <div className="memory-route" hidden={debug || page !== 'moments'}>
+          <MomentsPanel key={`${login.session.backend}|${login.session.user_id}`} login={login} />
+        </div>
       )}
       <main className="main" hidden={debug || page !== 'chat'}>
         <header className="topbar">

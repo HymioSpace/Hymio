@@ -1,605 +1,841 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowRight,
+  ArrowLeft,
   ArrowUpRight,
   Bookmark,
-  CalendarDays,
+  BookOpen,
   ChevronRight,
-  Layers,
-  LoaderCircle,
   MessageCircle,
-  MoreHorizontal,
+  Link,
+  FileText,
+  GitFork,
+  LoaderCircle,
+  Plus,
   RefreshCw,
+  Search,
   Sparkles,
   X,
 } from 'lucide-react';
 import { Companion } from '@hymio/ui';
 import type { LoginState } from './useLogin';
+import {
+  memoryCategories,
+  contextText,
+  memoryProposal,
+  memoryDate,
+  readable,
+  sourceTitle,
+  uniqueItems,
+  visibleItems,
+} from './contextModel';
+import type { ContextDetail, ContextItem, ContextPage } from './contextModel';
+import './memory.css';
 
-type ContextItem = {
-  id: string;
-  kind: 'record' | 'artifact';
-  preview: string;
-  created_at?: string;
-  source?: { kind?: string; namespace?: string };
-  references?: { record_id: string }[];
-  topics?: string[];
-};
+type Layer = 'artifacts' | 'records';
+type PageState = { items: ContextItem[]; cursor: string | null; partial: boolean };
+const emptyPage = (): PageState => ({ items: [], cursor: null, partial: false });
+type Evidence = { id: string; item?: ContextItem; error?: string };
+type ReaderHistory = { item: ContextItem; graph: boolean };
 
-type ContextDetail = {
-  content?: string;
-  context?: { text?: string; title?: string };
-  references?: { record_id: string }[];
-  source?: { kind?: string; namespace?: string };
-  created_at?: string;
-};
-
-const sourceNames: Record<string, string> = {
-  conversation: '对话',
-  connector: '连接',
-  kit: '应用',
-  user: '你留下的',
-  legacy: '其他来源',
-};
-
-function label(item: Pick<ContextItem, 'source'>) {
-  return sourceNames[item.source?.kind || 'legacy'] || '其他来源';
-}
-
-function connectorName(namespace = '') {
-  const value = namespace.toLowerCase();
-  if (value.includes('calendar')) return '日历';
-  if (value.includes('mail')) return '邮件';
-  if (value.includes('figma')) return 'Figma';
-  if (value.includes('notion')) return 'Notion';
-  if (value.includes('github')) return 'GitHub';
-  return namespace ? namespace.replaceAll('_', ' ') : '连接服务';
-}
-
-function readable(text = '') {
-  try {
-    const value = JSON.parse(text);
-    return value.text || value.content || value.title || text;
-  } catch {
-    return text;
-  }
-}
-
-function detailText(value: ContextDetail | null) {
-  if (!value) return '';
-  return value.content || value.context?.text || value.context?.title || '';
-}
-
-function splitStatement(text: string) {
-  const end = text.search(/[。！？!?]/);
-  if (end < 0) return { title: text, detail: '' };
-  const detail = text.slice(end + 1).trim();
-  return { title: text.slice(0, end + 1), detail };
-}
-
-function dateLabel(value?: string) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return '';
-  return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
-}
-
-function dateParts(value?: string) {
-  const date = value ? new Date(value) : new Date();
-  if (Number.isNaN(date.valueOf())) return { month: '·', day: '·' };
-  return {
-    month: date.toLocaleDateString('zh-CN', { month: 'short' }),
-    day: date.toLocaleDateString('zh-CN', { day: '2-digit' }),
-  };
-}
-
-function sourceSymbol(item: ContextItem) {
-  switch (item.source?.kind) {
-    case 'conversation':
-      return MessageCircle;
-    case 'user':
-      return Bookmark;
-    case 'connector':
-      return CalendarDays;
-    default:
-      return Layers;
-  }
-}
-
-function SourceMark({ item }: { item: ContextItem }) {
-  const Symbol = sourceSymbol(item);
-  return (
-    <span className="understanding-source-mark" aria-hidden="true">
-      <Symbol size={12} strokeWidth={2.2} />
-    </span>
-  );
-}
-
-function SourcePreview({ item }: { item: ContextItem }) {
+function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: ContextItem) => void }) {
   const text = readable(item.preview);
-  const kind = item.source?.kind || 'legacy';
-  const date = dateParts(item.created_at);
-
-  if (kind === 'conversation') {
-    return (
-      <div className="understanding-quote">
-        <span className="understanding-quote-mark" aria-hidden="true">
-          “
+  const insight = item.kind === 'artifact';
+  const end = text.search(/[。！？!?\n]/);
+  const title = item.title || (end >= 0 ? text.slice(0, end + 1) : text.slice(0, 48));
+  const summary = item.title
+    ? text
+    : end >= 0
+      ? text.slice(end + 1).trim()
+      : text.length > 48
+        ? text
+        : '';
+  const SourceIcon =
+    item.source?.kind === 'conversation'
+      ? MessageCircle
+      : item.source?.kind === 'user'
+        ? Bookmark
+        : item.source?.kind === 'connector'
+          ? Link
+          : FileText;
+  return (
+    <button
+      className={`memory-card ${insight ? 'memory-understanding' : `memory-footprint memory-source-${item.source?.kind || 'legacy'}`}`}
+      onClick={() => onOpen(item)}
+    >
+      <span className="memory-card-meta">
+        <span className="memory-card-symbol">
+          {insight ? <BookOpen size={20} /> : <SourceIcon size={17} />}
         </span>
-        <p>{text}</p>
-      </div>
-    );
-  }
-
-  if (kind === 'user') {
-    return (
-      <div className="understanding-note">
-        <Bookmark size={13} fill="currentColor" aria-hidden="true" />
-        <p>{text}</p>
-        <i aria-hidden="true" />
-      </div>
-    );
-  }
-
-  if (kind === 'connector') {
-    return (
-      <div className="understanding-calendar">
-        <time dateTime={item.created_at}>
-          <small>{date.month}</small>
-          <strong>{date.day}</strong>
-        </time>
-        <div>
-          <p>{text}</p>
-          <span>
-            {connectorName(item.source?.namespace)}
-            {item.created_at ? ` · ${dateLabel(item.created_at)}` : ''}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="understanding-activity">
-      <SourceMark item={item} />
-      <p>{text}</p>
-    </div>
-  );
-}
-
-function SourceRow({ item, onOpen }: { item: ContextItem; onOpen: (item: ContextItem) => void }) {
-  const source =
-    item.source?.kind === 'connector' ? connectorName(item.source?.namespace) : label(item);
-  return (
-    <button className="understanding-source-row" onClick={() => onOpen(item)}>
-      <span className="understanding-source-meta">
-        <SourceMark item={item} />
-        <span>{source}</span>
-        <i aria-hidden="true">·</i>
-        <time dateTime={item.created_at}>{dateLabel(item.created_at) || '刚刚留下'}</time>
-        <ChevronRight size={14} aria-hidden="true" />
+        <span>{insight ? item.topics?.[0] || 'Hymio 的理解' : sourceTitle(item.source)}</span>
+        <ArrowUpRight size={14} />
       </span>
-      <SourcePreview item={item} />
+      <span className="memory-card-writing">
+        <span className="memory-card-copy">{title || '打开查看内容'}</span>
+        {summary && <span className="memory-card-summary">{summary}</span>}
+      </span>
+      <span className="memory-card-bottom">
+        <span className="memory-card-provenance">
+          {insight ? <GitFork size={13} /> : <FileText size={13} />}
+          {insight ? `${item.references?.length || 0} 条原始依据` : '保留原文'}
+        </span>
+        <time dateTime={item.created_at}>{memoryDate(item.updated_at || item.created_at)}</time>
+      </span>
     </button>
   );
 }
 
-export function MomentsPanel({ login, onChat }: { login: LoginState; onChat: () => void }) {
-  const [insights, setInsights] = useState<ContextItem[]>([]);
-  const [records, setRecords] = useState<ContextItem[]>([]);
+export function MomentsPanel({ login }: { login: LoginState }) {
+  const [layer, setLayer] = useState<Layer>('artifacts');
+  const [pages, setPages] = useState<Record<Layer, PageState>>({
+    artifacts: emptyPage(),
+    records: emptyPage(),
+  });
+  const [category, setCategory] = useState('all');
+  const [draftCategory, setDraftCategory] = useState('uncategorized');
+  const [input, setInput] = useState('');
+  const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [showAllInsights, setShowAllInsights] = useState(false);
-  const [showAllSources, setShowAllSources] = useState(false);
-  const [recordCursor, setRecordCursor] = useState<string | null>(null);
   const [moreBusy, setMoreBusy] = useState(false);
   const [selected, setSelected] = useState<ContextItem | null>(null);
+  const [history, setHistory] = useState<ReaderHistory[]>([]);
   const [detail, setDetail] = useState<ContextDetail | null>(null);
-  const [related, setRelated] = useState<ContextItem[]>([]);
+  const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [detailError, setDetailError] = useState('');
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [evidenceLimit, setEvidenceLimit] = useState(12);
+  const [graph, setGraph] = useState(false);
+  const [graphColumns, setGraphColumns] = useState(2);
+  useEffect(() => {
+    const resize = () =>
+      setGraphColumns(
+        window.innerWidth <= 700
+          ? 2
+          : Math.max(
+              2,
+              Math.min(6, Math.floor((Math.min(window.innerWidth - 40, 1000) - 68) / 130)),
+            ),
+      );
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  const [draft, setDraft] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saving, setSaving] = useState(false);
   const generation = useRef(0);
+  const detailGeneration = useRef(0);
+  const confirmedSaves = useRef<ContextItem[]>([]);
+  const saveOperation = useRef<{ key: string; text: string; category: string } | null>(null);
   const reader = useRef<HTMLDialogElement>(null);
+  const composer = useRef<HTMLDialogElement>(null);
+  const session = login.session!;
 
-  async function request(path: string, data?: object) {
-    const session = login.session!;
+  async function request<T>(path: string, data?: object, key?: string): Promise<T> {
     const response = await fetch(`${session.backend}/context/${path}`, {
       method: data ? 'POST' : 'GET',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
+        ...(key ? { 'Idempotency-Key': key } : {}),
       },
       body: data ? JSON.stringify(data) : undefined,
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(path.startsWith('imports/') ? 90000 : 20000),
     });
-    const value = await response.json();
-    if (!response.ok) {
+    if (!response.ok)
       throw new Error(
-        response.status === 503 ? 'Hymio 暂时没能接回这些内容。' : '暂时无法读取，请稍后再试。',
+        response.status === 401 ? '登录已过期，请重新登录。' : '暂时读不到记忆，请稍后重试。',
       );
-    }
-    return value;
+    return response.json();
   }
-
-  async function load() {
+  async function search(target: Layer, cursor: string | null = null): Promise<ContextPage> {
+    return request('browse', {
+      target,
+      query: query || null,
+      category,
+      limit: 30,
+      cursor,
+    });
+  }
+  async function load(reset = false) {
     const current = ++generation.current;
+    setLoading(true);
     setError('');
+    setMoreBusy(false);
+    if (reset) setPages({ artifacts: emptyPage(), records: emptyPage() });
     try {
-      const filters = {};
-      const [artifactResult, recordResult] = await Promise.all([
-        request('search', {
-          target: 'artifacts',
-          mode: 'filter',
-          query: null,
-          filters,
-          limit: 30,
-          cursor: null,
-        }),
-        request('search', {
-          target: 'records',
-          mode: 'filter',
-          query: null,
-          filters,
-          limit: 30,
-          cursor: null,
-        }),
-      ]);
+      const [artifacts, records] = await Promise.all([search('artifacts'), search('records')]);
       if (current !== generation.current) return;
-      setInsights(
-        (artifactResult.items || []).filter((item: ContextItem) => !item.id.startsWith('_')),
-      );
-      setRecords(
-        (recordResult.items || []).filter((item: ContextItem) => !item.id.startsWith('_')),
-      );
-      setRecordCursor(recordResult.next_cursor || null);
+      setPages({
+        artifacts: {
+          items: visibleItems(artifacts.items),
+          cursor: artifacts.next_cursor || null,
+          partial: !!artifacts.partial,
+        },
+        records: {
+          items: uniqueItems([
+            ...confirmedSaves.current.filter(
+              (item) =>
+                (category === 'all' || item.category === category) &&
+                (!query || item.preview.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
+            ),
+            ...visibleItems(records.items),
+          ]),
+          cursor: records.next_cursor || null,
+          partial: !!records.partial,
+        },
+      });
     } catch (reason) {
       if (current === generation.current) setError((reason as Error).message);
     } finally {
       if (current === generation.current) setLoading(false);
     }
   }
-
-  async function loadMoreRecords() {
-    if (!recordCursor || moreBusy) return;
-    setMoreBusy(true);
-    try {
-      const value = await request('search', {
-        target: 'records',
-        mode: 'filter',
-        query: null,
-        filters: {},
-        limit: 30,
-        cursor: recordCursor,
-      });
-      setRecords((current) => {
-        const known = new Set(current.map((item) => item.id));
-        return [
-          ...current,
-          ...(value.items || []).filter(
-            (item: ContextItem) => !item.id.startsWith('_') && !known.has(item.id),
-          ),
-        ];
-      });
-      setRecordCursor(value.next_cursor || null);
-    } catch (reason) {
-      setError((reason as Error).message);
-    } finally {
-      setMoreBusy(false);
-    }
-  }
-
   useEffect(() => {
-    setLoading(true);
-    void load();
+    void load(true);
     return () => {
       generation.current++;
+      detailGeneration.current++;
     };
-    // Login identity is the only reload boundary. Search and source filters are intentionally absent.
+    // A query or authenticated session change invalidates older requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [login.session?.backend, login.session?.user_id, login.session?.access_token]);
+  }, [query, category, session.backend, session.user_id, session.access_token]);
 
-  async function open(item: ContextItem) {
-    setSelected(item);
-    setDetail(null);
-    setRelated([]);
-    setDetailError('');
-    if (!reader.current?.open) reader.current?.showModal();
+  async function more(target: Layer) {
+    const cursor = pages[target].cursor;
+    if (!cursor || moreBusy || loading) return;
+    const current = generation.current;
+    setMoreBusy(true);
     try {
-      const value: ContextDetail = await request(
+      const result = await search(target, cursor);
+      if (current !== generation.current) return;
+      setPages((value) => ({
+        ...value,
+        [target]: {
+          items: uniqueItems([...value[target].items, ...visibleItems(result.items)]),
+          cursor: result.next_cursor || null,
+          partial: !!result.partial,
+        },
+      }));
+    } catch (reason) {
+      if (current === generation.current) setError((reason as Error).message);
+    } finally {
+      if (current === generation.current) setMoreBusy(false);
+    }
+  }
+  function showReader() {
+    if (!reader.current?.open) reader.current?.showModal();
+  }
+  async function open(item: ContextItem, asGraph = false, backStack: ReaderHistory[] = []) {
+    const current = ++detailGeneration.current;
+    setSelected(item);
+    setHistory(backStack);
+    setGraph(asGraph);
+    setDetail(null);
+    setEvidence([]);
+    setEvidenceLimit(12);
+    setDetailError('');
+    setDetailLoading(true);
+    showReader();
+    try {
+      const value = await request<ContextDetail>(
         `${item.kind === 'artifact' ? 'artifacts' : 'records'}/${encodeURIComponent(item.id)}`,
       );
+      if (current !== detailGeneration.current) return;
       setDetail(value);
-      const references = value.references || item.references || [];
-      const sources = await Promise.all(
-        references.map(async (reference) => {
-          const known = records.find((candidate) => candidate.id === reference.record_id);
-          if (known) return known;
-          const record: ContextDetail = await request(
-            `records/${encodeURIComponent(reference.record_id)}`,
-          );
-          return {
-            id: reference.record_id,
-            kind: 'record' as const,
-            preview: detailText(record) || readable(item.preview),
-            created_at: record.created_at,
-            source: record.source,
-          };
+      const ids = [...new Set((value.references || []).map((ref) => ref.record_id))];
+      // Always read full originals. A loaded search preview is not evidence in full.
+      const originals = await Promise.all(
+        ids.slice(0, 12).map(async (id): Promise<Evidence> => {
+          try {
+            const record = await request<ContextDetail>(`records/${encodeURIComponent(id)}`);
+            return {
+              id,
+              item: {
+                id,
+                kind: 'record',
+                preview: contextText(record),
+                source: record.source,
+                created_at: record.created_at,
+              },
+            };
+          } catch {
+            return { id, error: '这条原始依据暂时无法读取。' };
+          }
         }),
       );
-      setRelated(sources);
+      if (current === detailGeneration.current) setEvidence(originals);
     } catch (reason) {
-      setDetailError((reason as Error).message);
+      if (current === detailGeneration.current) setDetailError((reason as Error).message);
+    } finally {
+      if (current === detailGeneration.current) setDetailLoading(false);
     }
   }
-
-  async function importConversation() {
-    setNotice('Hymio 正在回看最近的对话…');
-    setError('');
+  async function moreEvidence() {
+    if (!detail || !selected || detailLoading) return;
+    const current = detailGeneration.current;
+    const ids = [...new Set((detail.references || []).map((ref) => ref.record_id))];
+    const nextLimit = evidenceLimit + 12;
+    setDetailLoading(true);
+    const next = await Promise.all(
+      ids.slice(evidenceLimit, nextLimit).map(async (id): Promise<Evidence> => {
+        try {
+          const record = await request<ContextDetail>(`records/${encodeURIComponent(id)}`);
+          return {
+            id,
+            item: {
+              id,
+              kind: 'record',
+              preview: contextText(record),
+              source: record.source,
+              created_at: record.created_at,
+            },
+          };
+        } catch {
+          return { id, error: '这条原始依据暂时无法读取。' };
+        }
+      }),
+    );
+    if (current !== detailGeneration.current) return;
+    setEvidence((value) => [...value, ...next]);
+    setEvidenceLimit(nextLimit);
+    setDetailLoading(false);
+  }
+  function openGraph() {
+    const item = pages.artifacts.items[0];
+    if (item) void open(item, true);
+    else {
+      detailGeneration.current++;
+      setSelected(null);
+      setGraph(true);
+      setDetail(null);
+      setEvidence([]);
+      setDetailError('');
+      setDetailLoading(false);
+      showReader();
+    }
+  }
+  async function save() {
+    const text = draft.trim();
+    if (!text || saving) return;
+    if (!saveOperation.current)
+      saveOperation.current = { key: crypto.randomUUID(), text, category: draftCategory };
+    setSaving(true);
+    setSaveError('');
     try {
-      const value = await request('imports/conversation', { limit: 10 });
-      setNotice(
-        value.record_ids?.length
-          ? `接回了 ${value.record_ids.length} 段真实对话。`
-          : '最近的对话已经在这里了。',
+      const saved = await request<ContextDetail & { id: string }>(
+        'saves',
+        { text: saveOperation.current.text, category: saveOperation.current.category },
+        saveOperation.current.key,
       );
-      await load();
-    } catch (reason) {
-      setNotice('');
-      setError((reason as Error).message);
+      const savedItem: ContextItem = {
+        id: saved.id,
+        category: saveOperation.current.category,
+        kind: 'record',
+        preview: contextText(saved),
+        source: saved.source,
+        created_at: saved.created_at,
+      };
+      confirmedSaves.current = uniqueItems([savedItem, ...confirmedSaves.current]).slice(0, 20);
+      setPages((value) => ({
+        ...value,
+        records: { ...value.records, items: uniqueItems([savedItem, ...value.records.items]) },
+      }));
+      saveOperation.current = null;
+      setDraft('');
+      composer.current?.close();
+      setNotice('已保存到足迹。理解会在后续整理中形成。');
+      setLayer('records');
+      if (query || category !== 'all') {
+        setCategory('all');
+        setInput('');
+        setQuery('');
+      } else await load();
+    } catch {
+      setSaveError('暂时无法确认保存结果。输入仍保留在这里，重试会沿用同一条记录。');
+    } finally {
+      setSaving(false);
     }
   }
-
-  const sourceCounts = records.reduce<Record<string, number>>((result, item) => {
-    const kind = item.source?.kind || 'legacy';
-    result[kind] = (result[kind] || 0) + 1;
-    return result;
-  }, {});
+  const graphItems = evidence.slice(0, graphColumns);
+  const page = pages[layer];
+  const hasAny = pages.artifacts.items.length + pages.records.items.length > 0;
+  const emptyTitle =
+    page.cursor && !page.items.length
+      ? '这批内容里暂时没有匹配项'
+      : category !== 'all'
+        ? `这个分类还没有${layer === 'artifacts' ? '理解' : '足迹'}`
+        : query
+          ? '暂时没找到相关记忆'
+          : layer === 'artifacts' && pages.records.items.length
+            ? '已收好，理解会慢慢形成'
+            : '留下第一条足迹';
 
   return (
-    <main className="understanding-page">
-      <div className="understanding-content">
-        {!loading && !error && !insights.length && !records.length ? null : (
-          <header className="understanding-hero">
-            <div className="understanding-intro">
-              <span className="understanding-kicker">
-                <i aria-hidden="true" />
-                Hymio 正在认识你
-                <span>
-                  {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}
-                </span>
-              </span>
-              <h1>我眼中的你</h1>
-              <p>我一边陪你做事，一边慢慢认识你。这些理解都能回到它们发生的地方。</p>
-            </div>
-            <div className="understanding-companion">
-              <Companion mood="idle" />
-            </div>
-          </header>
-        )}
-
-        <details className="understanding-menu">
-          <summary aria-label="整理 Hymio 对你的理解">
-            <MoreHorizontal size={19} aria-hidden="true" />
-          </summary>
+    <main className="memory-page">
+      <div className="memory-content">
+        <header className="memory-header">
           <div>
-            <button onClick={() => void importConversation()}>
-              <RefreshCw size={15} />
-              回看最近对话
+            <p className="memory-eyebrow">与你有关，慢慢连起来</p>
+            <h1>记忆</h1>
+          </div>
+          <div className="memory-actions">
+            <button className="memory-primary" onClick={() => composer.current?.showModal()}>
+              <Plus size={17} />
+              收集
+            </button>
+            <button
+              aria-label="刷新记忆"
+              title="刷新记忆"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              <RefreshCw size={18} />
             </button>
           </div>
-        </details>
-
+        </header>
+        <form
+          className="memory-search"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setQuery(input.trim());
+          }}
+        >
+          <Search size={18} aria-hidden="true" />
+          <input
+            aria-label="搜索你的记忆"
+            placeholder="搜索你的记忆"
+            maxLength={4000}
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+          />
+          {input && (
+            <button
+              type="button"
+              aria-label="清除搜索"
+              onClick={() => {
+                setInput('');
+                setQuery('');
+              }}
+            >
+              <X size={16} />
+            </button>
+          )}
+          <button type="submit">搜索</button>
+        </form>
+        <div className="memory-viewbar">
+          <div className="memory-tabs" role="tablist" aria-label="记忆类型">
+            {(['artifacts', 'records'] as Layer[]).map((target) => (
+              <button
+                role="tab"
+                aria-selected={layer === target}
+                aria-controls="memory-results"
+                id={`memory-tab-${target}`}
+                key={target}
+                onClick={() => setLayer(target)}
+              >
+                {target === 'artifacts' ? '理解' : '足迹'}
+              </button>
+            ))}
+          </div>
+          <button
+            className="memory-graph-button"
+            onClick={openGraph}
+            disabled={loading || (!!error && !pages.artifacts.items.length)}
+          >
+            <GitFork size={17} />
+            星图
+          </button>
+        </div>
+        <div className="memory-categories" role="group" aria-label="记忆分类">
+          {memoryCategories.map(([key, label]) => (
+            <button key={key} aria-pressed={category === key} onClick={() => setCategory(key)}>
+              {label}
+            </button>
+          ))}
+        </div>
         {notice && (
-          <p className="understanding-notice" role="status">
-            <Sparkles size={15} aria-hidden="true" />
-            {notice}
+          <p className="memory-notice" role="status">
+            <Companion compact />
+            <span>{notice}</span>
+            <button aria-label="收起提示" onClick={() => setNotice('')}>
+              <X size={14} />
+            </button>
           </p>
         )}
         {error && (
-          <p className="understanding-error" role="alert">
-            {error}
+          <div className="memory-failure" role="alert">
+            <strong>{hasAny ? '暂时没能刷新，仍显示上次读取的内容' : '暂时读不到记忆'}</strong>
+            <p>{error}</p>
             <button onClick={() => void load()}>重试</button>
-          </p>
-        )}
-
-        {loading && !insights.length && !records.length ? (
-          <div className="understanding-state" role="status">
-            <LoaderCircle className="spin" size={19} aria-hidden="true" />
-            <p>正在接回 Hymio 对你的了解…</p>
           </div>
-        ) : !insights.length && !records.length ? (
-          <section className="understanding-empty">
-            <p>和 Hymio 聊一件想让我记住的事，我会从这里慢慢认识你。</p>
-            <button onClick={onChat}>
-              开始聊聊
-              <ArrowRight size={16} />
-            </button>
-          </section>
-        ) : (
-          <>
-            <section className="understanding-section" aria-labelledby="understanding-insights">
-              <header className="understanding-section-heading">
-                <h2 id="understanding-insights">我慢慢看懂的</h2>
-                <span>{insights.length} 个理解</span>
-              </header>
-              {insights.length ? (
-                (showAllInsights ? insights : insights.slice(0, 4)).map((item, index) => {
-                  const copy = splitStatement(readable(item.preview));
-                  return (
-                    <button
-                      className={`understanding-insight ${index === 0 ? 'first' : ''}`}
-                      key={item.id}
-                      onClick={() => void open(item)}
-                    >
-                      <span className="understanding-insight-top">
-                        <span>
-                          <Sparkles size={12} aria-hidden="true" />
-                          {item.topics?.[0] || '我注意到的'}
-                        </span>
-                        <ArrowUpRight size={14} aria-hidden="true" />
-                      </span>
-                      <strong>{copy.title}</strong>
-                      {copy.detail && (
-                        <span className="understanding-insight-detail">{copy.detail}</span>
-                      )}
-                      {!!item.references?.length && (
-                        <small>
-                          <span aria-hidden="true">↳</span>
-                          沿着 {item.references.length} 条原始记录看到这句话
-                        </small>
-                      )}
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="understanding-inline-empty">
-                  还没有形成稳定的理解。再多聊几次，Hymio 会从这里慢慢写下来。
-                </p>
-              )}
-              {!showAllInsights && insights.length > 4 && (
-                <button className="understanding-more" onClick={() => setShowAllInsights(true)}>
-                  再看 {insights.length - 4} 个理解
-                </button>
-              )}
-            </section>
-
-            <section
-              className="understanding-section source-section"
-              aria-labelledby="understanding-sources"
-            >
-              <header className="understanding-section-heading">
-                <h2 id="understanding-sources">这些从哪里知道</h2>
-                <span>{records.length} 条来处</span>
-              </header>
-              {records.length ? (
-                <>
-                  <div className="understanding-source-summary" aria-label="来源分布">
-                    {(['conversation', 'connector', 'user', 'kit'] as const).map((kind) =>
-                      sourceCounts[kind] ? (
-                        <span key={kind}>
-                          {sourceNames[kind]} {sourceCounts[kind]}
-                        </span>
-                      ) : null,
-                    )}
-                  </div>
-                  <div className="understanding-source-list">
-                    {(showAllSources ? records : records.slice(0, 4)).map((item) => (
-                      <SourceRow key={item.id} item={item} onOpen={(value) => void open(value)} />
-                    ))}
-                  </div>
-                  {!showAllSources && records.length > 4 ? (
-                    <button className="understanding-more" onClick={() => setShowAllSources(true)}>
-                      查看全部 {records.length} 条来处
-                    </button>
-                  ) : recordCursor ? (
-                    <button
-                      className="understanding-more"
-                      disabled={moreBusy}
-                      onClick={() => void loadMoreRecords()}
-                    >
-                      {moreBusy ? '正在接回更早的记录…' : '继续往前看'}
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <p className="understanding-inline-empty">
-                  原始记录会在这里保留。它们不会因为提炼而消失。
-                </p>
-              )}
-            </section>
-
-            <footer className="understanding-closing">
-              <p>
-                这些不是关于你的档案。
-                <br />
-                只是我此刻的理解，会随着我们继续相处而改变。
-              </p>
-              <button onClick={onChat}>
-                告诉 Hymio 更多
-                <ArrowRight size={16} />
-              </button>
-            </footer>
-          </>
         )}
+        <section
+          id="memory-results"
+          role="tabpanel"
+          aria-labelledby={`memory-tab-${layer}`}
+          aria-busy={loading}
+        >
+          {loading && !page.items.length ? (
+            <div className="memory-empty" role="status">
+              <LoaderCircle className="spin" />
+              <h2>正在读取记忆…</h2>
+            </div>
+          ) : page.items.length ? (
+            <>
+              <div className={`memory-grid ${layer === 'records' ? 'memory-records' : ''}`}>
+                {page.items.map((item) => (
+                  <MemoryCard
+                    key={`${item.kind}:${item.id}`}
+                    item={item}
+                    onOpen={(value) => void open(value)}
+                  />
+                ))}
+              </div>
+              <div className="memory-page-end">
+                <span>
+                  已显示 {page.items.length} 条{page.partial ? ' · 搜索结果尚不完整' : ''}
+                </span>
+                {page.cursor && (
+                  <button disabled={moreBusy || loading} onClick={() => void more(layer)}>
+                    {moreBusy ? '正在读取…' : '继续查看'}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            !error && (
+              <div className="memory-empty">
+                <Bookmark size={28} aria-hidden="true" />
+                <h2>{emptyTitle}</h2>
+                <p>
+                  {category !== 'all'
+                    ? '试试其他分类，或收集一条相关的原始内容。'
+                    : query
+                      ? '换个关键词试试，或清除搜索。'
+                      : hasAny
+                        ? '原文已保存在足迹中，不必等待整理就能查看。'
+                        : '想法、偏好，或一段值得保留的话，都可以从这里开始。'}
+                </p>
+                <button
+                  onClick={() => {
+                    if (category !== 'all') setCategory('all');
+                    else if (query) {
+                      setInput('');
+                      setQuery('');
+                    } else if (hasAny) setLayer('records');
+                    else composer.current?.showModal();
+                  }}
+                >
+                  {category !== 'all'
+                    ? '查看全部'
+                    : query
+                      ? '清除搜索'
+                      : hasAny
+                        ? '查看足迹'
+                        : '记一笔'}
+                </button>
+                {page.cursor && (
+                  <button disabled={moreBusy} onClick={() => void more(layer)}>
+                    继续读取更多内容
+                  </button>
+                )}
+              </div>
+            )
+          )}
+        </section>
       </div>
-
       <dialog
-        ref={reader}
-        className="understanding-reader"
-        aria-labelledby="understanding-reader-title"
-        onClose={() => setSelected(null)}
-        onClick={(event) => {
-          if (event.target === event.currentTarget) reader.current?.close();
+        ref={composer}
+        className="memory-dialog memory-composer"
+        aria-labelledby="memory-save-title"
+        onCancel={(event) => {
+          if (saving) event.preventDefault();
         }}
       >
         <header>
-          <span id="understanding-reader-title">
-            {selected?.kind === 'artifact' ? '我这样理解' : '原始来处'}
-          </span>
-          <button aria-label="关闭详情" onClick={() => reader.current?.close()}>
-            <X size={19} />
+          <h2 id="memory-save-title">记一笔</h2>
+          <button aria-label="关闭收集" disabled={saving} onClick={() => composer.current?.close()}>
+            <X size={20} />
           </button>
         </header>
-        <div className="understanding-reader-body">
-          {selected && (
-            <>
-              <span className="understanding-reader-type">
-                {selected.kind === 'artifact' ? (
+        <p className="memory-muted">先留下原文，理解会慢慢形成。</p>
+        <label className="memory-sr" htmlFor="memory-draft">
+          想保留的内容
+        </label>
+        <label className="memory-category-label">
+          分类
+          <select
+            aria-label="收集分类"
+            value={draftCategory}
+            disabled={saving || !!saveOperation.current}
+            onChange={(event) => setDraftCategory(event.target.value)}
+          >
+            {memoryCategories
+              .filter(([key]) => key !== 'all')
+              .map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+          </select>
+        </label>
+        <textarea
+          id="memory-draft"
+          placeholder="想留下什么？"
+          maxLength={16000}
+          value={draft}
+          readOnly={saving || !!saveOperation.current}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+        {saveError && (
+          <p className="memory-save-error" role="alert">
+            {saveError}
+          </p>
+        )}
+        <footer>
+          <span>{draft.length} / 16000</span>
+          <button
+            className="memory-primary"
+            disabled={saving || !draft.trim()}
+            onClick={() => void save()}
+          >
+            {saving ? '正在保存…' : saveOperation.current ? '重试保存' : '保存到足迹'}
+          </button>
+        </footer>
+      </dialog>
+      <dialog
+        ref={reader}
+        className={`memory-dialog memory-reader ${graph ? 'memory-reader-graph' : ''}`}
+        aria-labelledby="memory-reader-title"
+        onClose={() => {
+          detailGeneration.current++;
+          setSelected(null);
+        }}
+      >
+        <header>
+          {history.length > 0 && (
+            <button
+              aria-label="返回理解"
+              onClick={() => {
+                const previous = history[history.length - 1];
+                void open(previous.item, previous.graph, history.slice(0, -1));
+              }}
+            >
+              <ArrowLeft size={19} />
+            </button>
+          )}
+          <h2 id="memory-reader-title">
+            {graph
+              ? '记忆星图'
+              : selected?.title || (selected?.kind === 'artifact' ? 'Hymio 的理解' : '原始足迹')}
+          </h2>
+          <button aria-label="关闭详情" onClick={() => reader.current?.close()}>
+            <X size={20} />
+          </button>
+        </header>
+        {graph && (
+          <div className="memory-graph-toolbar">
+            <label>
+              聚焦理解
+              <select
+                aria-label="选择星图中心"
+                value={selected?.kind === 'artifact' ? selected.id : ''}
+                onChange={(event) => {
+                  const item = pages.artifacts.items.find(
+                    (value) => value.id === event.target.value,
+                  );
+                  if (item) void open(item, true);
+                }}
+              >
+                <option value="" disabled>
+                  选择一条理解
+                </option>
+                {pages.artifacts.items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {readable(item.preview).slice(0, 50)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {pages.artifacts.cursor && (
+              <button disabled={moreBusy || loading} onClick={() => void more('artifacts')}>
+                更多理解
+              </button>
+            )}
+            <p>只展示当前理解与原始依据的引用关系。</p>
+          </div>
+        )}
+        {detailError ? (
+          <div className="memory-failure" role="alert">
+            <p>{detailError}</p>
+            <button onClick={() => selected && void open(selected, graph, history)}>
+              重新读取
+            </button>
+          </div>
+        ) : !selected ? (
+          <div className="memory-empty">
+            <GitFork size={28} />
+            <h2>{query ? '这个搜索范围内没有可展示的理解' : '理解形成后，会在这里连起来'}</h2>
+            <p>现在可以先收集足迹，或继续浏览原文。</p>
+          </div>
+        ) : (
+          <>
+            {graph && detail && (
+              <div className="memory-constellation">
+                <svg viewBox="0 0 900 300" preserveAspectRatio="none" aria-hidden="true">
+                  {graphItems.map((ref, index, refs) => (
+                    <path
+                      key={ref.id}
+                      d={`M450 48 C450 180 ${((index + 0.5) * 900) / refs.length} 140 ${((index + 0.5) * 900) / refs.length} 285`}
+                    />
+                  ))}
+                </svg>
+                <button className="memory-star-center" onClick={() => setGraph(false)}>
+                  <Sparkles size={17} />
+                  <span>{contextText(detail)}</span>
+                  <small>理解 · 点击阅读全文</small>
+                </button>
+                <div
+                  className="memory-star-sources"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(graphColumns, evidence.length) || 1}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {graphItems.map((ref) => (
+                    <button
+                      key={ref.id}
+                      disabled={!ref.item}
+                      onClick={() =>
+                        ref.item &&
+                        void open(ref.item, false, [...history, { item: selected, graph: true }])
+                      }
+                    >
+                      <FileText size={17} />
+                      <strong>{ref.item ? sourceTitle(ref.item.source) : '依据暂不可用'}</strong>
+                      <span>{ref.item?.preview || ref.error}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detail && (
+              <div className="memory-detail-content">
+                {!graph && (
                   <>
-                    <Sparkles size={12} />
-                    {selected.topics?.[0] || 'Hymio 的理解'}
-                  </>
-                ) : (
-                  <>
-                    <SourceMark item={selected} />
-                    {label(selected)}
+                    <p className="memory-detail-label">
+                      {selected.kind === 'artifact'
+                        ? selected.topics?.[0] || '当前理解'
+                        : sourceTitle(detail.source)}
+                      <time>{memoryDate(detail.updated_at || detail.created_at)}</time>
+                    </p>
+                    {selected.kind === 'artifact' && (
+                      <h3 className="memory-understanding-label">当前理解</h3>
+                    )}
+                    <p className="memory-fulltext">
+                      {contextText(detail) || '这条记录没有文字内容。'}
+                    </p>
                   </>
                 )}
-                <time>{dateLabel(selected.created_at || detail?.created_at)}</time>
-              </span>
-              {detailError ? (
-                <p className="understanding-inline-empty">{detailError}</p>
-              ) : detail ? (
-                <>
-                  {selected.kind === 'artifact' ? (
-                    <p className="understanding-reader-lead">{detailText(detail)}</p>
-                  ) : (
-                    <SourcePreview
-                      item={{
-                        ...selected,
-                        preview: detailText(detail) || selected.preview,
-                        source: detail.source || selected.source,
-                        created_at: detail.created_at || selected.created_at,
-                      }}
-                    />
-                  )}
-                  {selected.kind === 'artifact' && (
-                    <section className="understanding-provenance">
-                      <header>
-                        <h3>这些话从哪里来</h3>
-                        <span>{related.length} 条</span>
-                      </header>
-                      {related.map((item) => (
-                        <SourceRow key={item.id} item={item} onOpen={(value) => void open(value)} />
-                      ))}
-                      {!related.length && <p>这一条暂时没有可打开的原始记录。</p>}
-                      <small>Hymio 的整理会变，但这些原始记录会保留下来。</small>
-                    </section>
-                  )}
-                  {selected.kind === 'record' && (
-                    <button className="understanding-detail-chat" onClick={onChat}>
-                      <MessageCircle size={16} />和 Hymio 聊聊这条
+                {selected.kind === 'record' && memoryProposal(detail) && (
+                  <section className="memory-proposal">
+                    <span className="memory-card-meta">
+                      <Sparkles size={15} />
+                      提炼草稿
+                    </span>
+                    <p>{memoryProposal(detail)}</p>
+                    <small>与原文一起保留，尚未发布为理解。</small>
+                  </section>
+                )}
+                {selected.kind === 'artifact' && (
+                  <>
+                    <div className="memory-evidence-heading">
+                      <h3>原始依据（{detail.references?.length || 0}）</h3>
+                      {!graph && (
+                        <button onClick={() => setGraph(true)}>
+                          <GitFork size={16} />
+                          查看关联
+                        </button>
+                      )}
+                    </div>
+                    {graph && evidence.length > graphColumns && (
+                      <p className="memory-muted">图中展示前 {graphColumns} 条，完整依据见下方。</p>
+                    )}
+                    {!detailLoading && !evidence.length && (
+                      <p className="memory-muted">这条理解暂时没有可展示的原始关联。</p>
+                    )}
+                    {evidence.map((ref) => (
+                      <div className="memory-evidence" key={ref.id}>
+                        {ref.item ? (
+                          <button
+                            onClick={() =>
+                              void open(ref.item!, false, [...history, { item: selected, graph }])
+                            }
+                          >
+                            <span className="memory-card-meta">
+                              <FileText size={14} />
+                              {sourceTitle(ref.item.source)}
+                              <time>{memoryDate(ref.item.created_at)}</time>
+                            </span>
+                            <span className="memory-evidence-copy">
+                              {ref.item.preview || '无文字内容'}
+                            </span>
+                            <span className="memory-evidence-link">
+                              查看原文
+                              <ChevronRight size={15} />
+                            </span>
+                          </button>
+                        ) : (
+                          <p>
+                            {ref.error}
+                            <button onClick={() => void open(selected, graph, history)}>
+                              重试依据
+                            </button>
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+                {selected.kind === 'artifact' &&
+                  (detail.references?.length || 0) > evidenceLimit && (
+                    <button disabled={detailLoading} onClick={() => void moreEvidence()}>
+                      继续读取依据
                     </button>
                   )}
-                </>
-              ) : (
-                <p className="understanding-reading" role="status">
-                  沿着来处找一找…
-                </p>
-              )}
-            </>
-          )}
-        </div>
+                <details className="memory-source-info">
+                  <summary>来源信息</summary>
+                  <p>
+                    记录时间：
+                    {detail.created_at
+                      ? new Date(detail.created_at).toLocaleString('zh-CN')
+                      : '未提供'}
+                  </p>
+                  {detail.produced_at && (
+                    <p>发生时间：{new Date(detail.produced_at).toLocaleString('zh-CN')}</p>
+                  )}
+                  {detail.source && (
+                    <>
+                      <p>
+                        {sourceTitle(detail.source)}
+                        {detail.source.namespace ? ` · ${detail.source.namespace}` : ''}
+                      </p>
+                      {detail.source.version && <p>来源版本：{detail.source.version}</p>}
+                    </>
+                  )}
+                </details>
+              </div>
+            )}
+            {detailLoading && (
+              <p className="memory-reading" role="status">
+                <LoaderCircle className="spin" size={17} />
+                正在读取完整内容与依据…
+              </p>
+            )}
+          </>
+        )}
       </dialog>
     </main>
   );

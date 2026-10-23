@@ -16,7 +16,7 @@ oath start \
 ```
 
 This mounts extension directories. Use the unified Hymio launcher for the full product: it prepares
-the private Backend connection, disables host Bash and registers `nostalgia`, `devices`, device-aware `bash`,
+the private Backend connection, disables host Bash and registers `remember`, `recall`, `devices`, device-aware `bash`,
 `browser`, `computer` and the read-only `device_command`. Running the command above against default Oath config would conflict with
 the built-in Bash; set `agent.builtin_bash = false`. See the [device guide](../deploy/computer/README.md).
 
@@ -30,3 +30,13 @@ Oath is a generic runtime and must not contain Hymio business tools or personal-
 Hymio business capabilities are declared here and mounted into the generic Oath runtime.
 `remember` and `recall` are the semantic context tools exposed to the normal Agent; context
 injection and Nostalgia's scheduled dreaming lifecycle remain runtime mechanisms, not Agent tools.
+
+`recall` keeps query-only search compatibility and also accepts `action="read"`, `kind` and `id`
+to open a full original or interpretation. The Memory UI and Agent follow the same published
+references; saving an original does not promise immediate synthesis.
+
+`remember` now requires `summary` (grounded extraction) and `text` (exact supporting quote).
+It selectively retains useful context, not whole conversation streams. Both are stored atomically
+in one record with `hymio.remember.v2` provenance; published understanding is still a later step.
+The runtime does not provide a verified message index to this tool, so no model-supplied index
+is accepted. Legacy records remain readable; new text-only tool calls must supply the summary.
