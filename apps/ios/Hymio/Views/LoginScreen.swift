@@ -17,7 +17,7 @@ struct LoginScreen: View {
       VStack(alignment: .leading, spacing: 30) {
         HStack {
           Spacer()
-          Companion(size: 100, animated: true)
+          Companion(size: 100)
           Spacer()
         }.padding(.top, 58)
         VStack(alignment: .leading, spacing: 10) {

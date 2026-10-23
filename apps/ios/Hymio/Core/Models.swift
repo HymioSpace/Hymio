@@ -165,7 +165,7 @@ public struct ConversationState: Codable, Sendable {
   public static func isDisplayEvent(_ event: Event) -> Bool {
     [
       "user.message", "assistant.delta", "assistant.message", "tool.terminal",
-      "permission.requested", "permission.resolved", "step.status",
+      "permission.requested", "permission.resolved", "step.status", "message.reaction.changed",
     ].contains(event.event_type)
   }
   public mutating func reconcile() {

@@ -42,7 +42,7 @@ struct ChatScreen: View {
             }
             if client.model.messages.isEmpty {
               VStack(spacing: 18) {
-                Companion(size: 116, animated: true)
+                Companion(size: 116)
                 VStack(spacing: 10) {
                   Text("嗨，我在。").font(.system(.largeTitle, design: .rounded, weight: .medium))
                     .tracking(-1)
@@ -160,7 +160,7 @@ struct ChatScreen: View {
                 && (client.model.working || client.model.awaitingReply
                   || client.model.messages.contains(where: \.streaming))
               {
-                Companion(size: 24, animated: true, mood: .working)
+                Companion(size: 24, mood: .working)
               }
               ConnectionStatus(
                 text: client.connected && (client.model.working || client.model.awaitingReply)

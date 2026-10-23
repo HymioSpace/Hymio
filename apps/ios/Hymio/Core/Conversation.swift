@@ -16,6 +16,7 @@ public struct ChatMessage: Identifiable {
   public var thinking = false
   public var eventSeq = 0
   public var delivery: String?
+  public var reactions: [String: String] = [:]
 }
 public struct Approval: Identifiable {
   public var id: String
@@ -73,6 +74,10 @@ public struct Conversation {
     let p = e.payload
     let step = p["step_id"].text
     switch e.event_type {
+    case "message.reaction.changed":
+      if let i = messages.firstIndex(where: { $0.id == p["target"].text }) {
+        messages[i].reactions[p["actor"].text] = p["emoji"].text.isEmpty ? nil : p["emoji"].text
+      }
     case "user.message":
       pauseNotice = ""
       let id = p["user_context"]["hymio_message_id"].text

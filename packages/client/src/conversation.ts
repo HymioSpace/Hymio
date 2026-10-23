@@ -18,6 +18,7 @@ export interface Message {
   thinking?: boolean;
   eventSeq?: number;
   delivery?: 'queued' | 'accepted' | 'failed';
+  reactions?: Record<string, string | null>;
 }
 export interface Approval {
   id: string;
@@ -178,6 +179,14 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
           m.thinking = false;
         }
       }
+    }
+    if (event.event_type === 'message.reaction.changed') {
+      const message = messages.find((item) => item.id === str(p.target));
+      if (message)
+        message.reactions = {
+          ...message.reactions,
+          [str(p.actor)]: typeof p.emoji === 'string' ? p.emoji : null,
+        };
     }
   }
   const echoed = new Set(

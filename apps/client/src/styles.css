@@ -462,6 +462,7 @@ a {
   color: var(--ink);
 }
 .message-user .message-bubble {
+  position: relative;
   background: var(--pale);
   border: 1px solid var(--line);
   border-radius: 18px 18px 5px 18px;
@@ -544,6 +545,27 @@ a {
 }
 .message-user .message-meta {
   justify-content: flex-end;
+}
+.message-user:has(.bubble-reaction) .message-meta {
+  margin-top: 12px;
+}
+.bubble-reaction {
+  position: absolute;
+  z-index: 2;
+  left: -10px;
+  bottom: -10px;
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 25px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  box-shadow: 0 2px 7px #18244312;
+  font-size: 15px;
+  line-height: 1;
+  pointer-events: none;
 }
 .copy-message {
   width: 24px;
