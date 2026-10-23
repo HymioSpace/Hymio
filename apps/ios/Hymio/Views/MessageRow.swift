@@ -15,6 +15,7 @@ struct MessageRow: View {
   }
   @State private var expanded = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   var body: some View {
     if message.role == "user" {
       HStack {
@@ -23,9 +24,28 @@ struct MessageRow: View {
           UserMessageContent(content: message.content, account: account)
             .padding(.horizontal, 14).padding(.vertical, 12)
             .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(alignment: .bottomLeading) {
+              if showsTime, !dynamicTypeSize.isAccessibilitySize,
+                let emoji = message.reactions["assistant"]
+              {
+                reactionBadge(emoji)
+                  .offset(x: -10, y: 8)
+              }
+            }
+            .padding(
+              .bottom,
+              showsTime && !dynamicTypeSize.isAccessibilitySize
+                && message.reactions["assistant"] != nil ? 5 : 0)
           if showsTime, let date = TurnClock.date(message.time) {
-            Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
-              .foregroundStyle(Brand.muted).monospacedDigit()
+            HStack(spacing: 6) {
+              Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
+                .foregroundStyle(Brand.muted).monospacedDigit()
+              if dynamicTypeSize.isAccessibilitySize,
+                let emoji = message.reactions["assistant"]
+              {
+                reactionBadge(emoji)
+              }
+            }
           }
           if message.delivery == "failed" {
             HStack(spacing: 16) {
@@ -123,6 +143,18 @@ struct MessageRow: View {
       }
       .accessibilityElement(children: .contain).accessibilityIdentifier("message.assistant")
     }
+  }
+  private func reactionBadge(_ emoji: String) -> some View {
+    Text(emoji)
+      .font(.subheadline)
+      .padding(.horizontal, 6)
+      .padding(.vertical, 3)
+      .frame(minWidth: 30, minHeight: 24)
+      .background(Brand.surface, in: Capsule())
+      .overlay { Capsule().stroke(Brand.muted.opacity(0.16), lineWidth: 0.6) }
+      .shadow(color: .black.opacity(0.07), radius: 5, y: 2)
+      .accessibilityLabel("Hymio 的回应：\(emoji)")
+      .accessibilityIdentifier("message.reaction.assistant")
   }
   private var summaryOutcome: String {
     let outcomes = message.calls.indices.map { toolOutcome(index: $0) }

@@ -201,6 +201,62 @@ final class HymioUITests: XCTestCase {
     app.buttons.matching(identifier: "account.confirmLogout").firstMatch.tap()
     XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 10))
   }
+
+  @MainActor func testBlankTapDismissesKeyboardAndAssistantReaction() throws {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
+    app.launch()
+    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
+      app.tabBars.buttons["我的"].tap()
+      app.buttons["account.logout"].tap()
+      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
+      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+      confirm.tap()
+    }
+    let username = "react_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
+    let password = "Test-" + UUID().uuidString
+    defer { cleanupAccount(username: String(username), password: password) }
+    XCTAssertTrue(app.buttons["login.toggle"].waitForExistence(timeout: 15))
+    app.buttons["login.toggle"].tap()
+    let name = app.textFields["login.username"]
+    XCTAssertTrue(name.waitForExistence(timeout: 10))
+    name.tap()
+    name.typeText(username)
+    let pass = app.secureTextFields["login.password"]
+    pass.tap()
+    pass.typeText(password)
+    app.buttons["login.submit"].tap()
+    openChat(app)
+
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 40), app.debugDescription)
+    editor.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    editor.typeText("请只给这条消息发 🎉 表情，不要回复文字，也不要调用其他工具。")
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)).tap()
+    expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
+    waitForExpectations(timeout: 4)
+
+    app.buttons["chat.send"].tap()
+    let reaction = app.staticTexts.matching(
+      NSPredicate(format: "label == %@", "Hymio 的回应：🎉")
+    ).firstMatch
+    XCTAssertTrue(reaction.waitForExistence(timeout: 180), app.debugDescription)
+    let message = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "请只给这条消息发")
+    ).firstMatch
+    XCTAssertTrue(message.waitForExistence(timeout: 10), app.debugDescription)
+    XCTAssertLessThanOrEqual(reaction.frame.minX, message.frame.minX + 12)
+    XCTAssertGreaterThanOrEqual(reaction.frame.maxY, message.frame.maxY - 4)
+    XCTAssertLessThanOrEqual(reaction.frame.maxY, message.frame.maxY + 56)
+
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "assistant-reaction-on-user-bubble"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   @MainActor private func openChat(_ app: XCUIApplication) {
     let tab = app.tabBars.buttons["对话"]
     XCTAssertTrue(tab.waitForExistence(timeout: 40), app.debugDescription)

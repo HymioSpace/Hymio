@@ -26,6 +26,7 @@ from .media.store import MediaStore
 from .monitoring import monitoring_routes, record_client_turn
 from .observability import HTTPMetricsMiddleware, metrics_response
 from .oidc import Oidc
+from .reactions import reaction_routes
 from .session_store import SessionStore, Unauthorized
 from .system_log import LogCapture
 from .tasks.credentials import PREFIX
@@ -287,6 +288,7 @@ def build_app(settings, *, provider=None):
         + device_routes(settings, store, bearer, body)
         + admin_routes(settings, store, bearer, body)
         + monitoring_routes(settings, store, upstream, bearer, body)
+        + reaction_routes(settings, bearer, body)
         + [
             WebSocketRoute("/agent/ws", agent_socket),
             Route("/health", endpoint),

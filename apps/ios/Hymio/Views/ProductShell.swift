@@ -167,7 +167,7 @@ struct HomeScreen: View {
               )
               .font(.subheadline).foregroundStyle(Brand.muted)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Companion(size: 78, animated: true, mood: ongoing == nil ? .idle : .working)
+            Companion(size: 78, mood: ongoing == nil ? .idle : .working)
           }.padding(.top, 16)
           ForEach(modules, id: \.kind) { module in
             homeSection(

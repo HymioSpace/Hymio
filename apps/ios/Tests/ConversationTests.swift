@@ -3,6 +3,19 @@ import XCTest
 @testable import HymioCore
 
 final class ConversationTests: XCTestCase {
+  func testAssistantReactionAttachesToUserMessage() {
+    let model = Conversation(events: [
+      event(1, "user.message", ["content": .string("done")]),
+      event(
+        2, "message.reaction.changed",
+        [
+          "target": .string("user:1"), "actor": .string("assistant"), "emoji": .string("🎉"),
+        ]),
+    ])
+    XCTAssertEqual(model.messages.count, 1)
+    XCTAssertEqual(model.messages[0].reactions["assistant"], "🎉")
+  }
+
   private func event(_ id: Int, _ type: String, _ fields: [String: JSON], user: String = "alice")
     -> Event
   {

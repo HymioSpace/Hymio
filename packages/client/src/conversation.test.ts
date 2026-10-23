@@ -13,6 +13,19 @@ const event = (seq: number, type: string, payload: Data): OathEvent => ({
   occur_dt: '2026-01-01T00:00:00Z',
 });
 
+test("assistant reactions attach to the user's message without adding a row", () => {
+  const result = conversation([
+    event(1, 'user.message', { content: 'done' }),
+    event(2, 'message.reaction.changed', {
+      target: 'user:1',
+      actor: 'assistant',
+      emoji: '🎉',
+    }),
+  ]);
+  assert.equal(result.messages.length, 1);
+  assert.equal(result.messages[0].reactions?.assistant, '🎉');
+});
+
 test('a retried stream is replaced by its new attempt and final response', () => {
   const result = conversation([
     event(1, 'assistant.delta', { step_id: 'a', attempt: 1, channel: 'content', text: 'partial' }),

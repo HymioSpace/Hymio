@@ -233,6 +233,14 @@ export function MessageView({
           {!!message.calls?.length && (
             <ToolCalls message={message} tools={tools} approvals={approvals} />
           )}
+          {message.role === 'user' && message.reactions?.assistant && (
+            <span
+              className="bubble-reaction"
+              aria-label={`Hymio 的回应：${message.reactions.assistant}`}
+            >
+              {message.reactions.assistant}
+            </span>
+          )}
         </div>
         {!activity && (
           <div className="message-meta">

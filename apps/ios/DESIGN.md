@@ -7,7 +7,7 @@ reading and typing remain the main actions. Native navigation, sheets and contro
 
 The Web/Desktop and native clients share semantic color roles, action hierarchy and character artwork. Web components live in `packages/ui`; SwiftUI uses `DesignSystem.swift`. See [the shared design guide](../../packages/ui/README.md) and [feature15](../../spec/feature15-unified-design.md).
 
-The character is a half-body ivory otter with small navy ears, delicate contours and a flowing blue scarf. Web and iOS bundle an identical transparent 3 × 2 state atlas. Welcome screens and small avatars use the same half-body portrait, retaining the ears and scarf for recognition. This is rendered artwork, not a live 3D model. Scene state and Reduce Motion govern lightweight movement.
+The character is a half-body ivory otter with small navy ears, delicate contours and a flowing blue scarf. Web and iOS bundle an identical transparent 3 × 2 state atlas. Welcome screens and small avatars use the same half-body portrait, retaining the ears and scarf for recognition. This is rendered artwork, not a live 3D model. Scene state selects a static pose; no continuous animation runs.
 
 System text styles provide Dynamic Type. Primary controls provide a 44-point touch region. Primary actions use `Brand.blue` with `Brand.onAccent` in both appearances. Increased contrast and Reduce Transparency replace the floating glass input with an opaque outlined surface. No unavailable feature receives a navigation button.
 
@@ -32,7 +32,7 @@ Wider iPhone: same hierarchy with extra line length; no dashboard or second colu
 
 ## Motion
 
-- Companion: low amplitude breathing, explicit pose changes and a brief tap greeting; active foreground only.
+- Companion: static artwork only; mood changes swap the pose without a running animation.
 - Send: immediate press feedback and selection haptic after the command is saved.
 - Replies: short spring on message insertion, never animate individual tokens or force a reader off history.
 - Account: system zoom transition starts at the profile control; swipe dismissal remains native.
