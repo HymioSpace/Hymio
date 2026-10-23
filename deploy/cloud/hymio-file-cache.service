@@ -1,0 +1,13 @@
+[Unit]
+Description=Hymio THP policy workaround for file-cache thrashing
+After=local-fs.target
+Before=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/hymio/file_cache.py apply
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

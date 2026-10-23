@@ -87,6 +87,37 @@ The default Oath target is the host's port 8080, appropriate for a locally runni
 Set `signup_enabled = false` to close registration entirely. If registration is enabled
 without `invitation_codes_file`, registration remains open for backward compatibility.
 
+### File-cache read thrashing on Alibaba Cloud Linux
+
+Some hosts expose file-backed transparent huge page controls at
+`/sys/kernel/mm/transparent_hugepage/hugepages-*/file_enabled`. If disk reads stay high,
+processes block on file faults, and file cache repeatedly disappears despite available
+memory, see [host I/O diagnostics](../TROUBLESHOOTING.md#host-io-and-file-cache-thrashing).
+The opt-in workaround below disables file-backed THP, sets anonymous THP to `madvise`, and
+disables THP defragmentation. It does not change MGLRU, swap, container limits or stored data.
+It is not a default for every Linux host. Anonymous THP is restricted because its background
+compaction can also sustain cache reclaim on a fragmented small host.
+
+```sh
+sudo install -d /usr/local/lib/hymio
+sudo install -m 644 deploy/cloud/file_cache.py /usr/local/lib/hymio/file_cache.py
+sudo install -m 644 deploy/cloud/hymio-file-cache.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now hymio-file-cache.service
+python3 /usr/local/lib/hymio/file_cache.py status
+```
+
+The first application saves original policies in `/var/lib/hymio/file-cache-original.json`.
+Repeated starts preserve that backup. To roll back, first disable the boot service:
+
+```sh
+sudo systemctl disable --now hymio-file-cache.service
+sudo python3 /usr/local/lib/hymio/file_cache.py restore
+```
+
+No reboot or container restart is required. Compare disk read rate, `vmstat` I/O wait and
+authenticated application requests before deciding whether to retain the workaround.
+
 ## 2. Start Oath and generate the cloud stack
 
 Configure Oath's model provider and Vault using its installer/docs. Import the model key

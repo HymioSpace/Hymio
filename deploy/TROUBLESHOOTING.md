@@ -1,5 +1,38 @@
 # Agent and cloud-computer diagnostics
 
+## Host I/O and file-cache thrashing
+
+When all APIs and Docker commands slow together, inspect the host before restarting services:
+
+```sh
+vmstat 1 5
+iostat -xz 1 5
+grep -E 'MemAvailable|Cached|Dirty|Writeback|AnonHugePages' /proc/meminfo
+grep -E 'workingset_refault_file|pgscan_kswapd|pgsteal_kswapd' /proc/vmstat
+grep . /sys/kernel/mm/transparent_hugepage/hugepages-*/file_enabled
+```
+
+Ignore the first `vmstat`/`iostat` report, which includes statistics since boot. Compare
+counter deltas across samples. A high load with high `wa` means blocked I/O, not necessarily
+CPU exhaustion. Distinguish read BPS from write BPS; free disk space does not measure latency.
+
+For service attribution, sample `io.stat` twice under `/sys/fs/cgroup/system.slice/*/`
+and divide byte deltas by elapsed seconds. `/proc/PID/io` helps identify processes, but
+short-lived children can disappear between samples and parent counters can include waited
+children. Do not sum parent and child process counters as independent device traffic.
+
+On Alibaba Cloud Linux with file-backed THP enabled, fragmented memory can coincide with
+heavy file-cache reclaim and repeated executable reads. This can affect monitoring and system
+services as well as application containers. Test the opt-in
+[file-cache workaround](cloud/README.md#file-cache-read-thrashing-on-alibaba-cloud-linux),
+then verify declining refault/reclaim rates, low I/O wait and actual application requests.
+Keep initial policy values for rollback. Do not clear page cache or disable health checks
+as a substitute for attribution.
+
+The Oath node exporter supplies host disk, CPU, memory and VM counters. File-cache refault
+and disk-latency alerts complement low-memory and free-space alerts. Rules are evaluated
+in Prometheus; notifications require a separately configured Alertmanager route.
+
 Start with the failing boundary. WebSocket connected and `/health` returning `200` only prove
 that the proxy and HTTP process are alive. They do not prove that a worker can build a context,
 call the model or execute a device command.

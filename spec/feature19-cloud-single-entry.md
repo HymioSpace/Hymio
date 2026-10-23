@@ -18,6 +18,15 @@ signup_enabled 默认为 true 保持兼容；私有部署设为 false，服务�
 
 使用固定代码版本构建；容器只在入口发布 80/443。同机部署由 Backend 加入 Oath 的外部 Docker 网络，使用 gateway/biz/backend 服务名互通；Backend 不发布端口，Oath WS/Biz 与 Vault 只绑定 localhost。可选 managed_identity 提供私有 Casdoor 容器，账号与应用仍需显式初始化。初次部署检查登录、账号隔离、流式对话、重连和 E2B 操作；公网 DNS/TLS 以及服务器实际验证不能由本机测试替代。
 
+## 宿主机文件缓存
+
+对出现文件缓存反复回收的 Linux 主机，可显式安装 `deploy/cloud/file_cache.py` 与配套
+systemd unit。仅在内核提供 file-backed THP 控制时应用：关闭文件大页，匿名 THP 使用
+`madvise`，关闭 THP defrag。首次保存原策略，后续启动不覆盖；停用 unit 后可恢复。
+该设置不作为所有宿主机的默认值，不改变 MGLRU、容器资源限制或持久数据。
+Oath 的 node exporter 采集文件缓存 refault / kswapd 扫描指标，Prometheus 评估缓存抖动
+和磁盘读延迟规则；通知投递由运维配置 Alertmanager。
+
 ## 邀请码注册
 
 私有部署开启 signup_enabled 并配置 invitation_codes_file。文件每行一个可复用邀请码，注册时重新读取，修改无需重启；空文件、缺失文件均不放行。邀请码仅由 Backend 校验，不透传到 Casdoor、Oath 或模型上下文。auth/options 仅公开 invitation_required 布尔值，Web/iOS 据此展示输入框。未配置文件保持原有开放注册兼容行为。Casdoor 仅私网可达，应用允许注册，由 Backend 作为外部注册入口；将来若公开 Casdoor 必须另行保护其注册入口。
