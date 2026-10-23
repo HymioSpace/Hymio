@@ -44,6 +44,7 @@ class Settings:
     observability_max_events: int = 20000
     vault_role_id_file: Path | None = None
     vault_secret_id_file: Path | None = None
+    nostalgia_connections_file: Path | None = None
 
     @classmethod
     def load(cls, path):
@@ -81,6 +82,9 @@ class Settings:
         if not isinstance(data.get("admin_user_ids", ()), (list, tuple)):
             raise ValueError("admin_user_ids must be a list of product user IDs")
         data["admin_user_ids"] = tuple(data.get("admin_user_ids", ()))
+        if data.get("nostalgia_connections_file"):
+            file = Path(data["nostalgia_connections_file"]).expanduser()
+            data["nostalgia_connections_file"] = file if file.is_absolute() else path.parent / file
         result = cls(**data)
         if not result.model_options or any(
             not isinstance(m, str) or not m.strip() or len(m) > 128 for m in result.model_options

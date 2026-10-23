@@ -2,7 +2,7 @@
 
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
-当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 集成尚未实现，本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。
+当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 已接入原始写入、Agent 查询与手动 dreaming，见 [feature31](feature31-context-dreaming.md)。本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。
 
 ## 产品边界
 
@@ -16,6 +16,8 @@ Hymio 管设备归属、在线状态与执行命令；Oath 扩展显式指定 de
 iOS 原生客户端位于 apps/ios，接入同一账号与单一会话，见 [feature14](feature14-ios-mvp.md)。
 
 Context 的入口只有导入与同步：文字、语音、照片、文件和历史快照都属于一次性导入；绑定来源后持续获取变化属于同步。采集、连接器和媒体处理归 Hymio，Context 的规范与检索归 Nostalgia。
+
+现有 MVP 提供手动写入与整理 API。Hymio 的 `nostalgia` tool 经 Backend 访问对应用户的 Nostalgia；dreaming skill 由 Oath 执行。整理发布前继续读取旧制品与近期输入，提交后原子切换；采集 UI 和周期调度尚未实现。
 
 Kit 同时提供 Agent 可调用操作和用户体验。业务数据与约束归 Kit；Nostalgia 可保存其 context projection；Agent 和 UI 使用相同业务 API。
 
@@ -54,7 +56,6 @@ flowchart LR
     Backend --> Kit[Kit operations]
     Apps --> Kit
     Kit -->|projection| Context
-    Ext -->|authorized retrieval| Context
 ```
 
 所有客户端连接都需要用户级认证；图中的直接连接是逻辑契约，公网代理、凭据签发与实际路由需在接入 feature 中确定。不能把 Oath 服务凭据发给客户端。
@@ -69,7 +70,7 @@ Hymio 的部署层组合 backend、Oath、Nostalgia，客户端只连接服务�
 
 应用模块先留在同仓库，按需独立构建和发布。Oath/Nostalgia 通过公开协议和固定版本产物接入，不复制源码，不默认增加 submodule。后端先按模块划分，不预设每个模块都是微服务。
 
-下一步：完善产品身份和 Oath 用户凭据接入 → 实现产品后端 → 引入 Context 导入与第一个 Kit。Nostalgia 的实现和协议仍是后续依赖。
+下一步：补 Context 采集体验和整理触发策略，再按真实使用需求增加连接器与 Kit。
 
 客户端单入口与局域网启动见 [feature16](feature16-lan-entry.md)：HTTP、WS、业务查询统一访问 Hymio Backend，Oath 地址仅作为内部 upstream。
 
@@ -94,4 +95,6 @@ Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
 
 ## 产品入口
 
-iOS 使用此刻、对话、任务、我的四个原生页签；Web 使用有文字标签的侧栏，任务和账号保持宽屏面板。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
+iOS 使用此刻、对话、任务、认识、我的五个原生页签；Web 使用有文字标签的侧栏，任务和账号保持宽屏面板。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
+
+认识页、稳定精华与动态事件基础协议见 [feature30](feature30-context-foundation.md)。

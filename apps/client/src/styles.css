@@ -3336,3 +3336,627 @@ a {
     line-height: 34px;
   }
 }
+
+/* Context is presented as Hymio's living understanding of a person, not a memory admin tool. */
+.understanding-page {
+  --understanding-paper: #f8f6f0;
+  --understanding-paper-line: #eae4d8;
+  --understanding-note: #fff1cf;
+  --understanding-note-line: #a47b31;
+  --understanding-blue-wash: #f2f5ff;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  color: var(--ink);
+  background: var(--surface);
+}
+.understanding-content {
+  position: relative;
+  width: min(100%, 790px);
+  margin: 0 auto;
+  padding: 52px 40px 72px;
+}
+.understanding-hero {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0 34px;
+}
+.understanding-intro {
+  flex: 1;
+  min-width: 0;
+}
+.understanding-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 520;
+}
+.understanding-kicker > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+.understanding-kicker > span {
+  margin-left: auto;
+  font-weight: 400;
+}
+.understanding-hero h1 {
+  margin: 18px 0 10px;
+  font-size: clamp(34px, 5vw, 44px);
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -1.8px;
+}
+.understanding-hero p {
+  max-width: 510px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.understanding-companion {
+  display: grid;
+  place-items: center;
+  width: 148px;
+  height: 148px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--understanding-blue-wash);
+}
+.understanding-companion .companion {
+  width: 132px;
+  height: 132px;
+}
+.understanding-menu {
+  position: absolute;
+  top: 28px;
+  right: 36px;
+  z-index: 3;
+}
+.understanding-menu summary {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+}
+.understanding-menu summary::-webkit-details-marker {
+  display: none;
+}
+.understanding-menu summary:hover {
+  color: var(--ink);
+  background: var(--subtle);
+}
+.understanding-menu > div {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 12px 36px #20253616;
+}
+.understanding-menu > div button {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border-radius: 9px;
+  color: var(--ink);
+  text-align: left;
+  font-size: 12px;
+}
+.understanding-menu > div button:hover {
+  background: var(--subtle);
+}
+.understanding-notice,
+.understanding-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.understanding-error button {
+  margin-left: auto;
+  min-height: 36px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 600;
+}
+.understanding-section {
+  border-top: 1px solid var(--understanding-paper-line);
+}
+.understanding-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 23px 0 12px;
+}
+.understanding-section-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 660;
+  letter-spacing: -0.3px;
+}
+.understanding-section-heading > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.understanding-insight {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 17px 0 18px;
+  text-align: left;
+  border-bottom: 1px solid var(--understanding-paper-line);
+  color: var(--ink);
+}
+.understanding-insight-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 620;
+}
+.understanding-insight-top > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.understanding-insight-top > svg {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.understanding-insight strong {
+  max-width: 680px;
+  font-size: 18px;
+  line-height: 1.6;
+  font-weight: 620;
+  letter-spacing: -0.15px;
+}
+.understanding-insight.first strong {
+  font-size: 20px;
+}
+.understanding-insight-detail {
+  max-width: 680px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.understanding-insight small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.understanding-insight:hover strong {
+  color: var(--blue);
+}
+.understanding-insight {
+  transition: opacity 140ms ease;
+}
+.understanding-insight:active {
+  opacity: 0.72;
+}
+.understanding-inline-empty {
+  margin: 0;
+  padding: 14px 0 22px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.understanding-more {
+  min-height: 42px;
+  padding: 0 2px;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 580;
+}
+.understanding-source-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 2px 0 11px;
+}
+.understanding-source-summary span {
+  padding: 4px 8px;
+  border-radius: 99px;
+  color: var(--muted);
+  background: var(--subtle);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.understanding-source-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--understanding-paper-line);
+  text-align: left;
+  color: var(--ink);
+}
+.understanding-source-list .understanding-source-row:first-child {
+  border-top: 0;
+}
+.understanding-source-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.understanding-source-meta > span:nth-child(2) {
+  color: var(--ink);
+  font-weight: 580;
+}
+.understanding-source-meta > i {
+  font-style: normal;
+}
+.understanding-source-meta > svg {
+  margin-left: auto;
+  opacity: 0.72;
+}
+.understanding-source-mark {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--blue);
+  background: var(--understanding-blue-wash);
+}
+.understanding-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 15px 17px;
+  border-radius: 18px;
+  background: var(--understanding-blue-wash);
+}
+.understanding-quote-mark {
+  height: 21px;
+  color: color-mix(in srgb, var(--blue) 72%, var(--muted));
+  font-size: 32px;
+  line-height: 0.9;
+  font-weight: 500;
+}
+.understanding-quote p,
+.understanding-note p,
+.understanding-calendar p,
+.understanding-activity p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.72;
+  overflow-wrap: anywhere;
+}
+.understanding-note {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  overflow: hidden;
+  padding: 15px 17px;
+  border-radius: 5px;
+  color: var(--understanding-note-line);
+  background: var(--understanding-note);
+}
+.understanding-note > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.understanding-note p {
+  flex: 1;
+}
+.understanding-note > i {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(225deg, var(--surface) 48%, var(--understanding-note-line) 50%);
+}
+.understanding-calendar {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px 15px;
+  border: 1px solid var(--understanding-paper-line);
+  border-radius: 16px;
+}
+.understanding-calendar time {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 43px;
+  height: 47px;
+  flex: none;
+  border-radius: 11px;
+  color: var(--blue);
+  background: var(--understanding-blue-wash);
+}
+.understanding-calendar time small {
+  font-size: 9px;
+  line-height: 1.2;
+  font-weight: 650;
+}
+.understanding-calendar time strong {
+  font-size: 19px;
+  line-height: 1.25;
+  font-weight: 650;
+}
+.understanding-calendar > div {
+  min-width: 0;
+}
+.understanding-calendar span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.understanding-activity {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 14px 15px;
+  border-radius: 14px;
+  background: var(--understanding-paper);
+}
+.understanding-activity .understanding-source-mark {
+  flex: none;
+  width: 33px;
+  height: 33px;
+  border-radius: 10px;
+}
+.understanding-closing {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 32px;
+  border-top: 1px solid var(--understanding-paper-line);
+  margin-top: 28px;
+}
+.understanding-closing p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.understanding-closing > button,
+.understanding-empty > button,
+.understanding-detail-chat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 99px;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+.understanding-state,
+.understanding-reading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 250px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.understanding-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 40px 0 64px;
+}
+.understanding-empty .companion {
+  width: 94px;
+  height: 94px;
+}
+.understanding-empty h2 {
+  margin: 4px 0 0;
+  font-size: 19px;
+}
+.understanding-empty p {
+  max-width: 440px;
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.understanding-reader {
+  width: min(640px, calc(100vw - 32px));
+  max-height: 84dvh;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-panel);
+}
+.understanding-reader::backdrop {
+  background: #10182866;
+}
+.understanding-reader > header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 58px;
+  padding: 0 14px 0 24px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(16px);
+  font-size: 13px;
+  font-weight: 620;
+}
+.understanding-reader > header button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: var(--muted);
+}
+.understanding-reader-body {
+  padding: 25px 25px 31px;
+}
+.understanding-reader-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 620;
+}
+.understanding-reader-type time {
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 400;
+}
+.understanding-reader-lead {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.7;
+  font-weight: 540;
+  letter-spacing: -0.25px;
+}
+.understanding-provenance {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--understanding-paper-line);
+}
+.understanding-provenance > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.understanding-provenance h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.understanding-provenance > header span,
+.understanding-provenance > small,
+.understanding-provenance > p {
+  color: var(--muted);
+  font-size: 11px;
+}
+.understanding-provenance > small {
+  display: block;
+  padding-top: 14px;
+}
+.understanding-detail-chat {
+  margin-top: 24px;
+}
+.understanding-page :focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+@media (prefers-color-scheme: dark) {
+  .understanding-page {
+    --understanding-paper: #27262b;
+    --understanding-paper-line: #403d43;
+    --understanding-note: #3a3121;
+    --understanding-note-line: #c6a35e;
+    --understanding-blue-wash: #242a3e;
+  }
+}
+@media (prefers-contrast: more) {
+  .understanding-page {
+    --understanding-paper-line: color-mix(in srgb, var(--muted) 48%, transparent);
+  }
+}
+@media (max-width: 760px) {
+  .understanding-content {
+    padding: 28px 20px 52px;
+  }
+  .understanding-hero {
+    align-items: flex-start;
+    padding: 8px 0 25px;
+  }
+  .understanding-companion {
+    width: 100px;
+    height: 100px;
+    margin-top: 20px;
+  }
+  .understanding-companion .companion {
+    width: 91px;
+    height: 91px;
+  }
+  .understanding-hero h1 {
+    margin-top: 14px;
+    font-size: 33px;
+    letter-spacing: -1.2px;
+  }
+  .understanding-hero p {
+    font-size: 14px;
+  }
+  .understanding-menu {
+    top: 16px;
+    right: 17px;
+  }
+  .understanding-section-heading {
+    padding-top: 20px;
+  }
+  .understanding-insight strong {
+    font-size: 17px;
+  }
+  .understanding-insight.first strong {
+    font-size: 18px;
+  }
+  .understanding-closing {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .understanding-closing > button {
+    align-self: stretch;
+  }
+  .understanding-reader-body {
+    padding: 22px 18px 26px;
+  }
+  .understanding-reader-lead {
+    font-size: 19px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .understanding-insight {
+    transition: none;
+  }
+}

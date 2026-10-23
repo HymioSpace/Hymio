@@ -65,7 +65,7 @@ import SwiftUI
   }
 }
 
-enum ProductTab: Hashable { case today, chat, tasks, account }
+enum ProductTab: Hashable { case today, chat, tasks, moments, account }
 
 struct ProductShell: View {
   @ObservedObject var account: AccountService
@@ -83,6 +83,9 @@ struct ProductShell: View {
       }
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) {
         NavigationStack { TasksScreen(account: account, board: board) }
+      }
+      Tab("认识", systemImage: "person.crop.circle.badge.checkmark.fill", value: ProductTab.moments) {
+        ContextScreen(account: account, onChat: { selected = .chat })
       }
       Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) {
         AccountScreen(account: account, client: client)

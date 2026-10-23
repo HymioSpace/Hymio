@@ -12,11 +12,21 @@ import SwiftUI
   var body: some Scene {
     WindowGroup {
       Group {
-        if account.session != nil {
-          ProductShell(account: account, client: client).id(account.session?.user_id)
-        } else {
-          LoginScreen(account: account)
-        }
+        #if DEBUG
+          if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
+            ContextPreviewScreen(account: account.session == nil ? nil : account)
+          } else if account.session != nil {
+            ProductShell(account: account, client: client).id(account.session?.user_id)
+          } else {
+            LoginScreen(account: account)
+          }
+        #else
+          if account.session != nil {
+            ProductShell(account: account, client: client).id(account.session?.user_id)
+          } else {
+            LoginScreen(account: account)
+          }
+        #endif
       }
       .tint(Brand.blue)
       .onChange(of: account.session?.user_id) { _, value in

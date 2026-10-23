@@ -50,3 +50,5 @@ vision_model = "MiniMax-M3"
 # vault_url = "http://vault:8200"
 # vault_role_id_file = "./private/vault-role-id"
 # vault_secret_id_file = "./private/vault-secret-id"
+# Optional per-user Nostalgia endpoints and credential file references.
+# nostalgia_connections_file = "./private/nostalgia-connections.json"

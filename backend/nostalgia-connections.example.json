@@ -1,0 +1,8 @@
+{
+  "users": {
+    "REPLACE_WITH_HYMIO_USER_ID": {
+      "url": "http://127.0.0.1:8001",
+      "token_file": "nostalgia-token"
+    }
+  }
+}
