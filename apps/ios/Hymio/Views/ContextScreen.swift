@@ -428,18 +428,16 @@ private struct ContextPage: View {
     .toolbar {
       ToolbarItem(placement: .topBarLeading) {
         Text("记忆").font(.title.weight(.bold)).foregroundStyle(Brand.ink).fixedSize()
-      }
+      }.memoryUnframed()
       ToolbarItem(placement: .topBarTrailing) {
         Button {
           showCollect = true
         } label: {
-          Label("收集", systemImage: "plus").labelStyle(.titleAndIcon).font(.body.weight(.medium))
-            .fixedSize()
-            .padding(.horizontal, 12).frame(minHeight: 40)
-            .foregroundStyle(Brand.onAccent)
-            .background(Brand.blue, in: RoundedRectangle(cornerRadius: 13))
-        }.buttonStyle(.plain).accessibilityIdentifier("context.collect")
-      }
+          Image(systemName: "plus").font(.title2.weight(.medium))
+            .foregroundStyle(Brand.blue).frame(minWidth: 44, minHeight: 44)
+        }.buttonStyle(.plain).accessibilityLabel("添加记忆")
+          .accessibilityIdentifier("context.collect")
+      }.memoryUnframed()
     }
     .refreshable { await store.load() }
     .sheet(isPresented: $showCollect) {
@@ -1103,4 +1101,14 @@ private func previewInsightDetail(id: String, content: String, references: [Stri
     "id": .string(id), "kind": .string("artifact"), "content": .string(content),
     "references": .array(references.map { .object(["record_id": .string($0)]) }),
   ])
+}
+
+extension ToolbarContent {
+  @ToolbarContentBuilder fileprivate func memoryUnframed() -> some ToolbarContent {
+    if #available(iOS 26.0, *) {
+      self.sharedBackgroundVisibility(.hidden)
+    } else {
+      self
+    }
+  }
 }
