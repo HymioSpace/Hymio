@@ -199,7 +199,8 @@ class KitBuildTool(Tool):
             "concrete product brief and acceptance criteria; do not write source code in the main "
             "conversation. The coding agent owns a React frontend, bounded Python API and version "
             "history in the background. Returned status=coding means work was accepted, not that "
-            "the app is already published.",
+            "the app is already published. If work on the returned kit later fails, use action=edit "
+            "with the same kit_id instead of creating a duplicate.",
             {
                 "type": "object",
                 "properties": {

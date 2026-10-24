@@ -94,6 +94,8 @@ execute publisher-supplied Python/JavaScript in Backend; external Kit implementa
 independent services behind the same operation contract.
 Generated applications add a pinned Node/esbuild builder and bounded Python handler subprocesses
 inside Kit Host. The image installs React dependencies at build time; runtime builds need no network.
+Set Oath `agent.max_output_tokens` to at least `8192` when application coding tools are enabled;
+small patch calls need room for complete tool JSON.
 The generated Compose stack sets Backend's internal `HYMIO_KITS_URL=http://kit-host:8090`; no
 Kit Host port is published.
 

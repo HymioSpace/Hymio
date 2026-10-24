@@ -25,6 +25,10 @@ def safe_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 
 SAFE_BUILTINS = {
+    "Exception": Exception,
+    "KeyError": KeyError,
+    "TypeError": TypeError,
+    "ValueError": ValueError,
     "abs": abs,
     "all": all,
     "any": any,
@@ -35,13 +39,19 @@ SAFE_BUILTINS = {
     "enumerate": enumerate,
     "filter": filter,
     "float": float,
+    "format": format,
+    "frozenset": frozenset,
     "int": int,
+    "isinstance": isinstance,
+    "issubclass": issubclass,
     "len": len,
     "list": list,
     "map": map,
     "max": max,
     "min": min,
+    "object": object,
     "range": range,
+    "repr": repr,
     "reversed": reversed,
     "round": round,
     "set": set,
@@ -50,6 +60,7 @@ SAFE_BUILTINS = {
     "sum": sum,
     "timedelta": timedelta,
     "tuple": tuple,
+    "type": type,
     "zip": zip,
     "__import__": safe_import,
 }

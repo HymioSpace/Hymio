@@ -2,6 +2,7 @@ from pathlib import Path
 
 from starlette.testclient import TestClient
 
+from kit_host import devsource
 from kit_host.app import build_app
 from kit_host.service import KitsService
 
@@ -13,6 +14,26 @@ def app_for(tmp_path):
         Path(__file__).resolve().parents[3] / "kits",
     )
     return TestClient(build_app(service, token)), token, service
+
+
+def test_python_runner_supports_common_json_validation_builtins():
+    result, mutations = devsource.invoke_python(
+        {
+            "server/main.py": """
+def validate(ctx, arguments):
+    value = arguments.get("value")
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError("需要一个数字")
+    ctx.insert({"value": value})
+    return {"accepted": type(value).__name__, "count": ctx.count()}
+"""
+        },
+        "validate",
+        {"value": 2.5},
+        [],
+    )
+    assert result == {"accepted": "float", "count": 1}
+    assert mutations[0]["kind"] == "insert"
 
 
 def test_catalog_install_app_and_idempotent_write(tmp_path):

@@ -57,3 +57,7 @@ Examples of good briefs:
 
 Tell the user what is being built, using the product name rather than implementation language.
 Do not claim it is ready until the app appears as published or a completion event confirms it.
+
+If the coding context reports a build or tool failure after accepting a new app, keep the same
+`kit_id` and call `kit_build(action="edit", ...)` to repair it. Never create a duplicate application
+merely because the asynchronous coding turn failed or timed out.

@@ -114,6 +114,9 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                             "checks and publishes. Only call `app.delete` after the user "
                             "explicitly confirms permanent deletion, with confirmation "
                             "`DELETE`.\n\n"
+                            "- If a coding turn for a newly accepted app fails or times out, "
+                            "repair the same `kit_id` with action=edit. Do not create a duplicate "
+                            "application for the same request.\n\n"
                             + application["content"][:7000]
                             + "\n- A successful user action can appear later as an "
                             "`app.kit.interaction` event in the user queue. Treat it as passive "
