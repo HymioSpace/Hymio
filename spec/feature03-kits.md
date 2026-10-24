@@ -1,6 +1,6 @@
 # Feature 03 — 应用、安装与 Agent 调用
 
-状态：Implementing。React/Python 项目运行与 coding context 见
+状态：Implemented：iOS 应用 MVP 已部署。React/Python 项目运行与 coding context 见
 [feature34](feature34-application-runtime.md)。
 
 ## 总览
