@@ -98,3 +98,5 @@ Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
 iOS 使用此刻、对话、任务、记忆、我的五个原生页签；Web 使用有文字标签的侧栏，任务和账号保持宽屏面板。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
 
 记忆空间的理解/足迹与按需星图见 [feature31](feature31-memory-space.md)；稳定精华与动态事件基础协议见 [feature30](feature30-context-foundation.md)。
+
+事件上下文与模型窗口设置见 [feature33](feature33-context-events-window.md)。

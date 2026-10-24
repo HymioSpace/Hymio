@@ -6,9 +6,11 @@ This loopback-only fixture does not run Oath or external account services.
 """
 
 import json
+import os
 import tempfile
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,15 +21,18 @@ from nostalgia.bootstrap.config import Settings
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocketDisconnect
 
 from hymio_backend.context.routes import context_routes
+from hymio_backend.media.routes import media_routes
+from hymio_backend.media.store import MediaStore
 from hymio_backend.server import bearer, body
 from hymio_backend.session_store import SessionStore
 
 root = Path(tempfile.mkdtemp(prefix="hymio-memory-preview-"))
 settings = SimpleNamespace(
-    database=root / "hymio.sqlite",
+    database=Path(os.environ.get("HYMIO_PREVIEW_SESSION_DB", root / "hymio.sqlite")),
     issuer="memory-preview",
     access_seconds=86400,
     refresh_seconds=86400,
@@ -36,6 +41,8 @@ settings = SimpleNamespace(
     service_token_file=root / "service-token",
     nostalgia_connections_file=root / "connections.json",
     oath_ws="ws://127.0.0.1:18480/agent/ws",
+    model_options=("MiniMax-M2.7", "MiniMax-M3", "deepseek-flash", "Qwen/Qwen3.8-27B"),
+    model_context_windows={},
 )
 settings.service_token_file.write_text("synthetic-preview-service-token")
 sessions = SessionStore(settings)
@@ -246,8 +253,107 @@ async def empty(request):
     return JSONResponse({"tasks": [], "models": []})
 
 
+# Loopback-only synthetic event stream for visual inspection of the real chat UI.
+preview_sockets = set()
+preview_events = []
+for kind, payload in [
+    (
+        "user.message",
+        {
+            "content": "帮我整理一下杭州出行的安排。",
+            "message_id": "preview-message",
+            "user_context": {"hymio_message_id": "preview-message"},
+        },
+    ),
+    (
+        "assistant.message",
+        {
+            "content": "好，我会把预算、行程和待确认的事项理清楚。",
+            "step_id": "preview-step",
+            "tool_calls": [],
+        },
+    ),
+    ("step.status", {"step_id": "preview-step", "status": "completed"}),
+]:
+    preview_events.append(
+        {
+            "v": 2,
+            "type": "event",
+            "user_id": uid,
+            "event_seq": len(preview_events) + 1,
+            "event_type": kind,
+            "payload": payload,
+            "occur_dt": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+
+async def preview_socket(ws):
+    await ws.accept()
+    try:
+        attach = await ws.receive_json()
+        sessions.verify(attach.get("payload", {}).get("credential", ""))
+        checkpoint = len(preview_events)
+        await ws.send_json({"v": 2, "type": "ack", "id": attach.get("id"), "user_id": uid})
+        await ws.send_json(
+            {
+                "v": 2,
+                "type": "conversation.snapshot",
+                "events": preview_events,
+                "checkpoint": checkpoint,
+                "before_cursor": None,
+                "has_more": False,
+            }
+        )
+        await ws.send_json(
+            {
+                "v": 2,
+                "type": "offline.start",
+                "after_cursor": checkpoint,
+                "through_cursor": checkpoint,
+            }
+        )
+        await ws.send_json({"v": 2, "type": "offline.end", "through_cursor": checkpoint})
+        preview_sockets.add(ws)
+        while True:
+            command = await ws.receive_json()
+            if command.get("type") == "ping":
+                await ws.send_json({"v": 2, "type": "pong", "id": command.get("id")})
+    except (WebSocketDisconnect, ValueError):
+        pass
+    finally:
+        preview_sockets.discard(ws)
+
+
+async def preview_compaction(request):
+    data = await request.json()
+    if data.get("status") not in {"started", "ready", "applied", "failed"}:
+        return JSONResponse({"error": "invalid_status"}, 400)
+    payload = {"compression_id": "synthetic-compression", "covers": 116, "mode": "sync", **data}
+    if payload["status"] in {"ready", "applied"}:
+        payload.update(input_tokens=147495, output_tokens=270, context_window=128000)
+    event = {
+        "v": 2,
+        "type": "event",
+        "user_id": uid,
+        "event_seq": len(preview_events) + 1,
+        "event_type": "context.compaction",
+        "payload": payload,
+        "occur_dt": datetime.now(timezone.utc).isoformat(),
+    }
+    preview_events.append(event)
+    for ws in tuple(preview_sockets):
+        try:
+            await ws.send_json(event)
+        except (RuntimeError, WebSocketDisconnect):
+            preview_sockets.discard(ws)
+    return JSONResponse({"status": "sent", "clients": len(preview_sockets)})
+
+
 app = Starlette(
     routes=[
+        WebSocketRoute("/agent/ws", preview_socket),
+        Route("/preview/compaction", preview_compaction, methods=["POST"]),
         Route("/auth/options", options),
         Route("/auth/account", login, methods=["POST"]),
         Route("/auth/logout", empty, methods=["POST"]),
@@ -255,6 +361,7 @@ app = Starlette(
         Route("/models", empty),
     ]
     + context_routes(settings, sessions, bearer, body)
+    + media_routes(settings, sessions, bearer, body, MediaStore(sessions))
 )
 app.add_middleware(
     CORSMiddleware,

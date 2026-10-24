@@ -1,3 +1,4 @@
+import { CompactionStatus } from './CompactionStatus';
 import { MomentsPanel } from './MomentsPanel';
 import { HomePanel } from './HomePanel';
 import { enqueueTelemetry, flushTelemetry } from './telemetry';
@@ -849,6 +850,7 @@ export default function App() {
           )}
         </div>
         <div className={`composer-dock ${welcome ? 'welcome-dock' : ''}`}>
+          <CompactionStatus events={state.events} now={clock} />
           {!nearBottom && !welcome && (
             <button
               className="jump-bottom"

@@ -11,6 +11,7 @@ from starlette.routing import Route
 
 from ..session_store import Unauthorized
 from .conversion import DOCUMENTS, to_markdown
+from .model_policy import CONTEXT_WINDOWS, effective_window, model_capacity
 from .providers import MiniMaxMedia, ModelUnavailable
 from .store import LIMIT, MAX_ITEMS
 
@@ -62,16 +63,30 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
             path = request.url.path
             if path == "/settings/models":
                 choices = settings.model_options
+                selected = await asyncio.to_thread(store.model, user, choices[0])
+                selected = selected if selected in choices else choices[0]
+                window = await asyncio.to_thread(store.context_window, user)
                 if request.method == "POST":
-                    model = (await body(request)).get("model")
+                    data = await body(request)
+                    model = data.get("model", selected)
+                    requested = data.get("context_window", window)
                     if model not in choices:
                         raise ValueError("Model unavailable")
-                    await asyncio.to_thread(store.select, user, model)
-                selected = await asyncio.to_thread(store.model, user, choices[0])
+                    if type(requested) is not int or requested not in CONTEXT_WINDOWS:
+                        raise ValueError("Context window unavailable")
+                    await asyncio.to_thread(store.select_preferences, user, model, requested)
+                    selected, window = model, requested
+                capacities = getattr(settings, "model_context_windows", {})
                 return JSONResponse(
                     {
                         "models": list(choices),
-                        "selected": selected if selected in choices else choices[0],
+                        "selected": selected,
+                        "context_windows": list(CONTEXT_WINDOWS),
+                        "context_window": window,
+                        "effective_context_window": effective_window(window, selected, capacities),
+                        "model_context_windows": {
+                            m: model_capacity(m, capacities) for m in choices
+                        },
                     }
                 )
             if path == "/attachments":

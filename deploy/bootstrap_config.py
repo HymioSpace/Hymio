@@ -127,6 +127,15 @@ def load(path):
     ):
         raise ValueError("minimax_api_base must be an HTTPS API base URL")
     source.setdefault("models", ["MiniMax-M2.7", "MiniMax-M3"])
+    source.setdefault("model_context_windows", {})
+    capacities = source["model_context_windows"]
+    if not isinstance(capacities, dict) or any(
+        not isinstance(k, str) or not k or type(v) is not int or v < 4096
+        for k, v in capacities.items()
+    ):
+        raise ValueError(
+            "model_context_windows requires model IDs and token capacities"
+        )
     source.setdefault("vision_model", "MiniMax-M3")
     source.setdefault("e2b_template", "hymio-desktop")
     source.setdefault("casdoor_port", 8000)
@@ -220,6 +229,7 @@ def prepare(path):
         issuer=issuer,
         client_id=credentials["client_id"],
         model_options=settings["models"],
+        model_context_windows=settings.get("model_context_windows", {}),
         vision_model=settings["vision_model"],
         e2b_template=settings["e2b_template"],
         computer_provider=settings["computer_provider"],

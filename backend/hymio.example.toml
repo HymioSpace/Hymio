@@ -36,6 +36,8 @@ e2b_template = "hymio-desktop"
 
 # Choices must be deployed in Oath, including independent model_providers. Restart after changing.
 model_options = ["MiniMax-M2.7", "MiniMax-M3"]
+# Confirmed deployed capacities; use the same map in Oath agent.model_context_windows.
+model_context_windows = {}
 # Internal read-only Prometheus endpoint used by the operator console.
 prometheus_url = "http://127.0.0.1:19090"
 observability_retention_days = 7

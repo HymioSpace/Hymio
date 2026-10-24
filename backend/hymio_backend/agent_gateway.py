@@ -153,6 +153,9 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                     if selected in settings.model_options
                                     else settings.model_options[0]
                                 )
+                                payload["context_window"] = await asyncio.to_thread(
+                                    media.context_window, channel.user_id
+                                )
                                 raw = json.dumps(command)
                         except (ValueError, KeyError, LookupError):
                             await websocket.send_json(
