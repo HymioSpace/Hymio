@@ -137,11 +137,16 @@ Default client is `web`. Open http://127.0.0.1:1420 and sign in. The client gets
 | --- | --- |
 | Web | http://127.0.0.1:1420 |
 | Backend | http://localhost:8080 |
+| Kit Host (internal) | http://127.0.0.1:8090 |
 | Casdoor | http://localhost:8000 |
 | Oath WS | ws://127.0.0.1:8765 |
 | Oath Biz | http://127.0.0.1:8766 |
 
 CLI options: `--config PATH` (unified input), `--client web|desk|none`, `--home PATH`, `--timeout SECONDS`, `--backend-config PATH`, `--oath-config PATH`, `--auth-project NAME`. Relative paths are relative to your working directory. Backend credential paths resolve against its config directory. Unified mode derives service settings from `~/.hymio/config.toml`; legacy mode keeps model/login settings in their original TOML files. No `.env` is required.
+
+Kit Host is a separate local process managed with Backend. It owns `kits.sqlite3`, installations
+and application HTML; iOS and Agent tools reach it only through Backend's authenticated
+routes.
 
 **Existing local setup:** the installer detects a single existing Casdoor Compose project on port 8000. You can also select `hymio start --auth-project hymio-auth-dev` once; subsequent CLI starts preserve the selection. Using a different project creates a different data volume; it does not migrate accounts or OIDC applications.
 

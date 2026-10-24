@@ -21,7 +21,7 @@ export function Settings({
           <X size={19} />
         </IconButton>
       </div>
-      <h2 id="settings-title">我的账号</h2>
+      <h2 id="settings-title">账号与偏好</h2>
       <p className="dialog-intro">{displayName(login.session?.name)}</p>
       <p className="dialog-note">在不同设备上，继续同一段对话。</p>
       <ModelSettings login={login} />

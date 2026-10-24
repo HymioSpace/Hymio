@@ -17,6 +17,7 @@ class Settings:
     origins: tuple[str, ...]
     oath_ws: str
     oath_biz: str
+    kits_url: str = "http://127.0.0.1:8090"
     oath_admin_token_file: Path | None = None
     access_seconds: int = 900
     refresh_seconds: int = 2592000
@@ -53,6 +54,8 @@ class Settings:
         data = tomllib.loads(path.read_text())
         if os.environ.get("HYMIO_PROMETHEUS_URL"):
             data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
+        if os.environ.get("HYMIO_KITS_URL"):
+            data["kits_url"] = os.environ["HYMIO_KITS_URL"]
         for key in ("database", "client_secret_file", "service_token_file"):
             file = Path(data[key]).expanduser()
             data[key] = file if file.is_absolute() else path.parent / file
@@ -129,6 +132,7 @@ class Settings:
             result.public_url,
             result.callback_url,
             result.oath_biz,
+            result.kits_url,
             result.media_api_base,
             result.vault_url,
             result.prometheus_url,

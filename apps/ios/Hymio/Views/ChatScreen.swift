@@ -10,6 +10,7 @@ private enum AttachmentLimits {
 struct ChatScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
+  let onAccount: () -> Void
   @State private var draft = ""
   @State private var attachments: [JSON] = []
   @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -155,6 +156,9 @@ struct ChatScreen: View {
       .background(Brand.surface).foregroundStyle(Brand.ink)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {
+        ToolbarItemGroup(placement: .topBarLeading) {
+          AccountButton(account: account, action: onAccount)
+        }.accountUnframed()
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)

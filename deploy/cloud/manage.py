@@ -30,6 +30,18 @@ def generate(path):
         else config.resolve()
     )
     backend = tomllib.loads((config / "hymio.toml").read_text())
+    service_token = Path(
+        backend.get("service_token_file", "./private/backend/internal-service-token")
+    ).expanduser()
+    service_token = (
+        (config / service_token).resolve()
+        if not service_token.is_absolute()
+        else service_token.resolve()
+    )
+    try:
+        service_token_container = "/config/" + service_token.relative_to(config).as_posix()
+    except ValueError as exc:
+        raise ValueError("service_token_file must be inside backend_config_dir") from exc
     if backend.get("computer_provider") not in ("daytona", "e2b", "device_api"):
         raise ValueError("Cloud computer_provider must be daytona, device_api or e2b")
     if backend.get("host") != "0.0.0.0" or backend.get("port", 8080) != 8080:
@@ -88,7 +100,7 @@ def generate(path):
             "  try_files {path} /index.html\n  file_server\n }\n"
             " @backend path /health /auth/* /agent/* /context/* /oath-biz/* "
             "/devices /devices/* "
-            "/tasks /attachments /attachments/* /settings/* /telemetry/*\n"
+            "/tasks /kits /kits/* /attachments /attachments/* /settings/* /telemetry/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )
@@ -106,12 +118,29 @@ def generate(path):
     compose = {
         "name": "hymio-cloud",
         "services": {
+            "kit-host": {
+                "build": {
+                    "context": str(ROOT),
+                    "dockerfile": "services/kit-host/Dockerfile",
+                },
+                "restart": "unless-stopped",
+                "volumes": [f"{config}:/config:ro", "kit-data:/data"],
+                "environment": {
+                    "KIT_HOST_DATABASE": "/data/kits.sqlite3",
+                    "KIT_HOST_HOST": "0.0.0.0",
+                    "KIT_HOST_PORT": "8090",
+                    "KIT_HOST_TOKEN_FILE": service_token_container,
+                },
+                "security_opt": ["no-new-privileges:true"],
+                "cap_drop": ["ALL"],
+            },
             "backend": {
                 "build": {
                     "context": str(ROOT),
                     "dockerfile": "deploy/cloud/Backend.Dockerfile",
                 },
                 "restart": "unless-stopped",
+                "depends_on": {"kit-host": {"condition": "service_healthy"}},
                 "volumes": [f"{config}:/config:ro", "backend-data:/data"],
                 "ports": [f"{bind}:{ports[1]}:8080"],
                 "extra_hosts": ["host.docker.internal:host-gateway"],
@@ -135,7 +164,13 @@ def generate(path):
             },
         },
         "volumes": {
-            name: {} for name in ("backend-data", "caddy-data", "caddy-config")
+            name: {}
+            for name in (
+                "backend-data",
+                "kit-data",
+                "caddy-data",
+                "caddy-config",
+            )
         },
     }
     runtime_network = settings.get("runtime_network")
@@ -160,7 +195,8 @@ def generate(path):
             "http://prometheus:9090"
             if runtime_network
             else "http://host.docker.internal:19090"
-        )
+        ),
+        "HYMIO_KITS_URL": "http://kit-host:8090",
     }
     if runtime_network:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", runtime_network):

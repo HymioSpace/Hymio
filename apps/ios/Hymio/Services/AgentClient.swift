@@ -47,7 +47,9 @@ import UIKit
   func suspend() {
     persistence?.cancel()
     persistence = nil
-    try? cache?.save(state)
+    if let cache {
+      saveAtSuspension(state, cache: cache)
+    }
     generation = UUID()
     loop?.cancel()
     loop = nil
@@ -55,6 +57,22 @@ import UIKit
     socket?.cancel(with: .goingAway, reason: nil)
     socket = nil
     phase = "已暂停连接"
+  }
+
+  private func saveAtSuspension(_ snapshot: ConversationState, cache: ConversationCache) {
+    #if os(iOS)
+      let task = UIApplication.shared.beginBackgroundTask(withName: "Persist conversation") {}
+      Task.detached(priority: .utility) {
+        try? cache.save(snapshot)
+        await MainActor.run {
+          UIApplication.shared.endBackgroundTask(task)
+        }
+      }
+    #else
+      Task.detached(priority: .utility) {
+        try? cache.save(snapshot)
+      }
+    #endif
   }
   func reset() {
     replaced = false

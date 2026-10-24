@@ -127,7 +127,13 @@ struct SecureSession {
   }()
   init() {
     let value = Bundle.main.object(forInfoDictionaryKey: "HymioBackendURL") as? String ?? ""
-    backend = URL(string: value) ?? URL(string: "https://invalid.example")!
+    #if DEBUG
+      let testOverride = ProcessInfo.processInfo.environment["HYMIO_BACKEND_URL_OVERRIDE"]
+    #else
+      let testOverride: String? = nil
+    #endif
+    backend =
+      URL(string: testOverride ?? value) ?? URL(string: "https://invalid.example")!
     do { session = try SecureSession.load() } catch { self.error = error.localizedDescription }
   }
   func validated(_ url: URL, socket: Bool = false) throws {

@@ -9,6 +9,10 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
 - Authenticated screenshots, image expansion, older-history pagination.
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
 - Foreground reconnect, offline progress, account/device view and connection diagnostics.
+- A five-tab product shell with account settings behind a leading Companion avatar.
+- Installed or generated React applications with bounded Python operations and an
+  account-scoped `HymioKit.call` bridge.
+- Per-application coding conversations with published version summaries.
 
 The Memory tab (记忆) has understanding and original footprints, text search, direct text saving and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md). Automated context collectors and health connectors are not included.
 
@@ -83,6 +87,24 @@ xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
 
 The UI test registers a synthetic account against the configured local backend, chats twice across app termination/relaunch, and signs out. It requires the running stack and a working model configuration. The test revokes its own devices after running; generated accounts remain in the development identity provider. Automatically provisioned cloud computers use real deployment resources, so run against a development deployment.
 
+The focused Kit bridge test installs the first-party ledger, writes from its Web page through WKWebView,
+checks the same record through the authenticated business API, writes from the business API, and
+reopens the page to verify the same data appears. It needs the local Backend and Kit Host but no
+model call:
+
+The Kit Host React build uses pinned local Node dependencies. Install them once:
+
+```sh
+npm ci --prefix services/kit-host/web
+```
+
+```sh
+xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
+  -destination 'platform=iOS Simulator,name=iPhone 16e' \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+  -only-testing:HymioUITests/HymioUITests/testKitWebBridgeAndBusinessDataSync test
+```
+
 Core models and projection are independently testable through Swift Package Manager. The Xcode project is checked in; no project generator is needed. Xcode resolves the pinned [MarkdownUI 2.4.1](https://github.com/gonzalezreal/swift-markdown-ui/releases/tag/2.4.1) package on the first build. Images use app-owned providers, with no credentials sent to external image hosts.
 
 The privacy manifest declares app-scoped UserDefaults use for the installation ID ([Apple's required-reason API guidance](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype)). Complete the distribution privacy labels and privacy-policy URL for your actual backend: accounts and conversation content are sent to your deployment and model provider.
@@ -127,3 +149,6 @@ with `-HymioContextPreview`; add `-HymioContextEmptyPreview` for first use,
 accessibility text size. These flags do not alter the real account or system appearance.
 For actual persistence across clients, `backend/scripts/memory_preview.py` serves a loopback-only
 synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http://127.0.0.1:1422`.
+
+Application previews use `-HymioKitAppPreview` for the WebView shell and
+`-HymioKitEditorPreview` for the coding conversation and published version history.
