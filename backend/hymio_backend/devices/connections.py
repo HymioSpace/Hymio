@@ -37,7 +37,7 @@ class ChannelConnection:
         client_id = payload.get("client_id")
         if not isinstance(client_id, str) or not 1 <= len(client_id) <= 128:
             raise ValueError("invalid_client_id")
-        kind = payload.pop("channel_kind", "web")
+        kind = payload.get("channel_kind", "web")
         if kind not in ("web", "ios", "mac"):
             raise ValueError("invalid_channel")
         self.user_id, self.kind = identity["user_id"], kind
