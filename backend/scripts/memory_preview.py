@@ -144,6 +144,58 @@ for id, text, topic, title, category, indices in [
     )
 call(
     "PUT",
+    f"/v1/artifacts/_core?dream_id={dream}",
+    {
+        "content": "偏好直接、自然且有依据的表达。正在学习西语，喜欢把练习融入日常散步。",
+        "fields": {"title": "关于你的概述"},
+        "references": [
+            {"root_id": records[i]["root_id"], "record_id": records[i]["id"]} for i in [0, 1, 2]
+        ],
+    },
+    {"If-None-Match": "*"},
+)
+for source, target, kind, reason, evidence in [
+    (
+        ("record", records[0]["id"]),
+        ("record", records[1]["id"]),
+        "supplements",
+        "两次陈述共同描述交流方式。",
+        [0, 1],
+    ),
+    (
+        ("artifact", "communication"),
+        ("artifact", "_core"),
+        "supports",
+        "交流偏好是长期概述的一部分。",
+        [0, 1],
+    ),
+    (("artifact", "learning"), ("artifact", "_core"), "supports", "概述保留了当前学习习惯。", [2]),
+    (
+        ("record", records[4]["id"]),
+        ("artifact", "communication"),
+        "related",
+        "方案讨论可以参考已明确的表达偏好，不代表这次会议已经发生。",
+        [0, 4],
+    ),
+]:
+    etag = call("GET", f"/v1/dreams/{dream}").headers["etag"]
+    call(
+        "PUT",
+        f"/v1/relations?dream_id={dream}",
+        {
+            "source": {"kind": source[0], "id": source[1]},
+            "target": {"kind": target[0], "id": target[1]},
+            "type": kind,
+            "origin": "model",
+            "rationale": reason,
+            "evidence_refs": [
+                {"root_id": records[i]["root_id"], "record_id": records[i]["id"]} for i in evidence
+            ],
+        },
+        {"If-Match": etag},
+    )
+call(
+    "PUT",
     f"/v1/artifacts/_index?dream_id={dream}",
     {"content": "交流偏好与正在关注的事。", "links": ["communication", "learning"]},
     {"If-None-Match": "*"},

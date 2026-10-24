@@ -22,6 +22,26 @@ def context_routes(settings, sessions, bearer, body):
                 return JSONResponse({"error": "origin_denied"}, 403)
             internal = request.url.path == "/internal/context/call"
             data = await body(request, limit=262144) if request.method == "POST" else {}
+            if request.url.path == "/internal/context/assemble":
+                expected = settings.service_token_file.read_text().strip()
+                if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
+                    raise Unauthorized()
+                uid = data.get("user_id")
+                if not isinstance(uid, str) or not uid:
+                    raise ValueError("Invalid user")
+                assembled = (await asyncio.to_thread(client.call, uid, "assembly"))["data"]
+                core = assembled.get("stable", {}).get("content", "")
+                index = assembled.get("dynamic", {}).get("summary", {}).get("content", "")
+                content = "Overall understanding and essential constraints:\n" + core[:8000]
+                content += (
+                    "\n\nSpecific-domain lookup index (read cards and originals with recall):\n"
+                    + index[:6000]
+                )
+                content += (
+                    "\nDo not infer absent facts. Use recall(action=retrieve) for details, "
+                    "then read exact cards."
+                )
+                return JSONResponse({"content": content, "version": assembled.get("view_token")})
             if internal:
                 expected = settings.service_token_file.read_text().strip()
                 if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
@@ -93,6 +113,46 @@ def context_routes(settings, sessions, bearer, body):
                     },
                 )
                 return JSONResponse(result["data"], result["status_code"])
+            if path == "/context/corrections":
+                if set(data) != {"target", "text"} or not isinstance(data["text"], str):
+                    raise ValueError("Provide a target and correction")
+                target, text = data["target"], data["text"].strip()
+                if (
+                    not isinstance(target, dict)
+                    or set(target) != {"kind", "id"}
+                    or target["kind"] not in {"record", "artifact"}
+                    or not isinstance(target["id"], str)
+                    or not 1 <= len(text) <= 16000
+                ):
+                    raise ValueError("Invalid correction")
+                await asyncio.to_thread(
+                    client.call,
+                    user_id,
+                    "artifacts.read" if target["kind"] == "artifact" else "records.read",
+                    item_id=target["id"],
+                )
+                key = request_key(request)
+                # A correction is immutable user evidence, not an immediate rewrite.
+                # Keep the payload stable across uncertain retries: identity is target + quote.
+                result = await asyncio.to_thread(
+                    client.call,
+                    user_id,
+                    "records.append",
+                    operation_id=key,
+                    data={
+                        "item_type": "context",
+                        "context_type": "correction",
+                        "context": {"text": text, "correction_target": target},
+                        "source": {
+                            "kind": "user",
+                            "namespace": "hymio.correction",
+                            "external_id": str(uuid.uuid5(uuid.NAMESPACE_URL, key)),
+                        },
+                    },
+                )
+                return JSONResponse(
+                    {"record": result["data"], "state": "pending"}, result["status_code"]
+                )
             if path == "/context/injection":
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "injection"))["data"]
@@ -111,6 +171,11 @@ def context_routes(settings, sessions, bearer, body):
             if path == "/context/search":
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "search", data=data))["data"]
+                )
+            if path in {"/context/graph", "/context/retrieve"}:
+                action = "graph.query" if path.endswith("graph") else "retrieve"
+                return JSONResponse(
+                    (await asyncio.to_thread(client.call, user_id, action, data=data))["data"]
                 )
             raise ValueError("Unknown context route")
         except Unauthorized:
@@ -140,17 +205,21 @@ def context_routes(settings, sessions, bearer, body):
 
     return [
         Route("/internal/context/call", endpoint, methods=["POST"]),
+        Route("/internal/context/assemble", endpoint, methods=["POST"]),
         Route("/internal/dreaming/propose", dream_endpoint, methods=["POST"]),
         Route("/context/imports/conversation", endpoint, methods=["POST"]),
         Route("/context/assembly", endpoint),
         Route("/context/events", endpoint),
         Route("/context/saves", endpoint, methods=["POST"]),
+        Route("/context/corrections", endpoint, methods=["POST"]),
         Route("/context/records/{item_id}", endpoint),
         Route("/context/artifacts/{item_id}", endpoint),
         Route("/context/injection", endpoint),
         Route("/context/records", endpoint, methods=["GET", "POST"]),
         Route("/context/search", endpoint, methods=["POST"]),
         Route("/context/browse", endpoint, methods=["POST"]),
+        Route("/context/graph", endpoint, methods=["POST"]),
+        Route("/context/retrieve", endpoint, methods=["POST"]),
     ]
 
 

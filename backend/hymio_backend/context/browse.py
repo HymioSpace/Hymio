@@ -23,17 +23,20 @@ def card(hit, value):
     return {
         **hit,
         "category": category,
+        "labels": metadata.get("labels") or [CATEGORIES[category]],
+        "domains": metadata.get("domains") or [],
         "title": title if isinstance(title, str) else "",
         "updated_at": value.get("updated_at"),
     }
 
 
 def browse(client, user_id, data):
-    if set(data) - {"target", "query", "category", "cursor", "limit"}:
+    if set(data) - {"target", "query", "category", "source_kind", "cursor", "limit"}:
         raise ValueError("Unknown browse options")
     target = data.get("target", "artifacts")
     query = data.get("query") or ""
     category = data.get("category") or "all"
+    source = data.get("source_kind") or "all"
     limit = data.get("limit", 30)
     if (
         not isinstance(target, str)
@@ -41,12 +44,13 @@ def browse(client, user_id, data):
         or not isinstance(query, str)
         or len(query) > 4000
         or not isinstance(category, str)
-        or category not in {"all", *CATEGORIES}
+        or not 1 <= len(category) <= 32
+        or source not in {"all", "conversation", "user", "connector", "kit", "legacy"}
         or type(limit) is not int
         or not 1 <= limit <= 30
     ):
         raise ValueError("Invalid browse options")
-    signature = [target, query, category]
+    signature = [target, query, category, source]
     upstream, offset = None, 0
     if data.get("cursor"):
         try:
@@ -75,7 +79,9 @@ def browse(client, user_id, data):
                 "target": target,
                 "mode": "text" if query else "filter",
                 "query": query or None,
-                "filters": {},
+                "filters": {"source_kind": source}
+                if target == "records" and source != "all"
+                else {},
                 "limit": PAGE_SIZE,
                 "cursor": upstream,
             },
@@ -100,7 +106,7 @@ def browse(client, user_id, data):
                 if hit["id"].startswith("_"):
                     continue
                 item = next(cards)
-                if category == "all" or item["category"] == category:
+                if category == "all" or item["category"] == category or category in item["labels"]:
                     items.append(item)
                 if len(items) == limit:
                     break

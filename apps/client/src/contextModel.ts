@@ -4,6 +4,8 @@ export type ContextItem = {
   preview: string;
   truncated?: boolean;
   category?: string;
+  labels?: string[];
+  domains?: string[];
   title?: string;
   created_at?: string;
   updated_at?: string;

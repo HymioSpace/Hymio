@@ -792,3 +792,300 @@
   font-size: 17px;
   font-weight: 650;
 }
+
+.memory-page .memory-add {
+  border: 0;
+  background: none;
+  color: var(--blue);
+  min-width: 44px;
+}
+.memory-overview {
+  padding: 22px 24px;
+  margin: 22px 0 18px;
+  border-radius: 18px;
+  background: var(--blue-soft, #eef4ff);
+}
+.memory-overview > div,
+.relation-inspector-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.memory-overview h2 {
+  font-size: 19px;
+  margin: 0;
+}
+.memory-overview p {
+  line-height: 1.75;
+  max-width: 760px;
+  margin: 12px 0;
+  white-space: pre-wrap;
+}
+.memory-overview > details {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 15px;
+}
+.memory-menu {
+  position: relative;
+}
+.memory-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px;
+  display: flex;
+}
+.memory-menu > div {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  top: 40px;
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px #1529461a;
+}
+.memory-menu button {
+  width: 100%;
+  border: 0 !important;
+  justify-content: flex-start !important;
+}
+.relation-dialog {
+  width: min(1240px, 96vw);
+  height: min(820px, 94dvh);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  color: var(--ink);
+  background: var(--surface);
+  overflow: hidden;
+}
+.relation-dialog::backdrop {
+  background: #17243b44;
+}
+.relation-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.relation-dialog h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.relation-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.relation-toolbar form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 180px;
+}
+.relation-toolbar input {
+  border: 0;
+  padding: 12px;
+  background: var(--subtle);
+  color: var(--ink);
+  border-radius: 10px;
+  min-width: 0;
+  width: 100%;
+}
+.relation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  height: calc(100% - 145px);
+}
+.relation-surface {
+  min-width: 0;
+  overflow: auto;
+  background: var(--subtle);
+  padding: 16px;
+}
+.relation-scope {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px 8px;
+}
+.relation-scroll {
+  overflow: auto;
+}
+.relation-canvas {
+  position: relative;
+}
+.relation-canvas > svg {
+  position: absolute;
+  inset: 0;
+}
+.relation-edge {
+  cursor: pointer;
+}
+.relation-edge text {
+  font: 12px system-ui;
+  fill: var(--muted);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.memory-page .relation-node {
+  position: absolute;
+  width: 188px;
+  min-height: 98px;
+  border-radius: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  text-align: left;
+  padding: 12px 14px;
+  box-shadow: 0 3px 12px #18305008;
+}
+.memory-page .relation-node.selected {
+  border: 1.5px solid var(--blue);
+  background: var(--surface);
+  box-shadow: 0 3px 16px #306be91a;
+}
+.relation-node strong {
+  font-size: 14px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.relation-node small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.relation-node-role {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.relation-node-role i {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--blue);
+}
+.relation-inspector {
+  border-left: 1px solid var(--line);
+  padding: 22px;
+  overflow: auto;
+}
+.relation-inspector h3 {
+  font-size: 19px;
+  margin: 0;
+  line-height: 1.45;
+}
+.relation-content {
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+.relation-inspector small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.relation-neighbors,
+.relation-explanation {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 4px;
+}
+.relation-neighbors > div {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+.relation-neighbors > div button {
+  border: 0;
+  padding: 4px;
+  min-height: 32px;
+  text-align: left;
+  justify-content: flex-start;
+}
+.relation-neighbors > div button:first-child {
+  font-size: 12px;
+  color: var(--blue);
+}
+.relation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.relation-list button {
+  justify-content: space-between;
+}
+.relation-empty {
+  padding: 70px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  .relation-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(240px, 1fr) 240px;
+  }
+  .relation-inspector {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 16px;
+  }
+  .memory-overview {
+    padding: 18px;
+  }
+  .relation-dialog {
+    width: 96vw;
+    height: 94dvh;
+  }
+  .relation-toolbar {
+    padding: 10px;
+  }
+  .relation-neighbors > div {
+    display: flex;
+    flex-direction: row;
+  }
+  .relation-inspector h4 {
+    margin: 10px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .relation-dialog * {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
+.memory-card-wrap {
+  position: relative;
+  min-width: 0;
+}
+.memory-card-wrap > .memory-card {
+  width: 100%;
+  height: 100%;
+}
+.memory-card-menu {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+.memory-card-wrap .memory-card-meta > svg:last-child {
+  visibility: hidden;
+}

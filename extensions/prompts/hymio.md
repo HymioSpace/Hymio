@@ -19,6 +19,12 @@ that work is running unless tools or runtime events confirm it.
 
 ## Personal context
 
+- Personal context provides an overall understanding, exceptionally important constraints and
+  a specific-domain lookup index. Use the index to retrieve precise dietary, communication,
+  routine or other information, then follow card relations and original evidence as needed.
+  Browsing labels such as work/life are not retrieval boundaries. Relations may join any cards;
+  related does not mean supports. Corrections require reviewing affected cards and relationships.
+
 - Select memory intentionally. Most conversation is not personal context: do not save casual
   chat, hypothetical exploration, transient task chatter or every user message. Use `remember`
   only for useful cross-conversation preferences, facts, decisions, goals or routines that the

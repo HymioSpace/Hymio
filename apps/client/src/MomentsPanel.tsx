@@ -15,11 +15,12 @@ import {
   Search,
   Sparkles,
   X,
+  MoreHorizontal,
 } from 'lucide-react';
+import { MemoryGraph } from './MemoryGraph';
 import { Companion } from '@hymio/ui';
 import type { LoginState } from './useLogin';
 import {
-  memoryCategories,
   contextText,
   memoryProposal,
   memoryDate,
@@ -85,13 +86,21 @@ function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: Contex
 }
 
 export function MomentsPanel({ login }: { login: LoginState }) {
-  const [layer, setLayer] = useState<Layer>('artifacts');
+  const [layer, setLayer] = useState<Layer>('records');
   const [pages, setPages] = useState<Record<Layer, PageState>>({
     artifacts: emptyPage(),
     records: emptyPage(),
   });
   const [category, setCategory] = useState('all');
-  const [draftCategory, setDraftCategory] = useState('uncategorized');
+  const [source, setSource] = useState('all');
+  const draftCategory = 'uncategorized';
+  const [network, setNetwork] = useState(false);
+  const [correction, setCorrection] = useState<ContextItem | null>(null);
+  const [overview, setOverview] = useState<{
+    stable?: { content: string };
+    dynamic?: { summary?: { content: string }; pending_count?: number };
+  } | null>(null);
+  const [overviewError, setOverviewError] = useState('');
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -153,7 +162,8 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     return request('browse', {
       target,
       query: query || null,
-      category,
+      category: target === 'artifacts' ? category : 'all',
+      source_kind: target === 'records' ? source : 'all',
       limit: 30,
       cursor,
     });
@@ -177,7 +187,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
           items: uniqueItems([
             ...confirmedSaves.current.filter(
               (item) =>
-                (category === 'all' || item.category === category) &&
+                (source === 'all' || item.source?.kind === source) &&
                 (!query || item.preview.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
             ),
             ...visibleItems(records.items),
@@ -200,7 +210,23 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     };
     // A query or authenticated session change invalidates older requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, category, session.backend, session.user_id, session.access_token]);
+  }, [query, category, source, session.backend, session.user_id, session.access_token]);
+  useEffect(() => {
+    let live = true;
+    request<typeof overview>('assembly')
+      .then((v) => {
+        if (live) {
+          setOverview(v);
+          setOverviewError('');
+        }
+      })
+      .catch(() => {
+        if (live) setOverviewError('概述暂时无法读取');
+      });
+    return () => {
+      live = false;
+    };
+  }, [session.backend, session.user_id, session.access_token, notice]);
 
   async function more(target: Layer) {
     const cursor = pages[target].cursor;
@@ -303,18 +329,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     setDetailLoading(false);
   }
   function openGraph() {
-    const item = pages.artifacts.items[0];
-    if (item) void open(item, true);
-    else {
-      detailGeneration.current++;
-      setSelected(null);
-      setGraph(true);
-      setDetail(null);
-      setEvidence([]);
-      setDetailError('');
-      setDetailLoading(false);
-      showReader();
-    }
+    setNetwork(true);
   }
   async function save() {
     const text = draft.trim();
@@ -324,9 +339,25 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     setSaving(true);
     setSaveError('');
     try {
+      if (correction) {
+        await request(
+          'corrections',
+          {
+            target: { kind: correction.kind, id: correction.id },
+            text: saveOperation.current.text,
+          },
+          saveOperation.current.key,
+        );
+        saveOperation.current = null;
+        setDraft('');
+        setCorrection(null);
+        composer.current?.close();
+        setNotice('你的补充已记下，相关理解会重新整理。');
+        return;
+      }
       const saved = await request<ContextDetail & { id: string }>(
         'saves',
-        { text: saveOperation.current.text, category: saveOperation.current.category },
+        { text: saveOperation.current.text },
         saveOperation.current.key,
       );
       const savedItem: ContextItem = {
@@ -377,13 +408,15 @@ export function MomentsPanel({ login }: { login: LoginState }) {
       <div className="memory-content">
         <header className="memory-header">
           <div>
-            <p className="memory-eyebrow">与你有关，慢慢连起来</p>
             <h1>记忆</h1>
           </div>
           <div className="memory-actions">
-            <button className="memory-primary" onClick={() => composer.current?.showModal()}>
+            <button
+              className="memory-add"
+              aria-label="添加记忆"
+              onClick={() => composer.current?.showModal()}
+            >
               <Plus size={17} />
-              收集
             </button>
             <button
               aria-label="刷新记忆"
@@ -427,7 +460,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
         </form>
         <div className="memory-viewbar">
           <div className="memory-tabs" role="tablist" aria-label="记忆类型">
-            {(['artifacts', 'records'] as Layer[]).map((target) => (
+            {(['records', 'artifacts'] as Layer[]).map((target) => (
               <button
                 role="tab"
                 aria-selected={layer === target}
@@ -436,22 +469,67 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                 key={target}
                 onClick={() => setLayer(target)}
               >
-                {target === 'artifacts' ? '理解' : '足迹'}
+                {target === 'artifacts' ? '我的理解' : '原始资料'}
               </button>
             ))}
           </div>
-          <button
-            className="memory-graph-button"
-            onClick={openGraph}
-            disabled={loading || (!!error && !pages.artifacts.items.length)}
-          >
-            <GitFork size={17} />
-            星图
-          </button>
+          {layer === 'artifacts' && (
+            <button
+              className="memory-graph-button"
+              onClick={openGraph}
+              disabled={loading || (!!error && !pages.artifacts.items.length)}
+            >
+              <GitFork size={17} />
+              星图
+            </button>
+          )}
         </div>
-        <div className="memory-categories" role="group" aria-label="记忆分类">
-          {memoryCategories.map(([key, label]) => (
-            <button key={key} aria-pressed={category === key} onClick={() => setCategory(key)}>
+        {layer === 'artifacts' && (
+          <section className="memory-overview">
+            <div>
+              <h2>我对你的理解</h2>
+              <details className="memory-menu">
+                <summary aria-label="更多操作">
+                  <MoreHorizontal size={20} />
+                </summary>
+                <div>
+                  <button onClick={() => setNetwork(true)}>看看这些联系</button>
+                </div>
+              </details>
+            </div>
+            <p>
+              {overviewError ||
+                overview?.stable?.content ||
+                '随着你留下更多资料，我会慢慢了解你的偏好和在意的事。'}
+            </p>
+          </section>
+        )}
+        <div
+          className="memory-categories"
+          role="group"
+          aria-label={layer === 'artifacts' ? '理解分类' : '资料来源'}
+        >
+          {(layer === 'artifacts'
+            ? [
+                ['all', '全部'],
+                ...Array.from(
+                  new Set(pages.artifacts.items.flatMap((item) => item.labels || [])),
+                ).map((label) => [label, label]),
+              ]
+            : [
+                ['all', '全部'],
+                ['conversation', '对话'],
+                ['user', '手记'],
+                ['connector', '连接来源'],
+                ['kit', '应用'],
+                ['legacy', '其他'],
+              ]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              aria-pressed={(layer === 'artifacts' ? category : source) === key}
+              onClick={() => (layer === 'artifacts' ? setCategory(key) : setSource(key))}
+            >
               {label}
             </button>
           ))}
@@ -487,11 +565,31 @@ export function MomentsPanel({ login }: { login: LoginState }) {
             <>
               <div className={`memory-grid ${layer === 'records' ? 'memory-records' : ''}`}>
                 {page.items.map((item) => (
-                  <MemoryCard
-                    key={`${item.kind}:${item.id}`}
-                    item={item}
-                    onOpen={(value) => void open(value)}
-                  />
+                  <div className="memory-card-wrap">
+                    <MemoryCard
+                      key={`${item.kind}:${item.id}`}
+                      item={item}
+                      onOpen={(value) => void open(value)}
+                    />
+                    <details className="memory-menu memory-card-menu">
+                      <summary aria-label="更多卡片操作">
+                        <MoreHorizontal size={18} />
+                      </summary>
+                      <div>
+                        <button onClick={() => void open(item)}>查看内容</button>
+                        <button
+                          onClick={() => {
+                            if (saveOperation.current) return;
+                            setCorrection(item);
+                            setDraft('');
+                            composer.current?.showModal();
+                          }}
+                        >
+                          补充或纠正
+                        </button>
+                      </div>
+                    </details>
+                  </div>
                 ))}
               </div>
               <div className="memory-page-end">
@@ -556,7 +654,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
         }}
       >
         <header>
-          <h2 id="memory-save-title">记一笔</h2>
+          <h2 id="memory-save-title">{correction ? '补充或纠正' : '记一笔'}</h2>
           <button aria-label="关闭收集" disabled={saving} onClick={() => composer.current?.close()}>
             <X size={20} />
           </button>
@@ -564,23 +662,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
         <p className="memory-muted">先留下原文，理解会慢慢形成。</p>
         <label className="memory-sr" htmlFor="memory-draft">
           想保留的内容
-        </label>
-        <label className="memory-category-label">
-          分类
-          <select
-            aria-label="收集分类"
-            value={draftCategory}
-            disabled={saving || !!saveOperation.current}
-            onChange={(event) => setDraftCategory(event.target.value)}
-          >
-            {memoryCategories
-              .filter(([key]) => key !== 'all')
-              .map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-          </select>
         </label>
         <textarea
           id="memory-draft"
@@ -837,6 +918,16 @@ export function MomentsPanel({ login }: { login: LoginState }) {
           </>
         )}
       </dialog>
+      {network && (
+        <MemoryGraph
+          request={request}
+          onClose={() => setNetwork(false)}
+          onRead={(item) => {
+            setNetwork(false);
+            void open(item);
+          }}
+        />
+      )}
     </main>
   );
 }

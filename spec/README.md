@@ -34,6 +34,7 @@
 | 28 | [Observability and evaluation](feature28-observability.md) | Implemented |
 | 30 | [记忆与 Context foundation](feature30-context-foundation.md) | Implemented：基础协议与双端入口 |
 | 31 | [记忆空间](feature31-memory-space.md) | Implemented：理解、足迹与按需星图 |
+| 32 | [关联记忆](feature32-context-graph.md) | Draft：任意卡片关系、关联检索与更新、概述及星图调整 |
 
 
 ## 设计与实现

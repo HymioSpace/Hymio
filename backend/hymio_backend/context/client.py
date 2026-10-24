@@ -77,7 +77,7 @@ class NostalgiaClient:
         create=False,
         operation_id=None,
     ):
-        if action not in self.READS | self.WRITES | {"search"}:
+        if action not in self.READS | self.WRITES | {"search", "graph.query", "retrieve"}:
             raise ValueError("Unsupported context action")
         if action in self.WRITES and (
             not isinstance(operation_id, str) or not 1 <= len(operation_id) <= 160
@@ -104,6 +104,8 @@ class NostalgiaClient:
             "artifacts.put": ("PUT", f"/v1/artifacts/{component}"),
             "artifacts.delete": ("DELETE", f"/v1/artifacts/{component}"),
             "search": ("POST", "/v1/search"),
+            "graph.query": ("POST", "/v1/graph/query"),
+            "retrieve": ("POST", "/v1/retrieve"),
         }
         method, path = routes[action]
         params = dict(query or {})
