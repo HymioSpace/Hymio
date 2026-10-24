@@ -41,6 +41,55 @@ def build_app(service, token):
                 return JSONResponse(service.uninstall(user_id, data.get("kit_id")))
             if action == "/v1/generate":
                 return JSONResponse(service.generate(user_id, data.get("spec")))
+            if action == "/v1/project/create":
+                return JSONResponse(
+                    service.create_project(
+                        user_id, data.get("spec"), data.get("request_id")
+                    )
+                )
+            if action == "/v1/project/bind-agent":
+                return JSONResponse(
+                    service.bind_project_agent(
+                        user_id, data.get("kit_id"), data.get("agent_id")
+                    )
+                )
+            if action == "/v1/dev/context":
+                return JSONResponse(
+                    service.dev_context(user_id, data.get("agent_id"))
+                )
+            if action == "/v1/dev":
+                return JSONResponse(
+                    service.dev_invoke(
+                        user_id,
+                        data.get("agent_id"),
+                        data.get("dev_action"),
+                        data.get("arguments", {}),
+                        data.get("idempotency_key"),
+                    )
+                )
+            if action == "/v1/editor":
+                return JSONResponse(
+                    service.editor(user_id, data.get("kit_id"))
+                )
+            if action == "/v1/editor/message":
+                service.store.add_coding_message(
+                    user_id,
+                    data.get("kit_id"),
+                    data.get("message_id"),
+                    data.get("author"),
+                    data.get("content"),
+                )
+                return JSONResponse({"accepted": True})
+            if action == "/v1/delete-generated":
+                return JSONResponse(
+                    service.invoke(
+                        user_id,
+                        data.get("kit_id"),
+                        "app.delete",
+                        {"confirmation": "DELETE"},
+                        data.get("idempotency_key"),
+                    )
+                )
             if action == "/v1/app":
                 return JSONResponse(service.app(user_id, data.get("kit_id")))
             if action == "/v1/agent-context":
@@ -66,6 +115,12 @@ def build_app(service, token):
     return Starlette(
         routes=[
             Route("/health", endpoint),
+            Route("/v1/project/create", endpoint, methods=["POST"]),
+            Route("/v1/project/bind-agent", endpoint, methods=["POST"]),
+            Route("/v1/dev/context", endpoint, methods=["POST"]),
+            Route("/v1/dev", endpoint, methods=["POST"]),
+            Route("/v1/editor", endpoint, methods=["POST"]),
+            Route("/v1/editor/message", endpoint, methods=["POST"]),
             Route("/v1/{operation}", endpoint, methods=["POST"]),
         ]
     )

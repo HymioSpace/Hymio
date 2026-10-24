@@ -92,6 +92,8 @@ manifests, application HTML, installations and `kit-data/kits.sqlite3`; Hymio Ba
 authenticated requests to it. Rebuilding the Kit Host does not remove Kit data. Do not mount or
 execute publisher-supplied Python/JavaScript in Backend; external Kit implementations must run as
 independent services behind the same operation contract.
+Generated applications add a pinned Node/esbuild builder and bounded Python handler subprocesses
+inside Kit Host. The image installs React dependencies at build time; runtime builds need no network.
 The generated Compose stack sets Backend's internal `HYMIO_KITS_URL=http://kit-host:8090`; no
 Kit Host port is published.
 

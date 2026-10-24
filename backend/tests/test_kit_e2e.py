@@ -12,6 +12,8 @@ import httpx
 import pytest
 import uvicorn
 from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from hymio_backend.context.routes import context_routes
 from hymio_backend.kits.routes import kit_routes
@@ -65,6 +67,34 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
     token = "kit-service-token-" + "x" * 40
     token_file = tmp_path / "service-token"
     token_file.write_text(token)
+    agent_id = "c" * 32
+    oath_state = {"status": "succeeded", "result": "第一版应用已完成。"}
+
+    async def oath_endpoint(request):
+        data = await request.json()
+        action = request.path_params["action"]
+        if action == "spawn":
+            assert data["defer_start"] is True
+            return JSONResponse({"agent_id": agent_id, "status": "waiting"})
+        if action == "continue":
+            oath_state["status"] = "running"
+            return JSONResponse({"agent_id": agent_id, "status": "running"})
+        if action == "get":
+            return JSONResponse(
+                {
+                    "agent_id": agent_id,
+                    "status": oath_state["status"],
+                    "result": oath_state["result"],
+                }
+            )
+        if action == "cancel":
+            oath_state["status"] = "cancelled"
+            return JSONResponse({"agent_id": agent_id, "status": "cancelled"})
+        return JSONResponse({"error": "not_found"}, 404)
+
+    oath_url, oath_server, oath_thread = serve(
+        Starlette(routes=[Route("/subagents/{action}", oath_endpoint, methods=["POST"])])
+    )
 
     host_port = free_port()
     host_process = subprocess.Popen(
@@ -106,6 +136,7 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
         origins=(),
         service_token_file=token_file,
         kits_url=host_url,
+        oath_biz=oath_url,
     )
     sessions = SessionStore(settings)
     alice = sessions.create_session({"iss": "synthetic", "sub": "alice", "name": "Alice"})
@@ -141,11 +172,14 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
         [REPO / "extensions"], kinds=frozenset({"tools"})
     ).tools
     tool_names = {tool.definition.name for tool in discovered}
-    assert {"kit_call", "kit_build"} <= tool_names
+    assert {"kit_call", "kit_build", "kit_dev"} <= tool_names
+    assert next(
+        tool for tool in discovered if tool.definition.name == "kit_dev"
+    ).subagent_only is True
     assert all(
         tool.expose_channels == frozenset({"ios"})
         for tool in discovered
-        if tool.definition.name in {"kit_call", "kit_build"}
+        if tool.definition.name in {"kit_call", "kit_build", "kit_dev"}
     )
     assert "channels: [ios]" in (
         REPO / "extensions/skills/kit-builder/SKILL.md"
@@ -250,17 +284,15 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
                     user=User(alice["user_id"]),
                     invocation_id="build-water-kit",
                     arguments={
+                        "action": "create",
                         "name": "饮水记录",
                         "tagline": "记下每天喝了多少水。",
                         "category": "生活",
                         "item_label": "杯水",
                         "accent": "blue",
-                        "app_html": (
-                            "<!doctype html><html><body><!--"
-                            + "x" * 70000
-                            + "--><h1>饮水记录</h1>"
-                            "<script>HymioKit.call('summary', {})</script>"
-                            "</body></html>"
+                        "requirements": (
+                            "做一个安静、清晰的饮水首页，显示今天累计杯数、最近记录，"
+                            "并在键盘上方提供添加动作。不要编造目标值。"
                         ),
                         "fields": [
                             {
@@ -280,8 +312,77 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
                     deadline=None,
                 )
             )
-            generated_id = built.content["id"]
+            generated_id = built.content["kit_id"]
             assert generated_id.startswith("user.")
+            assert built.content["status"] == "coding"
+
+            coding_user = User(alice["user_id"], agent_id)
+            coding_context = http.post(
+                backend_url + "/internal/agent/context",
+                headers={"authorization": "Bearer " + token},
+                json={
+                    "user_id": alice["user_id"],
+                    "agent_id": agent_id,
+                    "channel": "ios",
+                },
+            )
+            coding_context.raise_for_status()
+            assert "React frontend" in coding_context.json()["content"]
+            assert "web/src/App.jsx" in coding_context.json()["content"]
+            assert "hymio.ledger" not in coding_context.json()["content"]
+            source = module.KitDevTool().execute(
+                ToolInvocation(
+                    user=coding_user,
+                    invocation_id="dev-read-1",
+                    arguments={
+                        "action": "read",
+                        "path": "web/src/App.jsx",
+                        "limit": 3000,
+                    },
+                    deadline=None,
+                )
+            ).content
+            assert source["content"]
+            patched = module.KitDevTool().execute(
+                ToolInvocation(
+                    user=coding_user,
+                    invocation_id="dev-patch-1",
+                    arguments={
+                        "action": "patch",
+                        "expected_revision": source["source_revision"],
+                        "changes": [
+                            {
+                                "path": "web/src/App.jsx",
+                                "old": "<h1>{DISPLAY.name}</h1>",
+                                "new": "<h1>今日饮水</h1>",
+                            }
+                        ],
+                    },
+                    deadline=None,
+                )
+            ).content
+            checked = module.KitDevTool().execute(
+                ToolInvocation(
+                    user=coding_user,
+                    invocation_id="dev-check-1",
+                    arguments={"action": "check"},
+                    deadline=None,
+                )
+            ).content
+            assert checked["ok"] is True, checked
+            published = module.KitDevTool().execute(
+                ToolInvocation(
+                    user=coding_user,
+                    invocation_id="dev-publish-1",
+                    arguments={
+                        "action": "publish",
+                        "expected_revision": patched["source_revision"],
+                        "summary": "完成饮水首页和 Python 数据结构",
+                    },
+                    deadline=None,
+                )
+            ).content
+            assert published["installed"] is True
             dynamic = http.post(
                 backend_url + "/internal/agent/context",
                 headers={"authorization": "Bearer " + token},
@@ -324,12 +425,69 @@ def test_ui_and_unified_kit_tool_reach_separate_kit_host(tmp_path):
                 backend_url + "/kits/" + generated_id + "/app", headers=headers
             )
             generated_app.raise_for_status()
-            assert "饮水记录" in generated_app.json()["html"]
+            assert 'id="root"' in generated_app.json()["html"]
+
+            edited = module.KitBuildTool().execute(
+                ToolInvocation(
+                    user=User(alice["user_id"]),
+                    invocation_id="edit-water-kit",
+                    arguments={
+                        "action": "edit",
+                        "kit_id": generated_id,
+                        "requirements": "增加按日期查看最近记录，不改变已有饮水量字段。",
+                    },
+                    deadline=None,
+                )
+            ).content
+            assert edited["accepted"] is True
+            editor = http.get(
+                backend_url + "/kits/" + generated_id + "/editor", headers=headers
+            )
+            editor.raise_for_status()
+            assert editor.json()["coding_agent_id"] == agent_id
+            assert editor.json()["agent_status"] == "running"
+            assert editor.json()["messages"]
+            assert [message["author"] for message in editor.json()["messages"]] == [
+                "main_agent",
+                "main_agent",
+            ]
+            generated_after_edit = http.post(
+                backend_url + "/kits/" + generated_id + "/actions/items.list",
+                headers=headers,
+                json={},
+            )
+            generated_after_edit.raise_for_status()
+            assert generated_after_edit.json()["result"]["count"] == 1
+
+            deleted = module.KitTool().execute(
+                ToolInvocation(
+                    user=User(alice["user_id"]),
+                    invocation_id="delete-water-kit",
+                    arguments={
+                        "kit_id": generated_id,
+                        "operation": "app.delete",
+                        "arguments": {"confirmation": "DELETE"},
+                    },
+                    deadline=None,
+                )
+            ).content
+            assert deleted == {"deleted": True}
+            catalog_after_delete = http.get(
+                backend_url + "/kits", headers=headers
+            ).json()["kits"]
+            assert generated_id not in {item["id"] for item in catalog_after_delete}
+            assert (
+                http.get(
+                    backend_url + "/kits/" + generated_id + "/app", headers=headers
+                ).status_code
+                == 409
+            )
     finally:
         os.environ.pop("HYMIO_KIT_CONNECTION_FILE", None)
         import asyncio
 
         asyncio.run(downstream.aclose())
         stop(backend_server, backend_thread)
+        stop(oath_server, oath_thread)
         host_process.terminate()
         host_process.wait(timeout=5)

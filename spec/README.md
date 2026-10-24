@@ -36,6 +36,7 @@
 | 31 | [记忆空间](feature31-memory-space.md) | Implemented：理解、足迹与按需星图 |
 | 33 | [Context events and window settings](feature33-context-events-window.md) | Implemented |
 | 32 | [关联记忆](feature32-context-graph.md) | Draft：任意卡片关系、关联检索与更新、概述及星图调整 |
+| 34 | [React / Python application runtime](feature34-application-runtime.md) | Implementing：React/Python bundle、coding context 与版本编辑 |
 
 
 ## 设计与实现

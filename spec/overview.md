@@ -19,9 +19,10 @@ Context 的入口只有导入与同步：文字、语音、照片、文件和历
 
 现有 MVP 提供原始写入、检索和内部周期 dreaming API。Nostalgia 自己调度草稿、调用可配置的 proposal provider 并原子发布；Hymio 只配置 provider、代理用户请求并向 Agent 提供 `remember` / `recall`。Oath 不包含 context 业务工具或 dreaming 语义。
 
-Kit 是独立业务服务，提供真实应用页面、可选 business operation 和用户数据。纯静态应用可以
-没有 operation。Nostalgia 可保存后续 context projection；iOS 和 Agent 都经 Backend 使用同一
-business API，Web 不加载 Kit。
+Kit 是独立业务服务，提供真实应用页面、可选 business operation 和用户数据。新生成应用由
+React 前端、bounded Python API、不可变 revision 和一个 Oath coding context 组成；主 Agent
+只提交产品 brief，专属 coding agent 负责源码、构建与发布。Nostalgia 可保存后续 context
+projection；iOS 和 Agent 都经 Backend 使用同一 business API，Web 不加载 Kit。
 
 ## 目录
 
@@ -97,7 +98,7 @@ Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
 
 ## 产品入口
 
-iOS 使用此刻、对话、任务、记忆、应用五个原生页签，账号从左上角三横线菜单进入；Web 使用有文字标签的侧栏，当前不支持 Kit，也不请求 Kit API。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
+iOS 使用此刻、对话、任务、记忆、应用五个原生页签，账号从左上角伴侣头像进入；Web 使用有文字标签的侧栏，当前不支持 Kit，也不请求 Kit API。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
 
 记忆空间的理解/足迹与按需星图见 [feature31](feature31-memory-space.md)；稳定精华与动态事件基础协议见 [feature30](feature30-context-foundation.md)。
 
@@ -105,4 +106,5 @@ iOS 使用此刻、对话、任务、记忆、应用五个原生页签，账号�
 
 iOS 用户在“应用”中安装或生成真实应用。独立 Kit Host 持有应用页面、业务数据和 operation；
 Backend 只做鉴权代理。Agent 通过统一 `kit_call` 使用应用，当前用户已安装的 operation schema
-由 Hymio context provider 动态注入模型请求。首版见 [feature03](feature03-kits.md)。
+由 Hymio context provider 动态注入模型请求。创建和编辑由应用专属 Oath coding context
+完成，见 [feature03](feature03-kits.md) 与 [feature34](feature34-application-runtime.md)。

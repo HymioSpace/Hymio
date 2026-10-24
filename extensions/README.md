@@ -51,5 +51,10 @@ step. Execution still checks whether the current user installed the requested ap
 same Kit operation API serves iOS and Agent calls. Web does not expose Kits or request their data.
 
 `kit_call`, `kit_build` and the `kit-builder` skill are scoped to the `ios` channel through Oath's
-generic channel-exposure mechanism. Web and Mac receive no Kit tools, skill index entry, Kit
-instructions or application context.
+generic channel-exposure mechanism. `kit_build` delegates source work to one long-lived coding
+context per application; the main Agent supplies product requirements rather than code.
+
+The subagent-only `kit_dev` tool reads, patches, checks and publishes the bound React/Python
+project. `kit-coding` explains that workflow inside the delegated context. Oath filters
+`kit_dev` from main-Agent definitions and server-side admission, not only from prompt text.
+Web and Mac receive no application tools, skill entries, instructions or context.

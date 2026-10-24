@@ -15,6 +15,8 @@ import SwiftUI
         #if DEBUG
           if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
             KitAppPreviewScreen()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioKitEditorPreview") {
+            KitEditorPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
             ContextPreviewScreen(
               account: account.session == nil ? nil : account,

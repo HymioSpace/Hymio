@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from ..session_store import Unauthorized
-from .service import KitHostUnavailable, KitNotFound, KitNotInstalled
+from .service import KitHostUnavailable, KitNotFound, KitNotInstalled, KitRequestError
 
 
 def kit_routes(settings, sessions, service, bearer, body):
@@ -44,6 +44,71 @@ def kit_routes(settings, sessions, service, bearer, body):
                 if not isinstance(user_id, str) or not user_id:
                     raise ValueError("Invalid user")
                 return JSONResponse(await service.generate(user_id, data.get("spec")))
+            if path == "/internal/kits/build":
+                expected = settings.service_token_file.read_bytes().strip()
+                if not hmac.compare_digest(bearer(request).encode(), expected):
+                    raise Unauthorized()
+                data = await body(request, limit=65536)
+                user_id = data.get("user_id")
+                request_id = data.get("invocation_id")
+                if (
+                    not isinstance(user_id, str)
+                    or not user_id
+                    or not isinstance(request_id, str)
+                    or not request_id
+                ):
+                    raise ValueError("Invalid application build request")
+                action = data.get("action")
+                if action == "create":
+                    spec = data.get("spec")
+                    if not isinstance(spec, dict):
+                        raise ValueError("Invalid application specification")
+                    return JSONResponse(
+                        await service.start_coding(user_id, spec, request_id)
+                    )
+                if action == "edit":
+                    kit_id = data.get("kit_id")
+                    requirements = data.get("requirements")
+                    if (
+                        not isinstance(kit_id, str)
+                        or not kit_id
+                        or not isinstance(requirements, str)
+                        or not 1 <= len(requirements.strip()) <= 20000
+                    ):
+                        raise ValueError("Invalid application edit")
+                    return JSONResponse(
+                        await service.continue_coding(
+                            user_id,
+                            kit_id,
+                            requirements.strip(),
+                            "main:" + request_id,
+                            notify_parent=True,
+                            author="main_agent",
+                        )
+                    )
+                raise ValueError("Unknown application build action")
+            if path == "/internal/kits/dev":
+                expected = settings.service_token_file.read_bytes().strip()
+                if not hmac.compare_digest(bearer(request).encode(), expected):
+                    raise Unauthorized()
+                data = await body(request, limit=65536)
+                user_id = data.get("user_id")
+                agent_id = data.get("agent_id")
+                if (
+                    not isinstance(user_id, str)
+                    or not user_id
+                    or not isinstance(agent_id, str)
+                    or not agent_id
+                ):
+                    raise ValueError("Invalid coding context")
+                result = await service.dev_invoke(
+                    user_id,
+                    agent_id,
+                    data.get("dev_action"),
+                    data.get("arguments", {}),
+                    data.get("invocation_id"),
+                )
+                return JSONResponse(result)
 
             identity = await asyncio.to_thread(sessions.verify, bearer(request))
             user_id = identity["user_id"]
@@ -57,6 +122,44 @@ def kit_routes(settings, sessions, service, bearer, body):
                     if parts[2] == "install":
                         return JSONResponse(await service.install(user_id, parts[1]))
                     return JSONResponse(await service.uninstall(user_id, parts[1]))
+                if len(parts) == 3 and parts[2] == "delete":
+                    if request.method != "POST":
+                        return JSONResponse({"error": "method_not_allowed"}, 405)
+                    data = await body(request, limit=4096)
+                    if data != {"confirmation": "DELETE"}:
+                        raise ValueError("Application deletion requires explicit confirmation")
+                    key = request.headers.get("idempotency-key") or uuid.uuid4().hex
+                    result = await service.delete_generated(user_id, parts[1], key)
+                    await service.record_user_interaction(user_id, result, key)
+                    return JSONResponse(result)
+                if len(parts) == 3 and parts[2] == "editor" and request.method == "GET":
+                    return JSONResponse(
+                        await service.editor_status(user_id, parts[1])
+                    )
+                if (
+                    len(parts) == 4
+                    and parts[2] == "editor"
+                    and parts[3] == "messages"
+                    and request.method == "POST"
+                ):
+                    data = await body(request, limit=32768)
+                    content = data.get("content")
+                    if (
+                        not isinstance(content, str)
+                        or not 1 <= len(content.strip()) <= 20000
+                    ):
+                        raise ValueError("Write an application change request")
+                    key = request.headers.get("idempotency-key") or uuid.uuid4().hex
+                    return JSONResponse(
+                        await service.continue_coding(
+                            user_id,
+                            parts[1],
+                            content.strip(),
+                            "ui:" + key,
+                            notify_parent=False,
+                            author="user",
+                        )
+                    )
                 if len(parts) == 3 and parts[2] == "app" and request.method == "GET":
                     return JSONResponse(await service.app(user_id, parts[1]))
                 if (
@@ -66,15 +169,15 @@ def kit_routes(settings, sessions, service, bearer, body):
                 ):
                     data = await body(request, limit=131072)
                     key = request.headers.get("idempotency-key") or uuid.uuid4().hex
-                    return JSONResponse(
-                        await service.invoke(
-                            user_id,
-                            parts[1],
-                            parts[3],
-                            data,
-                            key,
-                        )
+                    result = await service.invoke(
+                        user_id,
+                        parts[1],
+                        parts[3],
+                        data,
+                        key,
                     )
+                    await service.record_user_interaction(user_id, result, key)
+                    return JSONResponse(result)
             return JSONResponse({"error": "not_found"}, 404)
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
@@ -84,6 +187,10 @@ def kit_routes(settings, sessions, service, bearer, body):
             return JSONResponse({"error": "kit_not_found"}, 404)
         except KitHostUnavailable:
             return JSONResponse({"error": "kit_host_unavailable"}, 503)
+        except KitRequestError as exc:
+            return JSONResponse(
+                {"error": "invalid_kit_request", "message": str(exc)}, 400
+            )
         except (KeyError, TypeError, ValueError) as exc:
             return JSONResponse({"error": "invalid_kit_request", "message": str(exc)}, 400)
 
@@ -92,7 +199,12 @@ def kit_routes(settings, sessions, service, bearer, body):
         Route("/kits/{kit_id}/app", endpoint, methods=["GET"]),
         Route("/kits/{kit_id}/install", endpoint, methods=["POST"]),
         Route("/kits/{kit_id}/uninstall", endpoint, methods=["POST"]),
+        Route("/kits/{kit_id}/delete", endpoint, methods=["POST"]),
         Route("/kits/{kit_id}/actions/{operation}", endpoint, methods=["POST"]),
         Route("/internal/kits", endpoint, methods=["POST"]),
         Route("/internal/kits/generate", endpoint, methods=["POST"]),
+        Route("/internal/kits/build", endpoint, methods=["POST"]),
+        Route("/internal/kits/dev", endpoint, methods=["POST"]),
+        Route("/kits/{kit_id}/editor", endpoint, methods=["GET"]),
+        Route("/kits/{kit_id}/editor/messages", endpoint, methods=["POST"]),
     ]

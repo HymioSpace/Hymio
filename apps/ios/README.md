@@ -9,9 +9,10 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
 - Authenticated screenshots, image expansion, older-history pagination.
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
 - Foreground reconnect, offline progress, account/device view and connection diagnostics.
-- A five-tab product shell with account settings behind the leading menu.
-- Installed or generated applications with real local HTML/CSS/JavaScript and a minimal,
+- A five-tab product shell with account settings behind a leading Companion avatar.
+- Installed or generated React applications with bounded Python operations and an
   account-scoped `HymioKit.call` bridge.
+- Per-application coding conversations with published version summaries.
 
 The Memory tab (记忆) has understanding and original footprints, text search, direct text saving and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md). Automated context collectors and health connectors are not included.
 
@@ -86,10 +87,16 @@ xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
 
 The UI test registers a synthetic account against the configured local backend, chats twice across app termination/relaunch, and signs out. It requires the running stack and a working model configuration. The test revokes its own devices after running; generated accounts remain in the development identity provider. Automatically provisioned cloud computers use real deployment resources, so run against a development deployment.
 
-The focused Kit bridge test installs the first-party ledger, writes from HTML through WKWebView,
+The focused Kit bridge test installs the first-party ledger, writes from its Web page through WKWebView,
 checks the same record through the authenticated business API, writes from the business API, and
 reopens the page to verify the same data appears. It needs the local Backend and Kit Host but no
 model call:
+
+The Kit Host React build uses pinned local Node dependencies. Install them once:
+
+```sh
+npm ci --prefix services/kit-host/web
+```
 
 ```sh
 xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
@@ -142,3 +149,6 @@ with `-HymioContextPreview`; add `-HymioContextEmptyPreview` for first use,
 accessibility text size. These flags do not alter the real account or system appearance.
 For actual persistence across clients, `backend/scripts/memory_preview.py` serves a loopback-only
 synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http://127.0.0.1:1422`.
+
+Application previews use `-HymioKitAppPreview` for the WebView shell and
+`-HymioKitEditorPreview` for the coding conversation and published version history.

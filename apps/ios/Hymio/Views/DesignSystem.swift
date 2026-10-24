@@ -81,14 +81,29 @@ struct AccountButton: View {
 
   var body: some View {
     Button(action: action) {
-      Image(systemName: "line.3.horizontal")
-        .font(.system(size: 17, weight: .semibold))
-        .foregroundStyle(Brand.ink)
+      Companion(size: 31, mood: .greeting)
+        .padding(5)
+        .background(Brand.softBlue, in: Circle())
+        .overlay(Circle().stroke(Brand.blue.opacity(0.14), lineWidth: 1))
         .frame(width: 44, height: 44)
     }
-    .buttonStyle(.plain)
-    .contentShape(Rectangle())
-    .accessibilityLabel("打开菜单")
+    .buttonStyle(AccountAvatarStyle())
+    .contentShape(Circle())
+    .accessibilityLabel("账号与设置")
+    .accessibilityHint("打开个人资料、设备和偏好设置")
+  }
+}
+
+private struct AccountAvatarStyle: ButtonStyle {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+      .opacity(configuration.isPressed ? 0.8 : 1)
+      .animation(
+        reduceMotion ? nil : .easeOut(duration: 0.14),
+        value: configuration.isPressed)
   }
 }
 

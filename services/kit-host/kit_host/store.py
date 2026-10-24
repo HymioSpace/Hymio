@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 import time
@@ -73,6 +74,43 @@ class KitStore:
                 );
                 CREATE INDEX IF NOT EXISTS kit_records_user_time
                     ON kit_records(user_id, kit_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS app_projects (
+                    kit_id TEXT PRIMARY KEY,
+                    owner_user_id TEXT NOT NULL,
+                    display_json TEXT NOT NULL,
+                    files_json TEXT NOT NULL,
+                    source_revision TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    coding_agent_id TEXT,
+                    published_revision INTEGER NOT NULL DEFAULT 0,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS app_projects_owner
+                    ON app_projects(owner_user_id, updated_at DESC);
+                CREATE TABLE IF NOT EXISTS app_revisions (
+                    revision_id TEXT PRIMARY KEY,
+                    kit_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    revision INTEGER NOT NULL,
+                    files_json TEXT NOT NULL,
+                    manifest_json TEXT NOT NULL,
+                    app_html TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    author_agent_id TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    UNIQUE(kit_id, revision)
+                );
+                CREATE TABLE IF NOT EXISTS app_coding_messages (
+                    message_id TEXT PRIMARY KEY,
+                    kit_id TEXT NOT NULL,
+                    owner_user_id TEXT NOT NULL,
+                    author TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS app_coding_messages_thread
+                    ON app_coding_messages(kit_id, created_at);
                 """
             )
             columns = {row[1] for row in db.execute("PRAGMA table_info(generated_kits)")}
@@ -272,6 +310,515 @@ class KitStore:
             if not row or not row["app_html"]:
                 raise ValueError("Application UI is unavailable")
             return row["app_html"]
+
+    def update_generated(
+        self,
+        owner_user_id,
+        kit_id,
+        manifest,
+        app_html,
+        idempotency_key,
+        result,
+        expected_revision,
+    ):
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT kit_id,operation,result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=?",
+                (owner_user_id, idempotency_key),
+            ).fetchone()
+            if receipt:
+                if receipt["kit_id"] != kit_id or receipt["operation"] != "app.update":
+                    raise ValueError("Idempotency key belongs to another operation")
+                return json.loads(receipt["result"])
+            current = db.execute(
+                "SELECT app_html FROM generated_kits WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            ).fetchone()
+            if not current:
+                raise ValueError("Generated application is unavailable")
+            current_revision = hashlib.sha256(
+                current["app_html"].encode()
+            ).hexdigest()
+            if expected_revision != current_revision:
+                raise ValueError(
+                    "Application source changed; call app.get_source again before editing"
+                )
+            changed = db.execute(
+                "UPDATE generated_kits SET manifest=?,app_html=?,updated_at=? "
+                "WHERE owner_user_id=? AND kit_id=?",
+                (
+                    json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+                    app_html,
+                    time.time(),
+                    owner_user_id,
+                    kit_id,
+                ),
+            )
+            if changed.rowcount != 1:
+                raise ValueError("Generated application is unavailable")
+            db.execute(
+                "INSERT INTO kit_receipts"
+                "(user_id,idempotency_key,kit_id,operation,result,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    owner_user_id,
+                    idempotency_key,
+                    kit_id,
+                    "app.update",
+                    json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                    time.time(),
+                ),
+            )
+            return result
+
+    def generated_management_receipt(
+        self, owner_user_id, kit_id, operation, idempotency_key
+    ):
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=? AND kit_id=? AND operation=?",
+                (owner_user_id, idempotency_key, kit_id, operation),
+            ).fetchone()
+            return json.loads(receipt["result"]) if receipt else None
+
+    def delete_generated(
+        self, owner_user_id, kit_id, idempotency_key, result
+    ):
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT kit_id,operation,result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=?",
+                (owner_user_id, idempotency_key),
+            ).fetchone()
+            if receipt:
+                if receipt["kit_id"] != kit_id or receipt["operation"] != "app.delete":
+                    raise ValueError("Idempotency key belongs to another operation")
+                return json.loads(receipt["result"])
+            changed = db.execute(
+                "DELETE FROM generated_kits WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            if changed.rowcount != 1:
+                raise ValueError("Generated application is unavailable")
+            db.execute(
+                "DELETE FROM kit_records WHERE user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "DELETE FROM kit_receipts WHERE user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "DELETE FROM kit_installs WHERE user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "DELETE FROM app_projects WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "DELETE FROM app_revisions WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "DELETE FROM app_coding_messages WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            )
+            db.execute(
+                "INSERT INTO kit_receipts"
+                "(user_id,idempotency_key,kit_id,operation,result,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    owner_user_id,
+                    idempotency_key,
+                    kit_id,
+                    "app.delete",
+                    json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                    time.time(),
+                ),
+            )
+            return result
+
+    def create_project(
+        self, owner_user_id, kit_id, display, files, source_revision
+    ):
+        now = time.time()
+        with self.transaction() as db:
+            existing = db.execute(
+                "SELECT kit_id FROM app_projects WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            ).fetchone()
+            if existing:
+                return None
+            db.execute(
+                "INSERT INTO app_projects"
+                "(kit_id,owner_user_id,display_json,files_json,source_revision,status,"
+                "published_revision,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,'draft',0,?,?)",
+                (
+                    kit_id,
+                    owner_user_id,
+                    json.dumps(display, ensure_ascii=False, separators=(",", ":")),
+                    json.dumps(files, ensure_ascii=False, separators=(",", ":")),
+                    source_revision,
+                    now,
+                    now,
+                ),
+            )
+        return self.project(owner_user_id, kit_id)
+
+    def project(self, owner_user_id, kit_id):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT * FROM app_projects WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            ).fetchone()
+            if not row:
+                raise ValueError("Application project is unavailable")
+            value = dict(row)
+            value["display"] = json.loads(value.pop("display_json"))
+            value["files"] = json.loads(value.pop("files_json"))
+            return value
+
+    def project_by_agent(self, owner_user_id, agent_id):
+        with self.transaction() as db:
+            row = db.execute(
+                "SELECT kit_id FROM app_projects "
+                "WHERE owner_user_id=? AND coding_agent_id=?",
+                (owner_user_id, agent_id),
+            ).fetchone()
+            if not row:
+                raise ValueError("Coding context is not bound to an application")
+            return row["kit_id"]
+
+    def bind_project_agent(self, owner_user_id, kit_id, agent_id):
+        with self.transaction() as db:
+            changed = db.execute(
+                "UPDATE app_projects SET coding_agent_id=?,updated_at=? "
+                "WHERE owner_user_id=? AND kit_id=?",
+                (agent_id, time.time(), owner_user_id, kit_id),
+            )
+            if changed.rowcount != 1:
+                raise ValueError("Application project is unavailable")
+
+    def update_project(
+        self,
+        owner_user_id,
+        kit_id,
+        files,
+        source_revision,
+        expected_revision,
+        idempotency_key,
+        result,
+    ):
+        now = time.time()
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT kit_id,operation,result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=?",
+                (owner_user_id, idempotency_key),
+            ).fetchone()
+            if receipt:
+                if receipt["kit_id"] != kit_id or receipt["operation"] != "dev.patch":
+                    raise ValueError("Idempotency key belongs to another operation")
+                return json.loads(receipt["result"])
+            current = db.execute(
+                "SELECT source_revision FROM app_projects "
+                "WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            ).fetchone()
+            if not current:
+                raise ValueError("Application project is unavailable")
+            if current["source_revision"] != expected_revision:
+                raise ValueError("Application source changed; read the tree again")
+            db.execute(
+                "UPDATE app_projects SET files_json=?,source_revision=?,status='draft',"
+                "updated_at=? WHERE owner_user_id=? AND kit_id=?",
+                (
+                    json.dumps(files, ensure_ascii=False, separators=(",", ":")),
+                    source_revision,
+                    now,
+                    owner_user_id,
+                    kit_id,
+                ),
+            )
+            db.execute(
+                "INSERT INTO kit_receipts"
+                "(user_id,idempotency_key,kit_id,operation,result,created_at) "
+                "VALUES(?,?,?,'dev.patch',?,?)",
+                (
+                    owner_user_id,
+                    idempotency_key,
+                    kit_id,
+                    json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                ),
+            )
+            return result
+
+    def publish_project(
+        self,
+        owner_user_id,
+        kit_id,
+        expected_revision,
+        manifest,
+        app_html,
+        source_revision,
+        summary,
+        author_agent_id,
+        idempotency_key,
+        result,
+        display,
+    ):
+        now = time.time()
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT kit_id,operation,result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=?",
+                (owner_user_id, idempotency_key),
+            ).fetchone()
+            if receipt:
+                if receipt["kit_id"] != kit_id or receipt["operation"] != "dev.publish":
+                    raise ValueError("Idempotency key belongs to another operation")
+                return json.loads(receipt["result"])
+            project = db.execute(
+                "SELECT * FROM app_projects WHERE owner_user_id=? AND kit_id=?",
+                (owner_user_id, kit_id),
+            ).fetchone()
+            if not project:
+                raise ValueError("Application project is unavailable")
+            if project["source_revision"] != expected_revision:
+                raise ValueError("Application source changed; build again before publishing")
+            revision = project["published_revision"] + 1
+            revision_id = uuid.uuid4().hex
+            serialized_manifest = json.dumps(
+                manifest, ensure_ascii=False, separators=(",", ":")
+            )
+            db.execute(
+                "UPDATE app_projects SET status='published',published_revision=?,"
+                "updated_at=?,display_json=? WHERE owner_user_id=? AND kit_id=?",
+                (
+                    revision,
+                    now,
+                    json.dumps(
+                        display, ensure_ascii=False, separators=(",", ":")
+                    ),
+                    owner_user_id,
+                    kit_id,
+                ),
+            )
+            db.execute(
+                "INSERT INTO generated_kits"
+                "(kit_id,owner_user_id,manifest,app_html,created_at,updated_at) "
+                "VALUES(?,?,?,?,?,?) ON CONFLICT(kit_id) DO UPDATE SET "
+                "owner_user_id=excluded.owner_user_id,manifest=excluded.manifest,"
+                "app_html=excluded.app_html,updated_at=excluded.updated_at",
+                (
+                    kit_id,
+                    owner_user_id,
+                    serialized_manifest,
+                    app_html,
+                    project["created_at"],
+                    now,
+                ),
+            )
+            db.execute(
+                "INSERT INTO kit_installs(user_id,kit_id,version,installed_at) "
+                "VALUES(?,?,?,?) ON CONFLICT(user_id,kit_id) DO UPDATE SET "
+                "version=excluded.version",
+                (owner_user_id, kit_id, manifest["version"], now),
+            )
+            db.execute(
+                "INSERT INTO app_revisions"
+                "(revision_id,kit_id,owner_user_id,revision,files_json,manifest_json,"
+                "app_html,summary,author_agent_id,created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (
+                    revision_id,
+                    kit_id,
+                    owner_user_id,
+                    revision,
+                    project["files_json"],
+                    serialized_manifest,
+                    app_html,
+                    summary[:2000],
+                    author_agent_id,
+                    now,
+                ),
+            )
+            db.execute(
+                "INSERT INTO kit_receipts"
+                "(user_id,idempotency_key,kit_id,operation,result,created_at) "
+                "VALUES(?,?,?,'dev.publish',?,?)",
+                (
+                    owner_user_id,
+                    idempotency_key,
+                    kit_id,
+                    json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                ),
+            )
+            return result
+
+    def app_revisions(self, owner_user_id, kit_id):
+        with self.transaction() as db:
+            return [
+                {
+                    "revision": row["revision"],
+                    "summary": row["summary"],
+                    "author_agent_id": row["author_agent_id"],
+                    "created_at": row["created_at"],
+                }
+                for row in db.execute(
+                    "SELECT revision,summary,author_agent_id,created_at "
+                    "FROM app_revisions WHERE owner_user_id=? AND kit_id=? "
+                    "ORDER BY revision DESC LIMIT 50",
+                    (owner_user_id, kit_id),
+                )
+            ]
+
+    def add_coding_message(
+        self, owner_user_id, kit_id, message_id, author, content
+    ):
+        with self.transaction() as db:
+            old = db.execute(
+                "SELECT author,content FROM app_coding_messages WHERE message_id=?",
+                (message_id,),
+            ).fetchone()
+            if old:
+                if (
+                    old["author"] != author
+                    or old["content"] != content
+                ):
+                    raise ValueError("Coding message idempotency conflict")
+                return
+            db.execute(
+                "INSERT INTO app_coding_messages"
+                "(message_id,kit_id,owner_user_id,author,content,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    message_id,
+                    kit_id,
+                    owner_user_id,
+                    author,
+                    content,
+                    time.time(),
+                ),
+            )
+
+    def coding_messages(self, owner_user_id, kit_id):
+        with self.transaction() as db:
+            return [
+                {
+                    "id": row["message_id"],
+                    "author": row["author"],
+                    "content": row["content"],
+                    "created_at": row["created_at"],
+                }
+                for row in db.execute(
+                    "SELECT message_id,author,content,created_at "
+                    "FROM app_coding_messages "
+                    "WHERE owner_user_id=? AND kit_id=? ORDER BY created_at",
+                    (owner_user_id, kit_id),
+                )
+            ]
+
+    def all_app_records(self, user_id, kit_id):
+        with self.transaction() as db:
+            return [
+                {
+                    "id": row["id"],
+                    "data": json.loads(row["data"]),
+                    "revision": row["revision"],
+                    "created_at": row["created_at"],
+                }
+                for row in db.execute(
+                    "SELECT id,data,revision,created_at FROM kit_records "
+                    "WHERE user_id=? AND kit_id=? ORDER BY created_at",
+                    (user_id, kit_id),
+                )
+            ]
+
+    def apply_app_mutations(
+        self,
+        user_id,
+        kit_id,
+        idempotency_key,
+        operation,
+        mutations,
+        result,
+    ):
+        now = time.time()
+        with self.transaction() as db:
+            receipt = db.execute(
+                "SELECT kit_id,operation,result FROM kit_receipts "
+                "WHERE user_id=? AND idempotency_key=?",
+                (user_id, idempotency_key),
+            ).fetchone()
+            if receipt:
+                if receipt["kit_id"] != kit_id or receipt["operation"] != operation:
+                    raise ValueError("Idempotency key belongs to another operation")
+                return json.loads(receipt["result"])
+            for mutation in mutations:
+                kind = mutation.get("kind")
+                if kind == "insert":
+                    row = mutation["record"]
+                    db.execute(
+                        "INSERT INTO kit_records(id,user_id,kit_id,data,revision,created_at) "
+                        "VALUES(?,?,?,?,?,?)",
+                        (
+                            row["id"],
+                            user_id,
+                            kit_id,
+                            json.dumps(
+                                row["data"],
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                            row["revision"],
+                            row["created_at"],
+                        ),
+                    )
+                elif kind == "update":
+                    row = mutation["record"]
+                    db.execute(
+                        "UPDATE kit_records SET data=?,revision=? "
+                        "WHERE id=? AND user_id=? AND kit_id=?",
+                        (
+                            json.dumps(
+                                row["data"],
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                            row["revision"],
+                            row["id"],
+                            user_id,
+                            kit_id,
+                        ),
+                    )
+                elif kind == "delete":
+                    db.execute(
+                        "DELETE FROM kit_records WHERE id=? AND user_id=? AND kit_id=?",
+                        (mutation["id"], user_id, kit_id),
+                    )
+                else:
+                    raise ValueError("Unknown application mutation")
+            db.execute(
+                "INSERT INTO kit_receipts"
+                "(user_id,idempotency_key,kit_id,operation,result,created_at) "
+                "VALUES(?,?,?,?,?,?)",
+                (
+                    user_id,
+                    idempotency_key,
+                    kit_id,
+                    operation,
+                    json.dumps(result, ensure_ascii=False, separators=(",", ":")),
+                    now,
+                ),
+            )
+            return result
 
     def create_record(self, user_id, kit_id, data, idempotency_key):
         if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 256:

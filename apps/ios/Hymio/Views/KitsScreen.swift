@@ -14,7 +14,8 @@ import os
     defer { loading = false }
     do {
       let value = try await account.request("kits")
-      items = value["kits"].items
+      let next = value["kits"].items
+      if items != next { items = next }
       loaded = true
       error = ""
     } catch {
@@ -30,13 +31,99 @@ import os
       _ = try await account.request(
         "kits/\(item["id"].text)/install", body: .object([:]))
       let value = try await account.request("kits")
-      items = value["kits"].items
+      let next = value["kits"].items
+      if items != next { items = next }
       loaded = true
       error = ""
       return true
     } catch {
       self.error = "暂时无法添加这个应用，请稍后再试。"
       return false
+    }
+  }
+}
+
+@MainActor final class KitEditorStore: ObservableObject {
+  @Published var messages: [JSON] = []
+  @Published var changes: [JSON] = []
+  @Published var agentStatus = "not_started"
+  @Published var agentResult = ""
+  @Published var loading = true
+  @Published var sending = false
+  @Published var error = ""
+  @Published var draft = ""
+
+  init(preview: Bool = false) {
+    guard preview else { return }
+    loading = false
+    agentStatus = "succeeded"
+    messages = [
+      .object([
+        "author": .string("main_agent"),
+        "content": .string("保留已有饮水记录，把首页重点放在今天的累计杯数。"),
+      ]),
+      .object([
+        "author": .string("user"),
+        "content": .string("再加一个按日期查看最近记录的方式，不要改变原来的字段。"),
+      ]),
+    ]
+    changes = [
+      .object([
+        "revision": .number(2),
+        "summary": .string("增加日期筛选，并优化键盘上方的添加入口"),
+        "created_at": .number(Date().timeIntervalSince1970 - 900),
+      ]),
+      .object([
+        "revision": .number(1),
+        "summary": .string("完成饮水首页、空状态和 Python 数据结构"),
+        "created_at": .number(Date().timeIntervalSince1970 - 86400),
+      ]),
+    ]
+    agentResult = "日期筛选已经可用，原有记录保持不变。"
+  }
+
+  func load(_ account: AccountService, kitID: String) async {
+    do {
+      let value = try await account.request("kits/\(kitID)/editor")
+      messages = value["messages"].items
+      changes = value["changes"].items
+      agentStatus = value["agent_status"].text
+      agentResult = value["agent_result"].text
+      loading = false
+      error = ""
+    } catch {
+      if loading { self.error = "暂时无法读取编辑记录。" }
+      loading = false
+    }
+  }
+
+  func monitor(_ account: AccountService, kitID: String) async {
+    while !Task.isCancelled {
+      await load(account, kitID: kitID)
+      let active = ["running", "waiting"].contains(agentStatus)
+      do {
+        try await Task.sleep(for: .seconds(active ? 1.5 : 5))
+      } catch {
+        return
+      }
+    }
+  }
+
+  func send(_ account: AccountService, kitID: String) async {
+    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty, !sending else { return }
+    sending = true
+    error = ""
+    defer { sending = false }
+    do {
+      _ = try await account.request(
+        "kits/\(kitID)/editor/messages",
+        body: .object(["content": .string(text)]),
+        idempotencyKey: UUID().uuidString)
+      draft = ""
+      await load(account, kitID: kitID)
+    } catch {
+      self.error = "这次修改没有发出去，请稍后重试。"
     }
   }
 }
@@ -136,9 +223,6 @@ struct KitsScreen: View {
       .refreshable { await store.load(account) }
     }
     .task { await store.load(account) }
-    .onAppear {
-      if store.loaded && !store.loading { Task { await store.load(account) } }
-    }
   }
 
   private func appSection(_ title: String, items: [JSON], installed: Bool) -> some View {
@@ -279,6 +363,8 @@ private struct KitAppScreen: View {
   @State private var loading = true
   @State private var error = ""
   @State private var removeConfirm = false
+  @State private var deleteConfirm = false
+  @State private var editing = false
   @State private var removeError = ""
   @Environment(\.dismiss) private var dismiss
 
@@ -310,7 +396,17 @@ private struct KitAppScreen: View {
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Menu {
+          if item["managed"].flag {
+            Button {
+              editing = true
+            } label: {
+              Label("编辑应用…", systemImage: "sparkles")
+            }
+          }
           Button("从应用页移除", role: .destructive) { removeConfirm = true }
+          if item["managed"].flag {
+            Button("永久删除应用和数据…", role: .destructive) { deleteConfirm = true }
+          }
         } label: {
           Image(systemName: "ellipsis")
         }
@@ -318,6 +414,9 @@ private struct KitAppScreen: View {
       }
     }
     .task { await load() }
+    .sheet(isPresented: $editing, onDismiss: { Task { await load() } }) {
+      KitEditorScreen(account: account, kitID: item["id"].text, name: item["name"].text)
+    }
     .confirmationDialog(
       "移除“\(item["name"].text)”？已有记录会保留。",
       isPresented: $removeConfirm,
@@ -326,6 +425,15 @@ private struct KitAppScreen: View {
       Button("移除应用", role: .destructive) { Task { await uninstall() } }
     } message: {
       if !removeError.isEmpty { Text(removeError) }
+    }
+    .confirmationDialog(
+      "永久删除“\(item["name"].text)”？",
+      isPresented: $deleteConfirm,
+      titleVisibility: .visible
+    ) {
+      Button("删除应用和数据", role: .destructive) { Task { await delete() } }
+    } message: {
+      Text("应用代码和其中的记录都会删除，无法恢复。")
     }
   }
 
@@ -349,6 +457,205 @@ private struct KitAppScreen: View {
     } catch {
       removeError = "暂时无法移除，请稍后重试。"
     }
+  }
+
+  private func delete() async {
+    removeError = ""
+    do {
+      _ = try await account.request(
+        "kits/\(item["id"].text)/delete",
+        body: .object(["confirmation": .string("DELETE")]),
+        idempotencyKey: "ios-delete:\(item["id"].text)")
+      dismiss()
+    } catch {
+      removeError = "暂时无法删除，请稍后重试。"
+    }
+  }
+}
+
+private struct KitEditorScreen: View {
+  @ObservedObject var account: AccountService
+  let kitID: String
+  let name: String
+  @StateObject private var store = KitEditorStore()
+  let preview: Bool
+  @Environment(\.dismiss) private var dismiss
+
+  init(account: AccountService, kitID: String, name: String, preview: Bool = false) {
+    self.account = account
+    self.kitID = kitID
+    self.name = name
+    self.preview = preview
+    _store = StateObject(wrappedValue: KitEditorStore(preview: preview))
+  }
+
+  private var active: Bool {
+    ["running", "waiting"].contains(store.agentStatus)
+  }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 18) {
+          statusHeader
+          if !store.messages.isEmpty {
+            sectionTitle("对话记录", detail: "你和 Hymio 的修改要求")
+            ForEach(store.messages, id: \.self) { message in
+              messageRow(message)
+            }
+          }
+          if !store.agentResult.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              Label("Hymio", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Brand.blue)
+              Text(store.agentResult)
+                .font(.subheadline)
+                .foregroundStyle(Brand.ink)
+                .lineSpacing(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 18))
+          }
+          if !store.changes.isEmpty {
+            sectionTitle("变更记录", detail: "每次发布都保留")
+            ForEach(store.changes, id: \.self) { change in
+              changeRow(change)
+            }
+          }
+          if !store.error.isEmpty {
+            Label(store.error, systemImage: "exclamationmark.circle")
+              .font(.footnote)
+              .foregroundStyle(Brand.muted)
+          }
+        }
+        .padding(20)
+      }
+      .background(Brand.surface)
+      .safeAreaInset(edge: .bottom) {
+        HStack(alignment: .bottom, spacing: 10) {
+          TextField("想让应用怎么变？", text: $store.draft, axis: .vertical)
+            .lineLimit(1...4)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Brand.mist, in: RoundedRectangle(cornerRadius: 18))
+            .accessibilityIdentifier("kit.editor.input")
+          Button {
+            Task { await store.send(account, kitID: kitID) }
+          } label: {
+            if store.sending {
+              ProgressView().frame(width: 42, height: 42)
+            } else {
+              Image(systemName: active ? "hourglass" : "arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+                .frame(width: 42, height: 42)
+            }
+          }
+          .buttonStyle(.plain)
+          .foregroundStyle(Brand.onAccent)
+          .background(Brand.blue, in: Circle())
+          .disabled(
+            store.sending || active
+              || store.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty)
+          .opacity(active ? 0.55 : 1)
+          .accessibilityLabel("发送修改要求")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+      }
+      .navigationTitle("编辑 \(name)")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("完成") { dismiss() }
+        }
+      }
+      .task {
+        if !preview { await store.monitor(account, kitID: kitID) }
+      }
+    }
+  }
+
+  private var statusHeader: some View {
+    HStack(spacing: 13) {
+      Companion(size: 42, mood: active ? .working : .replying)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(active ? "正在调整" : "随时可以继续改")
+          .font(.headline)
+          .foregroundStyle(Brand.ink)
+        Text(
+          active
+            ? "Hymio 会检查页面和接口，完成后再发布。"
+            : "说出想要的变化，现有记录会保留。"
+        )
+        .font(.caption)
+        .foregroundStyle(Brand.muted)
+      }
+      Spacer()
+      if store.loading { ProgressView().controlSize(.small) }
+    }
+    .padding(16)
+    .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 20))
+  }
+
+  private func sectionTitle(_ title: String, detail: String) -> some View {
+    HStack(alignment: .firstTextBaseline) {
+      Text(title).font(.subheadline.weight(.semibold))
+      Spacer()
+      Text(detail).font(.caption2).foregroundStyle(Brand.muted)
+    }
+  }
+
+  private func messageRow(_ message: JSON) -> some View {
+    let fromMain = message["author"].text == "main_agent"
+    return HStack(alignment: .top, spacing: 10) {
+      Image(systemName: fromMain ? "sparkles" : "person.fill")
+        .font(.caption)
+        .foregroundStyle(fromMain ? Brand.blue : Brand.muted)
+        .frame(width: 26, height: 26)
+        .background(Brand.mist, in: Circle())
+      VStack(alignment: .leading, spacing: 4) {
+        Text(fromMain ? "由主对话发起" : "你")
+          .font(.caption2)
+          .foregroundStyle(Brand.muted)
+        Text(message["content"].text)
+          .font(.subheadline)
+          .foregroundStyle(Brand.ink)
+          .lineSpacing(2)
+      }
+      Spacer()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func changeRow(_ change: JSON) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Text("v\(change["revision"].int)")
+        .font(.caption2.monospacedDigit().weight(.semibold))
+        .foregroundStyle(Brand.blue)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Brand.softBlue, in: Capsule())
+      VStack(alignment: .leading, spacing: 4) {
+        Text(change["summary"].text).font(.subheadline)
+        Text(formatted(change["created_at"].double))
+          .font(.caption2)
+          .foregroundStyle(Brand.muted)
+      }
+      Spacer()
+    }
+    .padding(14)
+    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 16))
+    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Brand.line))
+  }
+
+  private func formatted(_ timestamp: Double) -> String {
+    guard timestamp > 0 else { return "" }
+    return Date(timeIntervalSince1970: timestamp).formatted(
+      .dateTime.month().day().hour().minute())
   }
 }
 
@@ -534,6 +841,18 @@ private struct KitWebView: UIViewRepresentable {
 }
 
 #if DEBUG
+  struct KitEditorPreviewScreen: View {
+    @StateObject private var account = AccountService()
+
+    var body: some View {
+      KitEditorScreen(
+        account: account,
+        kitID: "preview",
+        name: "饮水记录",
+        preview: true)
+    }
+  }
+
   struct KitAppPreviewScreen: View {
     @StateObject private var account = AccountService()
     private static let html = """

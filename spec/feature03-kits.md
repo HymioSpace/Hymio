@@ -1,76 +1,86 @@
-# Feature 03 — Kit 应用、生成与 Agent 调用
+# Feature 03 — 应用、安装与 Agent 调用
 
-状态：Implemented：iOS MVP 闭环已验证，发布待部署；协议入口为
-[kits/README.md](../kits/README.md)。
+状态：Implementing。React/Python 项目运行与 coding context 见
+[feature34](feature34-application-runtime.md)。
 
 ## 总览
 
-用户看到的是“应用”。应用由用户与 Hymio 对话生成，或由受信任开发流程发布；它可以完全静态，
-也可以提供真实 HTML/CSS/JavaScript 页面和业务 operation。
+用户看到的是“应用”，不是内部 Kit。应用拥有自己的页面、业务 API、安装状态、数据和可选
+Agent operation。用户可以自己使用，也可以让 Hymio 通过同一条 API 操作同一份数据。
 
 ```text
-用户与 Hymio 对话 ──> kit_build ──> Kit Host
-                                      │ 独立安装状态 / 数据 / 页面
-iOS 应用页 ──> Hymio Backend ─────────┘
-                     │
-Agent ──> kit_call ──┘
+用户 ──> iOS 应用页 ──> Hymio Backend ──> Kit Host
+  │                                             │
+  └──> 主 Agent ──> kit_call ───────────────────┘
 ```
 
-当前 Web 客户端不支持应用。Web 不请求 Kit API，也不接收 Kit prompt 注入。
+新生成应用使用 React 前端和 bounded Python API。受信任第一方应用可继续使用 bundled Python
+handler；两者都通过相同 operation 与 idempotency 契约对外提供能力。
 
 ## 产品入口
 
-- iOS 一级导航保持“此刻、对话、任务、记忆、应用”五项；账号由左上角三横线菜单进入。
-- 应用首页展示已加入和可加入的应用。预览是可选的摘要，不要求所有应用都有指标。
-- 打开应用后，iOS 原生容器加载 Kit 自带的页面代码。应用不需要把页面改写成 A2UI。
-- 应用为空、加载失败、静态无数据等状态由应用页面自己呈现；宿主只负责加载、错误兜底和账号入口。
+- iOS 一级导航保持“此刻、对话、任务、记忆、应用”五项；账号由左上角伴侣头像打开，使用
+  44 pt 点击区、系统工具栏和 sheet，不占第六个 tab。
+- 应用首页展示已发布应用；是否展示预览由 application capability 决定，不强制每个应用都有
+  指标或图表。
+- 打开应用后，iOS 原生容器加载应用自己的 Web bundle。原生壳只负责加载、错误兜底、删除、
+  账号和编辑入口。
+- 应用详情中的“编辑应用”打开 coding conversation sheet，不增加一级导航。
 
-## 应用生成
+当前 Web 客户端没有应用入口，不请求应用 API，也不接收应用 context 注入。
 
-`kit_build` 让 Agent 从用户需求生成一个自包含 HTML 应用。Agent 同时给出名称、用途和
-可选的数据字段；生成结果自动属于当前用户并安装。
+## 安装与删除
 
-- 有字段和业务 operation：页面通过 `HymioKit.call` 读写 Kit 数据。
-- 无 operation：纯静态页面，Agent 不获得任何业务调用。
-- MVP 禁止外部网络资源和任意后端代码；复杂应用以后使用独立容器和正式 service endpoint。
+- 安装只绑定当前用户和 published revision，不复制源码或业务记录。
+- 卸载移除安装，记录保留；重新安装后仍读取原数据。
+- 永久删除移除项目、源码 revisions、coding messages、业务记录、receipts 和安装，并取消
+  coding context。调用需要用户明确确认。
+- 删除、卸载和发布均按稳定 request/key 幂等。
 
-## 页面桥
+## Agent 可见性
 
-iOS `WKWebView` 注入最小的 `HymioKit.call(operation, arguments)` bridge。JS 不持有 access
-token，也不能指定 user_id、其他 Kit 或权限。原生宿主冻结当前 Kit 身份并调用 Hymio Backend。
-页面同时受 CSP 限制，不能加载外部脚本、连接网络或导航离开应用。
+主 Agent 只有一个 `kit_call({kit_id, operation, arguments})`。Hymio context provider 将当前
+用户已安装应用的真实 operation、description 和 input schema 直接注入模型请求；不提供
+`list` 或 discovery action。
 
-## 动态 Agent 可见性
+新应用发布后的下一个模型 step 自动看到其 operation。应用不可用、未安装或 schema 已变化时，
+Kit Host 在执行时拒绝；prompt 中的旧清单不构成授权。
 
-Agent 只有一个 `kit_call` 代理，不进行 operation discovery。
+主 Agent 通过 `kit_build` 创建或修改项目。它提供产品 brief 和验收条件，源码由专属 coding
+context 处理，详见 feature34。
 
-Hymio 的 context provider 根据当前用户已安装的 Kit，将真实 operation、说明和 JSON Schema
-直接注入 prompt。新生成的 Kit 在下一模型 step 自动出现；静态 Kit 只出现空 operation 列表。
-Oath 将当前客户端渠道传给 context provider；`kit_call`、`kit_build`、`kit-builder` skill
-和 Kit 上下文都只对 iOS 暴露。Web 与 Mac 不收到 Kit 工具、技能索引或提示内容。
+operation 数量较多后，TODO 是由 Hymio 编译更紧凑的按域说明或少量代理，不把列清单变成模型
+工作流。
 
-Kit Host 和 Backend 在每一次执行时重新检查安装状态、operation 和参数，prompt 清单不构成授权。
+## 页面 API
 
-TODO：operation 数量较多时，由 Hymio 按用户安装集编译 prompt 或拆分域代理；不默认引入
-`list` 请求。
+iOS 注入最小 bridge：
 
-## 服务边界
+```js
+await HymioKit.call("entries.create", { amount: 35 });
+```
 
-- Hymio 拥有 Kit registry、生成、安装、页面、业务数据和 Agent 扩展。
-- Kit Host 是 Hymio 组合中的独立服务，拥有 `kits.sqlite3`。
-- Hymio Backend 只做账号鉴权、Kit 代理和 context 组织。
-- Oath 只使用已有 context-provider 基座能力承载最终 prompt；Oath 不包含 Kit 业务、页面、
-  安装或生成逻辑。
+页面不能指定 user、其他应用或权限。原生宿主冻结当前应用身份，Backend 完成鉴权并添加
+idempotency key。CSP 禁止外部脚本、网络连接、frame 和导航。
+
+## 用户交互事件
+
+页面写操作成功后可以产生 `app.kit.interaction` user-queue event，包含应用、operation 和受限
+结果摘要。该事件使用 `defer_wake`，不立即启动 Agent；它随下一次自然模型 step 进入上下文。
+系统提示要求主 Agent 把它当作背景事实，用户没有主动提起时不得主动播报。只读操作不产生该
+事件。
+
+业务写入成功但 event 入队失败时不回滚业务结果；日志记录投递失败，不用最终一致性伪装成
+写入失败。
 
 ## 失败与恢复
 
-- 同一幂等键重复写入返回第一次结果。
-- 应用卸载后页面 API 和 Agent 调用都拒绝新操作，业务数据保留。
-- 页面读取失败不等于应用卸载；宿主显示重试。
-- Kit Host 不可用时 Agent 说明应用能力暂不可用，不把提示词中的旧清单当成授权。
+- 同一 idempotency key 重复写入返回首次结果，不重复写数据。
+- Kit Host 不可用时页面显示重试，Agent 说明应用能力暂不可用；不调用缓存 schema 猜测结果。
+- 页面读取失败不等于卸载。上一 published revision 继续服务，直到新 revision 原子发布。
+- 删除不可恢复；卸载可恢复。客户端文案必须区分两者。
 
-## 第一版验收
+## 验收
 
-对话生成一个带真实页面的 Kit；自动安装；下一 step 的模型上下文直接出现其 operation；
-用户通过页面写入；Agent 通过统一 `kit_call` 读取和写入同一数据；重复写入不重复；另一账号
-不可见；纯静态 Kit 不产生 Agent operation；Web 没有 Kit 入口或请求。
+React/Python 应用可以从主对话创建，由独立 coding context 构建并发布；页面和 `kit_call`
+读写同一数据；编辑复用同一 context 且保留旧记录；编辑台显示版本记录；Web 不出现应用能力。

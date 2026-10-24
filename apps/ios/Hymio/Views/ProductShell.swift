@@ -57,7 +57,8 @@ import SwiftUI
     do {
       let result = try await account.request("tasks")
       guard user == account.session?.user_id, !Task.isCancelled else { return }
-      items = result["tasks"].items
+      let next = result["tasks"].items
+      if items != next { items = next }
       loaded = true
       error = ""
     } catch is CancellationError {
@@ -105,7 +106,6 @@ struct ProductShell: View {
       }
     }
     .onChange(of: selected) { _, _ in Task { await board.refresh(account) } }
-    .onChange(of: scene) { _, phase in if phase == .background { board.remember() } }
     .sheet(isPresented: $showAccount) {
       AccountScreen(account: account, client: client)
     }
@@ -255,7 +255,6 @@ struct HomeScreen: View {
           }.accountUnframed()
         }
         .refreshable { await board.refresh(account) }
-        .onAppear { Task { await board.refresh(account) } }
         .navigationDestination(item: $openedTask) { item in
           TaskDetailScreen(
             account: account, taskID: item["id"].text, initial: item,

@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import json
 import uuid
 
 from starlette.responses import JSONResponse
@@ -32,6 +33,43 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                 channel = data.get("channel", "unknown")
                 if not isinstance(channel, str):
                     channel = "unknown"
+                agent_id = data.get("agent_id", "")
+                if kits is not None and channel == "ios" and isinstance(agent_id, str) and agent_id:
+                    try:
+                        coding = await kits.dev_context(uid, agent_id)
+                        return JSONResponse(
+                            {
+                                "content": (
+                                    "## Application coding context\n"
+                                    + coding["instructions"]
+                                    + "\n\nCurrent source revision: "
+                                    + coding["source_revision"]
+                                    + "\n\nFiles:\n"
+                                    + coding["tree"]
+                                    + "\n\nDisplay:\n"
+                                    + json.dumps(
+                                        coding["display"],
+                                        ensure_ascii=False,
+                                        separators=(",", ":"),
+                                    )
+                                    + "\n\nAPI contract:\n"
+                                    + json.dumps(
+                                        coding["operations"],
+                                        ensure_ascii=False,
+                                        separators=(",", ":"),
+                                    )
+                                )[:16000]
+                            }
+                        )
+                    except Exception:
+                        return JSONResponse(
+                            {
+                                "content": (
+                                    "Application coding tools are temporarily unavailable. "
+                                    "Do not invent files or claim a change was published."
+                                )
+                            }
+                        )
                 parts = []
                 try:
                     assembled = (
@@ -60,15 +98,29 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                         application = await kits.agent_context(uid)
                         parts.append(
                             "## Applications\n"
-                            "- Read the `kit-builder` skill before calling `kit_build`. Apply its "
-                            "visual quality gate: create a finished product page, not a bare form. "
-                            "Omit fields for a purely presentational page.\n"
-                            "- Use the unified `kit_call({kit_id, operation, arguments})` proxy only "
+                            "- Read the `kit-builder` skill before calling `kit_build`. Give the "
+                            "application coding agent a concrete product brief, stable data "
+                            "expectations and acceptance criteria. Do not write source code or a "
+                            "full page in the main conversation.\n"
+                            "- Use the unified "
+                            "`kit_call({kit_id, operation, arguments})` proxy only "
                             "for an operation listed below. Do not request a catalog or operation "
                             "list. Static applications intentionally have no operations.\n"
-                            "- Use the exact injected schemas. A failed or uncertain write must not "
+                            "- Use the exact injected schemas. A failed or uncertain write "
+                            "must not "
                             "be repeated under a new invocation.\n\n"
+                            "- Edit generated applications with `kit_build(action=\"edit\")`. "
+                            "The dedicated coding context reads and changes source, then runs "
+                            "checks and publishes. Only call `app.delete` after the user "
+                            "explicitly confirms permanent deletion, with confirmation "
+                            "`DELETE`.\n\n"
                             + application["content"][:7000]
+                            + "\n- A successful user action can appear later as an "
+                            "`app.kit.interaction` event in the user queue. Treat it as passive "
+                            "background context, not a new request. If the user did not "
+                            "proactively "
+                            "mention it, do not announce it or comment on it; use it only when it "
+                            "is directly relevant to the user's current request."
                         )
                     except Exception:
                         parts.append(

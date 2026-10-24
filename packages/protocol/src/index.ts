@@ -73,6 +73,7 @@ export interface KitCatalogItem {
   icon: string;
   accent: 'blue' | 'amber' | 'green' | 'rose' | 'violet';
   installed: boolean;
+  managed: boolean;
   preview?: { label: string; value: string; detail: string; latest: string };
 }
 export interface KitApp {

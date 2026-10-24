@@ -52,6 +52,22 @@ def _request(invocation, path, payload):
         ) from exc
 
 
+def _dev_request(invocation, action, arguments):
+    result = _request(
+        invocation,
+        "/internal/kits/dev",
+        {
+            "agent_id": invocation.user.agent_id,
+            "dev_action": action,
+            "arguments": arguments,
+            "invocation_id": invocation.invocation_id,
+        },
+    ).content
+    if not isinstance(result, dict):
+        raise ToolExecutionError("应用开发服务返回了无效结果")
+    return ToolResult(result)
+
+
 class KitTool(Tool):
     allow_subagent = False
     expose_channels = frozenset({"ios"})
@@ -101,6 +117,75 @@ class KitTool(Tool):
         )
 
 
+class KitDevTool(Tool):
+    subagent_only = True
+    allow_subagent = True
+    expose_channels = frozenset({"ios"})
+
+    @property
+    def definition(self):
+        return ToolDefinition(
+            "kit_dev",
+            "Read, patch, check and publish the React/Python application bound to this coding "
+            "context. The file tree, API contract and current source_revision are in context. "
+            "Read exact file chunks before changing them. Use small exact patches, run check "
+            "until it succeeds, then publish with a concise change summary. Do not invent files, "
+            "do not expose internal IDs to users, and never claim a change is live before publish.",
+            {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["read", "patch", "check", "publish"],
+                    },
+                    "path": {"type": "string", "maxLength": 200},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 3000},
+                    "expected_revision": {
+                        "type": "string",
+                        "pattern": r"^[0-9a-f]{64}$",
+                    },
+                    "changes": {
+                        "type": "array",
+                        "maxItems": 24,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "maxLength": 200},
+                                "old": {"type": "string", "maxLength": 12000},
+                                "new": {"type": "string", "maxLength": 12000},
+                                "content": {"type": "string", "maxLength": 12000},
+                            },
+                            "required": ["path"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "deletions": {
+                        "type": "array",
+                        "maxItems": 8,
+                        "items": {"type": "string", "maxLength": 200},
+                    },
+                    "summary": {"type": "string", "maxLength": 2000},
+                },
+                "required": ["action"],
+                "additionalProperties": False,
+            },
+        )
+
+    def execute(self, invocation):
+        if not invocation.user.agent_id:
+            raise ToolExecutionError("应用开发工具只允许在独立 coding context 中使用")
+        action = invocation.arguments.get("action")
+        if action not in {"read", "patch", "check", "publish"}:
+            raise ToolExecutionError("无效的应用开发操作")
+        arguments = {
+            key: value
+            for key, value in invocation.arguments.items()
+            if key != "action"
+        }
+        return _dev_request(invocation, action, arguments)
+
+
 class KitBuildTool(Tool):
     allow_subagent = False
     expose_channels = frozenset({"ios"})
@@ -109,17 +194,17 @@ class KitBuildTool(Tool):
     def definition(self):
         return ToolDefinition(
             "kit_build",
-            "Create and install a small self-contained web application from the user's "
-            "requirements. Use when the user asks Hymio to make an app, tracker or collection. "
-            "Read the kit-builder skill and apply its visual quality gate before calling. Choose a "
-            "concise name, one sentence purpose, and write a visually finished self-contained "
-            "HTML/CSS/JS application page, not a bare form or generic dashboard. If the page needs "
-            "to persist entries, provide fields and use HymioKit.call through the sandbox bridge. "
-            "A page with no fields can be static and exposes no Agent operations. The app is "
-            "installed immediately for this user.",
+            "Create or update a real application through its dedicated coding agent. Use action "
+            "create for a new app, or action edit with an installed generated kit_id. Give a "
+            "concrete product brief and acceptance criteria; do not write source code in the main "
+            "conversation. The coding agent owns a React frontend, bounded Python API and version "
+            "history in the background. Returned status=coding means work was accepted, not that "
+            "the app is already published.",
             {
                 "type": "object",
                 "properties": {
+                    "action": {"type": "string", "enum": ["create", "edit"]},
+                    "kit_id": {"type": "string", "maxLength": 160},
                     "name": {"type": "string", "minLength": 1, "maxLength": 40},
                     "tagline": {"type": "string", "minLength": 1, "maxLength": 160},
                     "description": {"type": "string", "maxLength": 400},
@@ -129,7 +214,11 @@ class KitBuildTool(Tool):
                         "type": "string",
                         "enum": ["blue", "amber", "green", "rose", "violet"],
                     },
-                    "app_html": {"type": "string", "maxLength": 512000},
+                    "requirements": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000,
+                    },
                     "fields": {
                         "type": "array",
                         "maxItems": 12,
@@ -156,14 +245,45 @@ class KitBuildTool(Tool):
                         },
                     },
                 },
-                "required": ["name", "tagline", "app_html"],
+                "required": ["action", "requirements"],
                 "additionalProperties": False,
             },
         )
 
     def execute(self, invocation):
+        action = invocation.arguments.get("action")
+        if action == "create":
+            spec = {
+                key: value
+                for key, value in invocation.arguments.items()
+                if key
+                in {
+                    "name",
+                    "tagline",
+                    "description",
+                    "category",
+                    "item_label",
+                    "accent",
+                    "fields",
+                    "requirements",
+                }
+            }
+            if not spec.get("name") or not spec.get("tagline"):
+                raise ToolExecutionError("创建应用需要名称和一句用途")
+            payload = {"action": "create", "spec": spec}
+        elif action == "edit":
+            kit_id = invocation.arguments.get("kit_id")
+            if not isinstance(kit_id, str) or not kit_id:
+                raise ToolExecutionError("编辑应用需要 kit_id")
+            payload = {
+                "action": "edit",
+                "kit_id": kit_id,
+                "requirements": invocation.arguments["requirements"],
+            }
+        else:
+            raise ToolExecutionError("应用构建操作无效")
         return _request(
             invocation,
-            "/internal/kits/generate",
-            {"spec": dict(invocation.arguments)},
+            "/internal/kits/build",
+            {**payload, "invocation_id": invocation.invocation_id},
         )
