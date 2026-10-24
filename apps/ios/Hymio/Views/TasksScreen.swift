@@ -6,7 +6,7 @@ func taskStatus(_ item: JSON) -> String {
 }
 func taskLabel(_ state: String) -> String {
   [
-    "scheduled": "已安排", "delivering": "正在送达", "ready": "等待开始", "running": "进行中", "blocked": "需要关注",
+    "scheduled": "已安排", "delivering": "正在送达", "ready": "等已安排", "running": "进行中", "blocked": "需要关注",
     "succeeded": "已完成", "failed": "未完成", "expired": "已过期", "cancelled": "已取消", "paused": "已暂停",
   ][state] ?? state
 }
@@ -40,7 +40,7 @@ struct TasksScreen: View {
     ("需要你看看", ["blocked", "failed"]),
     ("Hymio 正在做", ["running", "ready", "delivering"]),
     ("等时间开始", ["scheduled", "paused"]),
-    ("已有结果", ["succeeded", "expired", "cancelled"]),
+    ("已结束", ["succeeded", "expired", "cancelled"]),
   ]
   private func visible(_ states: [String]) -> [JSON] {
     board.items.filter { item in
@@ -63,9 +63,9 @@ struct TasksScreen: View {
           Text("进展、下一步，还有带回来的结果。").font(.subheadline).foregroundStyle(Brand.muted)
         }.padding(.top, 16)
         Picker("筛选任务", selection: $filter) {
-          Text("待推进").tag(0)
-          Text("待开始").tag(1)
-          Text("已有结果").tag(2)
+          Text("未完成").tag(0)
+          Text("已安排").tag(1)
+          Text("已结束").tag(2)
         }.pickerStyle(.segmented)
         if !board.error.isEmpty {
           HStack {

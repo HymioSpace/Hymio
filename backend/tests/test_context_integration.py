@@ -416,6 +416,7 @@ def test_browse_classification_and_cursor(stack):
         assert res.status_code == 201, res.text
         if category == "learning":
             expected.append(res.json()["id"])
+    expected.reverse()  # Browsing is newest first across page boundaries.
     params = {"target": "records", "category": "learning", "limit": 2}
     first = stack.public.post("/context/browse", json=params)
     assert first.status_code == 200, first.text

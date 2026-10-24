@@ -77,6 +77,7 @@ def browse(client, user_id, data):
             "search",
             data={
                 "target": target,
+                "order": "recent",
                 "mode": "text" if query else "filter",
                 "query": query or None,
                 "filters": {"source_kind": source}

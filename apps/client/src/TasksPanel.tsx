@@ -27,7 +27,7 @@ import { MessageMarkdown } from './MessageView';
 const labels: Record<string, string> = {
   scheduled: '已安排',
   delivering: '正在送达',
-  ready: '等待开始',
+  ready: '等已安排',
   running: '进行中',
   blocked: '需要关注',
   succeeded: '已完成',
@@ -212,9 +212,9 @@ export function TasksPanel({
             <div className="tasks-list-toolbar">
               <div className="tasks-filters" aria-label="筛选任务">
                 {[
-                  ['active', '待推进'],
-                  ['scheduled', '待开始'],
-                  ['done', '已有结果'],
+                  ['active', '未完成'],
+                  ['scheduled', '已安排'],
+                  ['done', '已结束'],
                 ].map(([key, label]) => (
                   <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
                     {label}
