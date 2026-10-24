@@ -74,6 +74,28 @@ E = t_terminal    - t0    # 首个 completed/failed/cancelled step.status，或�
 每个渠道同时返回 `turns / acknowledged / first_response / renderable / terminal / traced`
 覆盖计数。管理台先显示数据覆盖，再显示有分母的比率；缺失阶段不填成 0 ms。
 
+### 上下文整理
+
+管理台把每次压缩视为独立 attempt，并按 `compression_id` 聚合 `started` 与
+`ready / failed / skipped`。`applied` 表示同一份 ready 产物在后续 Brain 启动时生效，
+不是新的 attempt。同步整理会阻塞当前回复；异步整理只准备后续模型视图，不阻塞唤醒。
+
+Backend 优先通过 Oath 管理 API 读取持久 Outbox 中的压缩事件，因此用户离线时也能形成
+运营数据；客户端在线事件作为向后兼容的补充来源。记录包含 mode、status、reason、
+covers、context_window、估算 input/output、duration、trace/step 和 channel。事件正文、
+对话原文和摘要正文不进入管理台。
+
+成功产出率只在终态 attempts 上计算：
+
+```text
+A = N_ready / (N_ready + N_failed + N_skipped)
+```
+
+`started` 不算成功或失败，缺失终态保持未知。Token 大小来自运行时字符估算，不是
+provider usage，界面必须标为估算。lease_busy 表示压缩互斥被其他任务占用，不产生新的
+模型调用。context_window 原因导致的 paused step 单独计入阻塞回复。Oath 指标不可用时
+显示无数据，不显示成 0 成功。
+
 ### HTTP 接口
 
 Hymio Backend 的 ASGI 中间件对每个完成的 HTTP 响应记录

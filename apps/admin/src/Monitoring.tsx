@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { orderSpans } from "./trace-model";
+import { CompressionPanel } from "./CompressionPanel";
 import {
   Activity,
   AlertTriangle,
@@ -133,6 +134,30 @@ const chartDefinitions = [
       "oath_llm_ttft_seconds；T = t_first_delta − t_request，含 reasoning 首包。",
   },
   {
+    name: "compaction_attempt_rate",
+    title: "上下文整理结果",
+    question: "同步与异步整理分别成功、失败还是跳过？",
+    unit: "count",
+    detail:
+      "oath_compaction_attempts_total；按 mode 和终态 outcome 聚合，lease_busy 表示另一个压缩任务仍持有互斥。",
+  },
+  {
+    name: "compaction_duration_p95",
+    title: "上下文整理耗时",
+    question: "整理历史是否正在拖慢回复？",
+    unit: "s",
+    detail:
+      "oath_compaction_duration_seconds；从真正开始算法到终态，包含压缩模型调用，不包含等待压缩互斥的时间。",
+  },
+  {
+    name: "compaction_lease_wait_p95",
+    title: "压缩互斥等待",
+    question: "同步整理是否在等待异步压缩释放 lease？",
+    unit: "s",
+    detail:
+      "oath_compaction_lease_wait_seconds；当前使用一次非阻塞获取，因此正常值应接近 0。持续升高说明串行等待回归。",
+  },
+  {
     name: "tool_duration_p95",
     title: "工具执行",
     question: "慢在模型决策，还是慢在工具？",
@@ -179,6 +204,16 @@ const metricGroups = [
       "host_iowait",
       "process_memory",
       "storage_bytes",
+    ],
+  },
+  {
+    id: "compaction",
+    label: "上下文整理",
+    description: "整理结果、耗时与压缩互斥等待",
+    names: [
+      "compaction_attempt_rate",
+      "compaction_duration_p95",
+      "compaction_lease_wait_p95",
     ],
   },
 ] as const;
@@ -402,6 +437,40 @@ const metricGuide: readonly MetricGuideGroup[] = [
       },
     ],
   },
+  {
+    title: "上下文整理",
+    summary:
+      "每次压缩是一个独立 attempt；同步整理会阻塞当前回复，异步整理只准备后续模型视图。",
+    notation:
+      "A = ready / (ready + failed + skipped)；S = t_finished − t_started；lease_busy 不进入模型耗时。",
+    items: [
+      {
+        name: "产出成功率",
+        formula: "A = N_ready / (N_ready + N_failed + N_skipped)",
+        definition:
+          "只统计终态 attempts，不把 started 或 applied 当作新的分母。applied 表示同一份 ready 产物在后续请求中生效。",
+      },
+      {
+        name: "整理耗时",
+        formula: "Sᵢ = tᵢ(finished) − tᵢ(started)",
+        definition:
+          "包含压缩模型调用，不包含等待 compaction lease。按 mode 和 outcome 分桶。",
+      },
+      {
+        name: "阻塞回复",
+        formula:
+          "B = |{step.status.status = paused ∧ reason = context_window}|",
+        definition:
+          "压缩后仍超过硬窗口，Step 在模型调用前暂停。只有同步 started 才进入用户聊天界面的过程提示。",
+      },
+      {
+        name: "估算 token",
+        formula: "tokens ≈ 8 + ASCII/4 + 非 ASCII",
+        definition:
+          "这是运行时预算使用的字符启发式，不是 provider 上报的 usage；管理台只作为趋势参考。",
+      },
+    ],
+  },
 ];
 
 function latency(value?: number | null, unit = "ms") {
@@ -496,6 +565,7 @@ function metricName(metric: Record<string, string>) {
     metric.queue ||
     metric.channel ||
     metric.kind ||
+    metric.outcome ||
     metric.mode ||
     metric.instance ||
     "overall"
@@ -2373,6 +2443,12 @@ const sopSteps = [
       "已 ACK 但 first_response_ms = NULL：打开 Trace。队列节点缺失看 broker/outbox；invoke_agent 前有长空档看 Worker claim；chat 很长看 Provider TTFT 和模型限流。",
   },
   {
+    title: "检查上下文整理",
+    evidence: "context.compaction, lease_busy, blocked_steps",
+    action:
+      "同步 started 会阻塞当前回复；异步 started 不应影响唤醒。若同步频繁 lease_busy、导致 paused，先检查是否有异步压缩占住互斥，再核对失败原因和重复前缀。",
+  },
+  {
     title: "检查工具与投递",
     evidence: "execute_tool, approval, Outbox → WebSocket",
     action:
@@ -2990,6 +3066,8 @@ export function Monitoring({ session }: { session: Session }) {
                 ))}
               </div>
             </section>
+
+            <CompressionPanel summary={data?.compaction} />
 
             <section className="panel channel-panel">
               <header className="panel-head">

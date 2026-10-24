@@ -105,12 +105,59 @@ export type ClientTurn = {
   received_at: number;
 };
 
+export type CompressionAttempt = {
+  compression_id: string;
+  user_id: string;
+  user_name: string;
+  channel: string;
+  trace_id: string;
+  step_id: string;
+  mode: string;
+  status: string;
+  reason: string;
+  covers: number | null;
+  context_window: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  duration_ms: number | null;
+  started_at: number | null;
+  finished_at: number | null;
+  applied: boolean;
+};
+
+export type CompressionSummary = {
+  window_hours: number;
+  attempts: number;
+  started: number;
+  ready: number;
+  applied: number;
+  failed: number;
+  skipped: number;
+  blocked_steps: number;
+  by_mode: Record<
+    string,
+    {
+      attempts: number;
+      started: number;
+      ready: number;
+      failed: number;
+      skipped: number;
+      applied: number;
+    }
+  >;
+  reasons: { reason: string; count: number }[];
+  duration: { p50: number | null; p95: number | null };
+  recent: CompressionAttempt[];
+  unavailable?: boolean;
+};
+
 export type MonitoringOverview = {
   client: {
     window_hours: number;
     channels: ChannelSummary[];
     recent: ClientTurn[];
   };
+  compaction: CompressionSummary;
   prometheus: {
     available: boolean;
     errors?: string[];
