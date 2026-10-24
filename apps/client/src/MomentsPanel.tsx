@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  ArrowUpRight,
   Bookmark,
   BookOpen,
   ChevronRight,
@@ -12,10 +11,10 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
-  Search,
   Sparkles,
   X,
   MoreHorizontal,
+  UserRound,
 } from 'lucide-react';
 import { MemoryGraph } from './MemoryGraph';
 import { Companion } from '@hymio/ui';
@@ -43,13 +42,6 @@ function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: Contex
   const insight = item.kind === 'artifact';
   const end = text.search(/[。！？!?\n]/);
   const title = item.title || (end >= 0 ? text.slice(0, end + 1) : text.slice(0, 48));
-  const summary = item.title
-    ? text
-    : end >= 0
-      ? text.slice(end + 1).trim()
-      : text.length > 48
-        ? text
-        : '';
   const SourceIcon =
     item.source?.kind === 'conversation'
       ? MessageCircle
@@ -67,17 +59,13 @@ function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: Contex
         <span className="memory-card-symbol">
           {insight ? <BookOpen size={20} /> : <SourceIcon size={17} />}
         </span>
-        <span>{insight ? item.topics?.[0] || 'Hymio 的理解' : sourceTitle(item.source)}</span>
-        <ArrowUpRight size={14} />
       </span>
       <span className="memory-card-writing">
         <span className="memory-card-copy">{title || '打开查看内容'}</span>
-        {summary && <span className="memory-card-summary">{summary}</span>}
       </span>
       <span className="memory-card-bottom">
         <span className="memory-card-provenance">
-          {insight ? <GitFork size={13} /> : <FileText size={13} />}
-          {insight ? `${item.references?.length || 0} 条原始依据` : '保留原文'}
+          {insight ? item.topics?.[0] || '记忆' : sourceTitle(item.source)}
         </span>
         <time dateTime={item.created_at}>{memoryDate(item.updated_at || item.created_at)}</time>
       </span>
@@ -101,7 +89,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     dynamic?: { summary?: { content: string }; pending_count?: number };
   } | null>(null);
   const [overviewError, setOverviewError] = useState('');
-  const [input, setInput] = useState('');
+  const [, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -428,36 +416,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
             </button>
           </div>
         </header>
-        <form
-          className="memory-search"
-          role="search"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setQuery(input.trim());
-          }}
-        >
-          <Search size={18} aria-hidden="true" />
-          <input
-            aria-label="搜索你的记忆"
-            placeholder="搜索你的记忆"
-            maxLength={4000}
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-          />
-          {input && (
-            <button
-              type="button"
-              aria-label="清除搜索"
-              onClick={() => {
-                setInput('');
-                setQuery('');
-              }}
-            >
-              <X size={16} />
-            </button>
-          )}
-          <button type="submit">搜索</button>
-        </form>
         <div className="memory-viewbar">
           <div className="memory-tabs" role="tablist" aria-label="记忆类型">
             {(['records', 'artifacts'] as Layer[]).map((target) => (
@@ -469,40 +427,22 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                 key={target}
                 onClick={() => setLayer(target)}
               >
-                {target === 'artifacts' ? '我的理解' : '原始资料'}
+                {target === 'artifacts' ? '记忆' : '足迹'}
               </button>
             ))}
           </div>
-          {layer === 'artifacts' && (
-            <button
-              className="memory-graph-button"
-              onClick={openGraph}
-              disabled={loading || (!!error && !pages.artifacts.items.length)}
-            >
-              <GitFork size={17} />
-              星图
-            </button>
-          )}
         </div>
         {layer === 'artifacts' && (
-          <section className="memory-overview">
-            <div>
-              <h2>我对你的理解</h2>
-              <details className="memory-menu">
-                <summary aria-label="更多操作">
-                  <MoreHorizontal size={20} />
-                </summary>
-                <div>
-                  <button onClick={() => setNetwork(true)}>看看这些联系</button>
-                </div>
-              </details>
-            </div>
+          <details className="memory-overview">
+            <summary>
+              <UserRound size={16} className="memory-person" /> 我眼中的你
+            </summary>
             <p>
               {overviewError ||
                 overview?.stable?.content ||
                 '随着你留下更多资料，我会慢慢了解你的偏好和在意的事。'}
             </p>
-          </section>
+          </details>
         )}
         <div
           className="memory-categories"
@@ -533,6 +473,16 @@ export function MomentsPanel({ login }: { login: LoginState }) {
               {label}
             </button>
           ))}
+          {layer === 'artifacts' && (
+            <button
+              className="memory-graph-button"
+              onClick={openGraph}
+              disabled={loading || (!!error && !pages.artifacts.items.length)}
+            >
+              <Sparkles size={17} className="memory-star-icon" />
+              星图
+            </button>
+          )}
         </div>
         {notice && (
           <p className="memory-notice" role="status">

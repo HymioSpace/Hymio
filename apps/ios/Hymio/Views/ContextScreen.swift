@@ -421,7 +421,7 @@ private struct ContextPage: View {
       LazyVStack(alignment: .leading, spacing: 12) {
         viewControls
         if insights {
-          DisclosureGroup("我眼中的你") {
+          DisclosureGroup {
             Text(
               store.overviewError.isEmpty
                 ? (store.overview["stable"]["content"].text.isEmpty
@@ -430,6 +430,15 @@ private struct ContextPage: View {
             )
             .font(.subheadline).foregroundStyle(Brand.ink).lineSpacing(5)
 
+          } label: {
+            Label {
+              Text("我眼中的你")
+            } icon: {
+              Image(systemName: "person.crop.circle")
+                .foregroundStyle(
+                  LinearGradient(
+                    colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+            }.font(.subheadline.weight(.medium))
           }.padding(.horizontal, 14).padding(.vertical, 8).background(
             Brand.softBlue, in: RoundedRectangle(cornerRadius: 12))
         }
