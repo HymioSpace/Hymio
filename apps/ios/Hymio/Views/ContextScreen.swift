@@ -100,6 +100,7 @@ final class ContextStore: ObservableObject {
   @Published private(set) var recordCursor = ""
   @Published private(set) var partial = false
   private let account: AccountService?
+  let accountService: AccountService
   private let preview: Bool
   private var details: [String: JSON] = [:]
   private var allPreviewInsights: [ContextEntry] = []
@@ -111,6 +112,7 @@ final class ContextStore: ObservableObject {
 
   init(account: AccountService, preview: Bool = false, installFixtures: Bool = true) {
     self.account = account
+    self.accountService = account
     self.preview = preview
     if preview {
       if installFixtures { installPreview() } else { loading = false }
@@ -372,11 +374,13 @@ final class ContextStore: ObservableObject {
 
 struct ContextScreen: View {
   @StateObject private var store: ContextStore
-  init(account: AccountService) {
+  let onAccount: () -> Void
+  init(account: AccountService, onAccount: @escaping () -> Void = {}) {
     _store = StateObject(wrappedValue: ContextStore(account: account))
+    self.onAccount = onAccount
   }
   var body: some View {
-    NavigationStack { ContextPage(store: store) }
+    NavigationStack { ContextPage(store: store, onAccount: onAccount) }
       .task { await store.load() }
   }
 }
@@ -397,15 +401,16 @@ struct ContextPreviewScreen: View {
       }
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) { Color.clear }
       Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
-        NavigationStack { ContextPage(store: store) }
+        NavigationStack { ContextPage(store: store, onAccount: {}) }
       }
-      Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) { Color.clear }
+      Tab("应用", systemImage: "square.grid.2x2.fill", value: ProductTab.kits) { Color.clear }
     }.tint(Brand.blue)
   }
 }
 
 private struct ContextPage: View {
   @ObservedObject var store: ContextStore
+  let onAccount: () -> Void
   @State private var insights = false
   @State private var searchText = ""
   @State private var showCollect = false
@@ -514,8 +519,11 @@ private struct ContextPage: View {
     .background(Brand.surface).navigationTitle("").navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) {
-        Text("记忆").font(.title.weight(.bold)).foregroundStyle(Brand.ink).fixedSize()
+        AccountButton(account: store.accountService, action: onAccount)
       }.memoryUnframed()
+      ToolbarItem(placement: .principal) {
+        Text("记忆").font(.headline).foregroundStyle(Brand.ink)
+      }
       ToolbarItem(placement: .topBarTrailing) {
         Button {
           showCollect = true

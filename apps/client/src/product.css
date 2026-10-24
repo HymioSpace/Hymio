@@ -5,15 +5,40 @@
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
+.rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 32px;
+}
 .product-rail .product-brand {
   display: flex;
   align-items: center;
   gap: 6px;
   width: auto;
   height: 54px;
-  margin: 0 0 32px;
+  margin: 0;
   padding: 0 5px;
   color: var(--ink);
+}
+.account-mark {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink);
+  background: transparent;
+}
+.account-mark:hover {
+  background: var(--subtle);
+}
+.home-account {
+  display: none;
 }
 .product-brand .companion {
   width: 46px;
@@ -293,6 +318,7 @@
     z-index: 9;
   }
   .product-rail .product-brand,
+  .product-rail .rail-head,
   .product-rail .rail-bottom {
     display: none;
   }
@@ -314,6 +340,14 @@
   .product-rail .rail-button svg {
     width: 19px;
     height: 19px;
+  }
+  .home-kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .home-account {
+    display: grid;
   }
   .product-home {
     padding: 30px 22px;

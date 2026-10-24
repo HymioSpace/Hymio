@@ -75,12 +75,41 @@ struct ConnectionStatus: View {
   }
 }
 
+struct AccountButton: View {
+  @ObservedObject var account: AccountService
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: "line.3.horizontal")
+        .font(.system(size: 17, weight: .semibold))
+        .foregroundStyle(Brand.ink)
+        .frame(width: 44, height: 44)
+    }
+    .buttonStyle(.plain)
+    .contentShape(Rectangle())
+    .accessibilityLabel("打开菜单")
+  }
+}
+
+extension ToolbarContent {
+  @ToolbarContentBuilder func accountUnframed() -> some ToolbarContent {
+    if #available(iOS 26.0, *) {
+      self.sharedBackgroundVisibility(.hidden)
+    } else {
+      self
+    }
+  }
+}
+
 struct ToolOutcomeLabel: View {
   let outcome: String
   private var label: String {
-    ["running": "执行中", "succeeded": "已完成", "failed": "失败", "denied": "已拒绝",
-     "awaiting_approval": "等待授权", "expired": "授权已过期", "timeout": "超时",
-     "timed_out": "超时", "outcome_unknown": "结果待确认"][outcome] ?? outcome
+    [
+      "running": "执行中", "succeeded": "已完成", "failed": "失败", "denied": "已拒绝",
+      "awaiting_approval": "等待授权", "expired": "授权已过期", "timeout": "超时",
+      "timed_out": "超时", "outcome_unknown": "结果待确认",
+    ][outcome] ?? outcome
   }
   var body: some View { Text(label).font(.caption).foregroundStyle(Brand.muted) }
 }

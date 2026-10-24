@@ -1,31 +1,76 @@
-# Feature 03 — Kit 注册、调用与跨端使用
+# Feature 03 — Kit 应用、生成与 Agent 调用
 
-状态：Draft；规范入口为 [kits/README.md](../kits/README.md)。
+状态：Implemented：iOS MVP 闭环已验证，发布待部署；协议入口为
+[kits/README.md](../kits/README.md)。
 
-## Registry 与适配
+## 总览
 
-Registry 记录 Kit 版本/digest、兼容协议、operation schema、权限、UI 能力、context projection、安装状态。tool discovery 只返回已启用且授权的操作；执行时再校验权限，防止工具列表缓存导致撤权失效。
+用户看到的是“应用”。应用由用户与 Hymio 对话生成，或由受信任开发流程发布；它可以完全静态，
+也可以提供真实 HTML/CSS/JavaScript 页面和业务 operation。
 
-HTTP API 是通用业务服务入口，可由 MCP façade 暴露给 agent；只有 MCP 的 Kit 也需满足业务协议的字段与幂等要求。Oath tool adapter 持久化 tool identity 映射、deadline、attempt 和 result。UI 用业务 API，不依赖 agent 才能查看账本或 todo。
+```text
+用户与 Hymio 对话 ──> kit_build ──> Kit Host
+                                      │ 独立安装状态 / 数据 / 页面
+iOS 应用页 ──> Hymio Backend ─────────┘
+                     │
+Agent ──> kit_call ──┘
+```
 
-## 第一条闭环
+当前 Web 客户端不支持应用。Web 不请求 Kit API，也不接收 Kit prompt 注入。
 
-用户在手机说“午饭花了 35，记一下”：
+## 产品入口
 
-1. 输入作为消息进入 Oath，按用户 context 设置保存原始陈述到 Nostalgia。
-2. Agent 选择 `expense.create`，提供金额、币种、分类、发生时间和 source_message_id；缺失且不能从已知设置确定的字段先澄清，不凭空补。
-3. Kit 在同一个本地事务写账本、幂等 receipt 和 projection outbox；成功响应包含 expense_id、revision、projection_status=pending/available。
-4. Oath 持久化工具成功，回复账本写入已完成；手机 Kit UI 从同一账本读到数据。
-5. Outbox 按 expense revision 顺序推送 Nostalgia，同 source ID 只维护一个 context。Nostalgia 暂不可用时账本仍成功，同步状态可见并可重试。
+- iOS 一级导航保持“此刻、对话、任务、记忆、应用”五项；账号由左上角三横线菜单进入。
+- 应用首页展示已加入和可加入的应用。预览是可选的摘要，不要求所有应用都有指标。
+- 打开应用后，iOS 原生容器加载 Kit 自带的页面代码。应用不需要把页面改写成 A2UI。
+- 应用为空、加载失败、静态无数据等状态由应用页面自己呈现；宿主只负责加载、错误兜底和账号入口。
 
-超时后 agent 不重建新的幂等键再次记账。通过原操作状态/幂等键 reconcile；原始用户陈述与 expense projection 在检索时通过 source_message_id 关联，不能把两条 context 当两笔支出。
+## 应用生成
 
-## 综合查询
+`kit_build` 让 Agent 从用户需求生成一个自包含 HTML 应用。Agent 同时给出名称、用途和
+可选的数据字段；生成结果自动属于当前用户并安装。
 
-“这周外卖花了多少”：账本精确查询按用户时区算时间边界，以 currency 分组返回总额、记录数和覆盖范围；不跨币种直接相加。Nostalgia 搜索聊天、订单或备注补充解释与未确认线索。回答区分已入账数据与可能漏记的信息；top-k 搜索不保证总量完整。
+- 有字段和业务 operation：页面通过 `HymioKit.call` 读写 Kit 数据。
+- 无 operation：纯静态页面，Agent 不获得任何业务调用。
+- MVP 禁止外部网络资源和任意后端代码；复杂应用以后使用独立容器和正式 service endpoint。
 
-结果标注 canonical 来源和 projection 新鲜度。只配置 Nostalgia、未安装账本 Kit 时仍能回答已存信息，但不能声称查询了完整账本。
+## 页面桥
 
-## 验收
+iOS `WKWebView` 注入最小的 `HymioKit.call(operation, arguments)` bridge。JS 不持有 access
+token，也不能指定 user_id、其他 Kit 或权限。原生宿主冻结当前 Kit 身份并调用 Hymio Backend。
+页面同时受 CSP 限制，不能加载外部脚本、连接网络或导航离开应用。
 
-Agent 和 UI 读写同一业务记录；工具成功但 projection 延迟可见；修改/删除账单同步更新 context；同 source 消息重试不重复记账；未装原生 UI 的客户端能通过 chat 调用；订阅者不会对自己发布的 projection 循环执行。
+## 动态 Agent 可见性
+
+Agent 只有一个 `kit_call` 代理，不进行 operation discovery。
+
+Hymio 的 context provider 根据当前用户已安装的 Kit，将真实 operation、说明和 JSON Schema
+直接注入 prompt。新生成的 Kit 在下一模型 step 自动出现；静态 Kit 只出现空 operation 列表。
+Oath 将当前客户端渠道传给 context provider；`kit_call`、`kit_build`、`kit-builder` skill
+和 Kit 上下文都只对 iOS 暴露。Web 与 Mac 不收到 Kit 工具、技能索引或提示内容。
+
+Kit Host 和 Backend 在每一次执行时重新检查安装状态、operation 和参数，prompt 清单不构成授权。
+
+TODO：operation 数量较多时，由 Hymio 按用户安装集编译 prompt 或拆分域代理；不默认引入
+`list` 请求。
+
+## 服务边界
+
+- Hymio 拥有 Kit registry、生成、安装、页面、业务数据和 Agent 扩展。
+- Kit Host 是 Hymio 组合中的独立服务，拥有 `kits.sqlite3`。
+- Hymio Backend 只做账号鉴权、Kit 代理和 context 组织。
+- Oath 只使用已有 context-provider 基座能力承载最终 prompt；Oath 不包含 Kit 业务、页面、
+  安装或生成逻辑。
+
+## 失败与恢复
+
+- 同一幂等键重复写入返回第一次结果。
+- 应用卸载后页面 API 和 Agent 调用都拒绝新操作，业务数据保留。
+- 页面读取失败不等于应用卸载；宿主显示重试。
+- Kit Host 不可用时 Agent 说明应用能力暂不可用，不把提示词中的旧清单当成授权。
+
+## 第一版验收
+
+对话生成一个带真实页面的 Kit；自动安装；下一 step 的模型上下文直接出现其 operation；
+用户通过页面写入；Agent 通过统一 `kit_call` 读取和写入同一数据；重复写入不重复；另一账号
+不可见；纯静态 Kit 不产生 Agent operation；Web 没有 Kit 入口或请求。

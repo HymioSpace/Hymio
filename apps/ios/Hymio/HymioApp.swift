@@ -13,7 +13,9 @@ import SwiftUI
     WindowGroup {
       Group {
         #if DEBUG
-          if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
+          if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
+            KitAppPreviewScreen()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
             ContextPreviewScreen(
               account: account.session == nil ? nil : account,
               empty: ProcessInfo.processInfo.arguments.contains("-HymioContextEmptyPreview")

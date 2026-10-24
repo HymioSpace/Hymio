@@ -53,4 +53,4 @@ Logged-in clients connect to the WS endpoint supplied by Backend and use its aut
 
 Received events are committed to IndexedDB before ACK. Commands are persisted with stable IDs and retried with the same payload after reconnect. Storage failure stops confirmation and shows an error; it is not treated as successful delivery.
 
-History rendering is not virtualized or archived yet. Product sessions come only from Hymio Backend. Account credentials are retained only for the current window session. Nostalgia, connectors, attachments, voice, Kits and A2UI business rendering remain future work. The message component and shared package boundaries provide their integration points without exposing placeholder actions.
+History rendering is not virtualized or archived yet. Product sessions come only from Hymio Backend. Account credentials are retained only for the current window session. The Web client does not support Kits and never requests Kit data or injects Kit instructions. Connectors, voice and other business rendering remain future work. The message component and shared package boundaries provide their integration points without exposing placeholder actions.

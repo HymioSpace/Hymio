@@ -6,13 +6,7 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
-      app.tabBars.buttons["我的"].tap()
-      app.buttons["account.logout"].tap()
-      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
-      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-      confirm.tap()
-    }
+    logoutIfNeeded(app)
     let username = "surface_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
     let password = "Test-" + UUID().uuidString
     defer { cleanupAccount(username: String(username), password: password) }
@@ -48,9 +42,9 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Help me plan 15 min of reading. Do not call tools."].waitForExistence(
         timeout: 10))
-    app.tabBars.buttons["我的"].tap()
-    app.buttons["工作记录"].tap()
-    XCTAssertTrue(app.navigationBars["工作记录"].waitForExistence(timeout: 10))
+    app.buttons["打开菜单"].tap()
+    app.buttons["探索记录"].tap()
+    XCTAssertTrue(app.navigationBars["探索记录"].waitForExistence(timeout: 10))
     let traceScreenshot = XCTAttachment(screenshot: app.screenshot())
     traceScreenshot.name = "native-trace-page"
     traceScreenshot.lifetime = .keepAlways
@@ -62,13 +56,7 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
-      app.tabBars.buttons["我的"].tap()
-      app.buttons["account.logout"].tap()
-      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
-      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-      confirm.tap()
-    }
+    logoutIfNeeded(app)
     let username = "fold_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
     let password = "Test-" + UUID().uuidString
     defer { cleanupAccount(username: String(username), password: password) }
@@ -116,14 +104,7 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
-      app.tabBars.buttons["我的"].tap()
-      app.buttons["account.logout"].tap()
-      XCTAssertTrue(
-        app.buttons.matching(identifier: "account.confirmLogout").firstMatch.waitForExistence(
-          timeout: 5))
-      app.buttons.matching(identifier: "account.confirmLogout").firstMatch.tap()
-    }
+    logoutIfNeeded(app)
     let username = "ios_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)
     let password = "Test-" + UUID().uuidString
     defer { cleanupAccount(username: String(username), password: password) }
@@ -183,8 +164,8 @@ final class HymioUITests: XCTestCase {
     screenshot.name = "Hymio-iOS-chat"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    app.tabBars.buttons["我的"].tap()
-    XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
+    app.buttons["打开菜单"].tap()
+    XCTAssertTrue(app.navigationBars["账号"].waitForExistence(timeout: 5))
     let account = XCTAttachment(screenshot: app.screenshot())
     account.name = "Hymio-iOS-account"
     account.lifetime = .keepAlways
@@ -207,13 +188,7 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchEnvironment["HYMIO_UI_TEST"] = "1"
     app.launch()
-    if app.tabBars.buttons["我的"].waitForExistence(timeout: 3) {
-      app.tabBars.buttons["我的"].tap()
-      app.buttons["account.logout"].tap()
-      let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
-      XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-      confirm.tap()
-    }
+    logoutIfNeeded(app)
     let username = "react_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
     let password = "Test-" + UUID().uuidString
     defer { cleanupAccount(username: String(username), password: password) }
@@ -257,10 +232,165 @@ final class HymioUITests: XCTestCase {
     add(screenshot)
   }
 
+  @MainActor func testKitWebBridgeAndBusinessDataSync() throws {
+    continueAfterFailure = false
+    let environment = ProcessInfo.processInfo.environment
+    let base = environment["HYMIO_KIT_E2E_BACKEND"] ?? "http://127.0.0.1:8080"
+
+    let username = "kit_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
+    let password = "Test-" + UUID().uuidString
+    defer { cleanupAccount(username: String(username), password: password) }
+    let created = requestJSON(
+      base, "auth/account",
+      body: [
+        "action": "signup", "username": String(username), "password": password,
+        "invitation_code": "",
+      ])
+    XCTAssertEqual(created.status, 200, String(describing: created.json))
+    let accessToken = try XCTUnwrap(created.json["access_token"] as? String)
+    let installed = requestJSON(
+      base, "kits/hymio.ledger/install", body: [:], bearer: accessToken)
+    XCTAssertEqual(installed.status, 200, String(describing: installed.json))
+    let dayFormat = DateFormatter()
+    dayFormat.locale = Locale(identifier: "en_US_POSIX")
+    dayFormat.dateFormat = "yyyy-MM-dd"
+    func daysAgo(_ count: Int) -> String {
+      dayFormat.string(from: Calendar.current.date(byAdding: .day, value: -count, to: Date())!)
+    }
+    let seed = [
+      ["amount": 68, "category": "food", "note": "和朋友吃午饭", "occurred_on": daysAgo(0)],
+      ["amount": 8, "category": "transport", "note": "地铁", "occurred_on": daysAgo(1)],
+      ["amount": 54, "category": "learning", "note": "一本想看很久的书", "occurred_on": daysAgo(2)],
+      ["amount": 39, "category": "life", "note": "洗衣液和鲜花", "occurred_on": daysAgo(4)],
+    ]
+    for item in seed {
+      let seeded = requestJSON(
+        base, "kits/hymio.ledger/actions/entries.create",
+        body: item, bearer: accessToken)
+      XCTAssertEqual(seeded.status, 200, String(describing: seeded.json))
+    }
+
+    let app = XCUIApplication()
+    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
+    app.launchEnvironment["HYMIO_BACKEND_URL_OVERRIDE"] = base
+    app.terminate()
+    app.launch()
+    logoutIfNeeded(app)
+    XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 15))
+    app.textFields["login.username"].tap()
+    app.textFields["login.username"].typeText(username)
+    app.secureTextFields["login.password"].tap()
+    app.secureTextFields["login.password"].typeText(password)
+    app.buttons["login.submit"].tap()
+
+    XCTAssertTrue(app.tabBars.buttons["应用"].waitForExistence(timeout: 30), app.debugDescription)
+    app.tabBars.buttons["应用"].tap()
+    let card = app.descendants(matching: .any)
+      .matching(identifier: "kit.card.hymio.ledger").firstMatch
+    XCTAssertTrue(card.waitForExistence(timeout: 20), app.debugDescription)
+    card.tap()
+    let web = app.webViews.firstMatch
+    XCTAssertTrue(web.waitForExistence(timeout: 20), app.debugDescription)
+    let open = web.buttons["记一笔"]
+    XCTAssertTrue(open.waitForExistence(timeout: 15), web.debugDescription)
+    open.tap()
+    let amount = web.textFields["金额"]
+    XCTAssertTrue(amount.waitForExistence(timeout: 10), web.debugDescription)
+    amount.tap()
+    amount.typeText("23.5")
+    let note = web.textFields["备注"]
+    XCTAssertTrue(note.waitForExistence(timeout: 10), web.debugDescription)
+    note.tap()
+    note.typeText("页面写入记录")
+    note.typeText("\n")
+    XCTAssertTrue(
+      web.staticTexts["页面写入记录"].waitForExistence(timeout: 20), web.debugDescription)
+
+    let afterPage = requestJSON(
+      base, "kits/hymio.ledger/actions/entries.list", body: [:], bearer: accessToken)
+    XCTAssertEqual(afterPage.status, 200, String(describing: afterPage.json))
+    XCTAssertTrue(notes(afterPage.json).contains("页面写入记录"))
+
+    let afterBusiness = requestJSON(
+      base, "kits/hymio.ledger/actions/entries.create",
+      body: [
+        "amount": 2, "category": "other", "note": "助手记录",
+      ],
+      bearer: accessToken)
+    XCTAssertEqual(afterBusiness.status, 200, String(describing: afterBusiness.json))
+
+    app.navigationBars["生活账本"].buttons.element(boundBy: 0).tap()
+    XCTAssertTrue(card.waitForExistence(timeout: 10), app.debugDescription)
+    card.tap()
+    XCTAssertTrue(web.waitForExistence(timeout: 20), app.debugDescription)
+    XCTAssertTrue(
+      web.staticTexts["助手记录"].waitForExistence(timeout: 20), web.debugDescription)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "kit-web-bridge-data-sync"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
+  @MainActor private func logoutIfNeeded(_ app: XCUIApplication) {
+    guard app.tabBars.buttons["此刻"].waitForExistence(timeout: 8) else { return }
+    let menu = app.buttons["打开菜单"]
+    XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
+    menu.tap()
+    let logout = app.buttons["account.logout"]
+    if !logout.waitForExistence(timeout: 3) {
+      app.swipeUp()
+    }
+    XCTAssertTrue(logout.waitForExistence(timeout: 10), app.debugDescription)
+    logout.tap()
+    let confirm = app.buttons.matching(identifier: "account.confirmLogout").firstMatch
+    XCTAssertTrue(confirm.waitForExistence(timeout: 5), app.debugDescription)
+    confirm.tap()
+  }
+
   @MainActor private func openChat(_ app: XCUIApplication) {
     let tab = app.tabBars.buttons["对话"]
     XCTAssertTrue(tab.waitForExistence(timeout: 40), app.debugDescription)
     tab.tap()
+  }
+
+  private func requestJSON(
+    _ base: String,
+    _ path: String,
+    body: [String: Any]? = nil,
+    bearer: String? = nil
+  ) -> (status: Int, json: [String: Any]) {
+    let semaphore = DispatchSemaphore(value: 0)
+    var output: (status: Int, json: [String: Any]) = (0, [:])
+    var request = URLRequest(url: URL(string: base + "/" + path)!)
+    request.timeoutInterval = 30
+    if let body {
+      request.httpMethod = "POST"
+      request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    }
+    if let bearer {
+      request.setValue("Bearer " + bearer, forHTTPHeaderField: "Authorization")
+    }
+    URLSession.shared.dataTask(with: request) { data, response, _ in
+      defer { semaphore.signal() }
+      let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+      let json = data.flatMap {
+        (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+      } ?? [:]
+      output = (status, json)
+    }.resume()
+    _ = semaphore.wait(timeout: .now() + 35)
+    return output
+  }
+
+  private func notes(_ response: [String: Any]) -> [String] {
+    guard
+      let result = response["result"] as? [String: Any],
+      let items = result["items"] as? [[String: Any]]
+    else { return [] }
+    return items.compactMap {
+      ($0["fields"] as? [String: Any])?["note"] as? String ?? $0["note"] as? String
+    }
   }
 
   private func cleanupAccount(username: String, password: String) {

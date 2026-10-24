@@ -12,7 +12,7 @@ from .dream_proposal import propose
 from .ingress import import_conversation
 
 
-def context_routes(settings, sessions, bearer, body):
+def context_routes(settings, sessions, bearer, body, kits=None):
     client = NostalgiaClient(settings)
 
     async def endpoint(request):
@@ -22,6 +22,60 @@ def context_routes(settings, sessions, bearer, body):
                 return JSONResponse({"error": "origin_denied"}, 403)
             internal = request.url.path == "/internal/context/call"
             data = await body(request, limit=262144) if request.method == "POST" else {}
+            if request.url.path == "/internal/agent/context":
+                expected = settings.service_token_file.read_text().strip()
+                if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
+                    raise Unauthorized()
+                uid = data.get("user_id")
+                if not isinstance(uid, str) or not uid:
+                    raise ValueError("Invalid user")
+                channel = data.get("channel", "unknown")
+                if not isinstance(channel, str):
+                    channel = "unknown"
+                parts = []
+                try:
+                    assembled = (
+                        await asyncio.to_thread(client.call, uid, "assembly")
+                    )["data"]
+                    core = assembled.get("stable", {}).get("content", "")
+                    index = (
+                        assembled.get("dynamic", {}).get("summary", {}).get("content", "")
+                    )
+                    parts.append(
+                        "Overall understanding and essential constraints:\n"
+                        + core[:4000]
+                        + "\n\nSpecific-domain lookup index (read cards and originals "
+                        "with recall):\n"
+                        + index[:2500]
+                        + "\nDo not infer absent facts. Use recall(action=retrieve) for "
+                        "details, then read exact cards."
+                    )
+                except Exception:
+                    parts.append(
+                        "Personal context is temporarily unavailable. "
+                        "Do not invent prior knowledge."
+                    )
+                if kits is not None and channel == "ios":
+                    try:
+                        application = await kits.agent_context(uid)
+                        parts.append(
+                            "## Applications\n"
+                            "- Use `kit_build` when the user asks you to make a small application, "
+                            "tracker or collection. Omit fields for a purely presentational page.\n"
+                            "- Use the unified `kit_call({kit_id, operation, arguments})` proxy only "
+                            "for an operation listed below. Do not request a catalog or operation "
+                            "list. Static applications intentionally have no operations.\n"
+                            "- Use the exact injected schemas. A failed or uncertain write must not "
+                            "be repeated under a new invocation.\n\n"
+                            + application["content"][:7000]
+                        )
+                    except Exception:
+                        parts.append(
+                            "## Applications\n"
+                            "Application services are temporarily unavailable. Do not invent, call "
+                            "or claim to have created an application operation."
+                        )
+                return JSONResponse({"content": "\n\n".join(parts)})
             if request.url.path == "/internal/context/assemble":
                 expected = settings.service_token_file.read_text().strip()
                 if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
@@ -205,6 +259,7 @@ def context_routes(settings, sessions, bearer, body):
 
     return [
         Route("/internal/context/call", endpoint, methods=["POST"]),
+        Route("/internal/agent/context", endpoint, methods=["POST"]),
         Route("/internal/context/assemble", endpoint, methods=["POST"]),
         Route("/internal/dreaming/propose", dream_endpoint, methods=["POST"]),
         Route("/context/imports/conversation", endpoint, methods=["POST"]),

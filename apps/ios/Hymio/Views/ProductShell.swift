@@ -65,30 +65,35 @@ import SwiftUI
   }
 }
 
-enum ProductTab: Hashable { case today, chat, tasks, moments, account }
+enum ProductTab: Hashable { case today, chat, tasks, moments, kits }
 
 struct ProductShell: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
   @StateObject private var board = TaskBoard()
   @State private var selected: ProductTab = .today
+  @State private var showAccount = false
   @Environment(\.scenePhase) private var scene
   var body: some View {
     TabView(selection: $selected) {
       Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
-        HomeScreen(account: account, client: client, board: board, selected: $selected)
+        HomeScreen(
+          account: account, client: client, board: board, selected: $selected,
+          onAccount: { showAccount = true })
       }
       Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
-        ChatScreen(account: account, client: client)
+        ChatScreen(account: account, client: client, onAccount: { showAccount = true })
       }
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) {
-        NavigationStack { TasksScreen(account: account, board: board) }
+        NavigationStack {
+          TasksScreen(account: account, board: board, onAccount: { showAccount = true })
+        }
       }
       Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
-        ContextScreen(account: account)
+        ContextScreen(account: account, onAccount: { showAccount = true })
       }
-      Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) {
-        AccountScreen(account: account, client: client)
+      Tab("应用", systemImage: "square.grid.2x2.fill", value: ProductTab.kits) {
+        KitsScreen(account: account, onAccount: { showAccount = true })
       }
     }
     .task(id: scene) {
@@ -101,6 +106,9 @@ struct ProductShell: View {
     }
     .onChange(of: selected) { _, _ in Task { await board.refresh(account) } }
     .onChange(of: scene) { _, phase in if phase == .background { board.remember() } }
+    .sheet(isPresented: $showAccount) {
+      AccountScreen(account: account, client: client)
+    }
   }
 }
 
@@ -109,6 +117,7 @@ struct HomeScreen: View {
   @ObservedObject var client: AgentClient
   @ObservedObject var board: TaskBoard
   @Binding var selected: ProductTab
+  let onAccount: () -> Void
   @State private var openedTask: JSON?
   private var attention: [JSON] {
     board.items.filter { ["blocked", "failed"].contains(taskStatus($0)) }
@@ -240,6 +249,11 @@ struct HomeScreen: View {
         }.padding(.horizontal, 22).padding(.bottom, 28).frame(maxWidth: 680)
           .frame(maxWidth: .infinity)
       }.background(Brand.surface).navigationTitle("此刻").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+          ToolbarItemGroup(placement: .topBarLeading) {
+            AccountButton(account: account, action: onAccount)
+          }.accountUnframed()
+        }
         .refreshable { await board.refresh(account) }
         .onAppear { Task { await board.refresh(account) } }
         .navigationDestination(item: $openedTask) { item in

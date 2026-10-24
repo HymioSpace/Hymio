@@ -18,6 +18,8 @@ origins = [
 # Internal upstream. Clients receive public_url + /agent/ws.
 oath_ws = "ws://127.0.0.1:8765"
 oath_biz = "http://127.0.0.1:8766"
+# Internal Hymio Kit Host. Cloud Compose overrides this with http://kit-host:8090.
+kits_url = "http://127.0.0.1:8090"
 access_seconds = 900
 refresh_seconds = 2592000
 host = "127.0.0.1"

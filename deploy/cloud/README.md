@@ -87,6 +87,14 @@ The default Oath target is the host's port 8080, appropriate for a locally runni
 Set `signup_enabled = false` to close registration entirely. If registration is enabled
 without `invitation_codes_file`, registration remains open for backward compatibility.
 
+The Kit Host is a separate private container built from `services/kit-host`. It owns the Kit
+manifests, application HTML, installations and `kit-data/kits.sqlite3`; Hymio Backend proxies
+authenticated requests to it. Rebuilding the Kit Host does not remove Kit data. Do not mount or
+execute publisher-supplied Python/JavaScript in Backend; external Kit implementations must run as
+independent services behind the same operation contract.
+The generated Compose stack sets Backend's internal `HYMIO_KITS_URL=http://kit-host:8090`; no
+Kit Host port is published.
+
 ### File-cache read thrashing on Alibaba Cloud Linux
 
 Some hosts expose file-backed transparent huge page controls at
@@ -132,7 +140,9 @@ oath start --config /opt/hymio/config/oath.toml \
   --system-prompt "$PWD/extensions/prompts/hymio.md" \
   --skill "$PWD/extensions/skills" --tool "$PWD/extensions/tools" \
   --auth-mode remote --auth-url http://backend:8080/internal/auth/verify \
-  --auth-token-file /opt/hymio/config/private/backend/internal-service-token
+  --auth-token-file /opt/hymio/config/private/backend/internal-service-token \
+  --context-provider http://backend:8080/internal/agent/context \
+  --context-provider-token-file /opt/hymio/config/private/backend/internal-service-token
 ```
 
 Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
@@ -230,7 +240,7 @@ yet install a host boot service automatically. Test this recovery path on your d
 See the [configuration map](../CONFIGURATION.md) and
 [Agent diagnostics guide](../TROUBLESHOOTING.md) for source ownership and log commands.
 
-Back up Backend, Oath, Casdoor and Caddy volumes and private configuration separately.
+Back up Backend data, Kit Host data, Oath, Casdoor and Caddy volumes and private configuration separately.
 Use SQLite's backup API for live databases; copying the database without its WAL can lose
 data. Never use `down --volumes` for routine stops. E2B pause is not a file backup. Test
 restoration before relying on backups. Upgrade reviewed versions and restart the stacks;

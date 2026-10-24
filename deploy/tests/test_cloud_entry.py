@@ -85,6 +85,13 @@ class CloudEntryTests(unittest.TestCase):
                 )
                 self.assertIn("/devices/*", caddy)
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
+                self.assertIn("/kits/*", caddy.split("handle @backend")[0])
+                self.assertIn("kit-host", compose["services"])
+                self.assertIn("kit-data", compose["volumes"])
+                self.assertEqual(
+                    compose["services"]["backend"]["environment"]["HYMIO_KITS_URL"],
+                    "http://kit-host:8090",
+                )
                 self.assertIn("handle /admin/api/*", caddy)
                 self.assertIn("handle_path /admin/*", caddy)
                 self.assertIn("root * /srv/admin", caddy)
@@ -113,7 +120,7 @@ class CloudEntryTests(unittest.TestCase):
             cloud.OUTPUT = root / "generated"
             try:
                 compose = json.loads(cloud.generate(config).read_text())
-                self.assertEqual(set(compose["services"]), {"backend", "edge"})
+                self.assertEqual(set(compose["services"]), {"kit-host", "backend", "edge"})
                 caddy = (cloud.OUTPUT / "Caddyfile").read_text()
                 self.assertIn("api.example.com", caddy)
                 self.assertNotIn("agent.example.com", caddy)

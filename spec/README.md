@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | 01 | [导入与同步](feature01-context-ingress.md) | Draft |
 | 02 | [身份、Agent 与渠道](feature02-agent-channels.md) | Draft |
-| 03 | [Kit 注册、调用与跨端使用](feature03-kits.md) | Draft |
+| 03 | [Kit 应用、生成与 Agent 调用](feature03-kits.md) | Implemented：真实 HTML / 静态应用 MVP；发布待部署 |
 | 04 | [授权与自带 Context 存储](feature04-identity-storage.md) | Draft |
 | 05 | [产品部署与外部依赖](feature05-repository-deployment.md) | Draft |
 | 06 | [应用层 Monorepo](feature06-application-monorepo.md) | Implemented：目录与边界 |

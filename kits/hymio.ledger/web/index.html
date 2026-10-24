@@ -1,0 +1,1190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3f4f1" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1018" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --canvas: light-dark(#f3f4f1, #0b1018);
+        --surface: light-dark(#ffffff, #151b26);
+        --surface-soft: light-dark(#f8f9f7, #1a2230);
+        --ink: light-dark(#18202c, #f3f6fb);
+        --muted: light-dark(#5c6675, #9daabc);
+        --faint: light-dark(#626d7d, #91a0b5);
+        --line: light-dark(#e7e9e5, #293344);
+        --accent: light-dark(#3f5cff, #aab8ff);
+        --accent-ink: light-dark(#ffffff, #121a3d);
+        --food: light-dark(#f46b52, #ff8d78);
+        --transport: light-dark(#3d8bfd, #74adff);
+        --learning: light-dark(#8a6cf6, #ac98ff);
+        --life: light-dark(#21a58e, #5bd0ba);
+        --other: light-dark(#8a94a3, #aab4c3);
+        --hero-a: light-dark(#dce3ff, #1b2553);
+        --hero-b: light-dark(#eef6e8, #15312f);
+        --hero-c: light-dark(#fff3e7, #322239);
+        --shadow: light-dark(0 18px 48px rgba(28, 38, 58, 0.09), 0 18px 48px rgba(0, 0, 0, 0.28));
+        --radius-lg: 28px;
+        --radius-md: 18px;
+        font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        min-height: 100%;
+        background: var(--canvas);
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% -8%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 30rem),
+          var(--canvas);
+        -webkit-text-size-adjust: 100%;
+        overscroll-behavior-y: contain;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      button:focus-visible,
+      input:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 58%, transparent);
+        outline-offset: 2px;
+      }
+
+      main {
+        width: min(100%, 760px);
+        margin: 0 auto;
+        padding: 22px 18px max(122px, calc(90px + env(safe-area-inset-bottom)));
+      }
+
+      .topline {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 2px 3px 13px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .topline span:last-child {
+        color: var(--faint);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .hero {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        padding: 24px 22px 20px;
+        border: 1px solid color-mix(in srgb, var(--accent) 12%, var(--line));
+        border-radius: var(--radius-lg);
+        background:
+          radial-gradient(circle at 92% 15%, color-mix(in srgb, var(--hero-a) 92%, transparent), transparent 43%),
+          linear-gradient(128deg, var(--hero-a), var(--hero-b) 56%, var(--hero-c));
+        box-shadow: var(--shadow);
+      }
+
+      .hero::before {
+        position: absolute;
+        z-index: -1;
+        top: -88px;
+        right: -58px;
+        width: 220px;
+        height: 220px;
+        border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 26px color-mix(in srgb, var(--accent) 4%, transparent),
+          0 0 0 58px color-mix(in srgb, var(--accent) 3%, transparent);
+        content: "";
+      }
+
+      .hero::after {
+        position: absolute;
+        z-index: -1;
+        right: 34px;
+        bottom: 76px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow:
+          -34px 28px 0 color-mix(in srgb, var(--food) 82%, transparent),
+          23px 46px 0 color-mix(in srgb, var(--life) 85%, transparent);
+        content: "";
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 650;
+      }
+
+      .eyebrow::before {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent);
+        content: "";
+      }
+
+      .total {
+        margin: 9px 0 3px;
+        font-size: clamp(44px, 13vw, 66px);
+        font-weight: 760;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.065em;
+        line-height: 1;
+      }
+
+      .summary {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .hero-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .hero-stat {
+        min-width: 0;
+        padding: 12px 13px;
+        border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+        border-radius: 15px;
+        background: color-mix(in srgb, var(--surface) 62%, transparent);
+      }
+
+      .hero-stat b,
+      .hero-stat span {
+        display: block;
+      }
+
+      .hero-stat b {
+        overflow: hidden;
+        margin-bottom: 3px;
+        font-size: 17px;
+        font-variant-numeric: tabular-nums;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .hero-stat span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .card {
+        margin-top: 14px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: var(--surface);
+        box-shadow: 0 8px 30px color-mix(in srgb, var(--ink) 4%, transparent);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 15px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+      }
+
+      .section-note {
+        color: var(--faint);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .pulse {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        align-items: end;
+        gap: 8px;
+        height: 90px;
+        padding-top: 4px;
+      }
+
+      .day {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        align-items: end;
+        height: 100%;
+        gap: 7px;
+        color: var(--faint);
+        font-size: 10px;
+        text-align: center;
+      }
+
+      .day-bar {
+        width: 100%;
+        min-height: 4px;
+        border-radius: 99px;
+        background: var(--line);
+        transform-origin: bottom;
+        transition:
+          height 420ms cubic-bezier(0.22, 1, 0.36, 1),
+          background 180ms ease;
+      }
+
+      .day.today .day-bar {
+        background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--life)));
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+
+      .day.today {
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .insights {
+        display: grid;
+        grid-template-columns: 116px minmax(0, 1fr);
+        align-items: center;
+        gap: 18px;
+      }
+
+      .donut {
+        position: relative;
+        display: grid;
+        width: 112px;
+        aspect-ratio: 1;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--line);
+        transition: background 300ms ease;
+      }
+
+      .donut::after {
+        position: absolute;
+        width: 66px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: var(--surface);
+        content: "";
+      }
+
+      .donut-label {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        color: var(--muted);
+        font-size: 10px;
+        line-height: 1.2;
+        text-align: center;
+      }
+
+      .donut-label b {
+        color: var(--ink);
+        font-size: 17px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .legend {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .legend-row {
+        display: grid;
+        grid-template-columns: 9px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 9px;
+        font-size: 13px;
+      }
+
+      .legend-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 3px;
+      }
+
+      .legend-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .legend-value {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .entries {
+        display: grid;
+      }
+
+      .day-group + .day-group {
+        margin-top: 7px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .date-label {
+        margin: 0 0 8px;
+        color: var(--faint);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .entry {
+        display: grid;
+        grid-template-columns: 40px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        min-height: 58px;
+      }
+
+      .entry + .entry {
+        border-top: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
+      }
+
+      .entry-icon {
+        display: grid;
+        width: 40px;
+        height: 40px;
+        place-items: center;
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--category) 13%, var(--surface));
+        color: var(--category);
+        font-size: 14px;
+        font-weight: 720;
+      }
+
+      .entry-copy {
+        min-width: 0;
+      }
+
+      .entry-title,
+      .entry-meta {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .entry-title {
+        font-size: 15px;
+        font-weight: 600;
+      }
+
+      .entry-meta {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .entry-amount {
+        padding-left: 10px;
+        font-size: 15px;
+        font-weight: 680;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .empty {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        padding: 30px 12px 32px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .empty-mark {
+        display: grid;
+        width: 52px;
+        height: 52px;
+        margin-bottom: 2px;
+        place-items: center;
+        border-radius: 18px;
+        background: var(--surface-soft);
+        color: var(--accent);
+        font-size: 24px;
+      }
+
+      .empty strong {
+        color: var(--ink);
+        font-size: 16px;
+      }
+
+      .empty span {
+        max-width: 250px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .primary {
+        position: fixed;
+        z-index: 10;
+        right: max(20px, calc((100vw - 760px) / 2 + 20px));
+        bottom: max(16px, env(safe-area-inset-bottom));
+        left: auto;
+        display: flex;
+        width: auto;
+        min-width: 164px;
+        min-height: 54px;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        padding: 0 22px;
+        border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+        border-radius: 999px;
+        color: var(--accent-ink);
+        background: var(--accent);
+        box-shadow: 0 16px 34px color-mix(in srgb, var(--accent) 32%, transparent);
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .primary:active {
+        transform: scale(0.985);
+      }
+
+      .primary span {
+        display: grid;
+        width: 21px;
+        height: 21px;
+        place-items: center;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--accent-ink) 14%, transparent);
+        font-size: 19px;
+        font-weight: 500;
+        line-height: 1;
+      }
+
+      dialog {
+        position: fixed;
+        inset: auto 0 10px;
+        width: min(460px, calc(100vw - 20px));
+        max-height: calc(100dvh - 32px);
+        margin: 0 auto;
+        border: 0;
+        border-radius: 26px;
+        padding: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        color: var(--ink);
+        background: var(--surface);
+        box-shadow: 0 28px 80px rgba(5, 10, 22, 0.34);
+      }
+
+      dialog::backdrop {
+        background: rgba(7, 11, 20, 0.5);
+        backdrop-filter: blur(6px);
+      }
+
+      dialog[open] {
+        animation: sheet-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      @keyframes sheet-in {
+        from {
+          opacity: 0;
+          transform: translateY(24px) scale(0.985);
+        }
+      }
+
+      form {
+        padding: 22px;
+      }
+
+      .form-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+      }
+
+      .form-head h2 {
+        font-size: 22px;
+        letter-spacing: -0.03em;
+      }
+
+      .close {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        margin: -8px -8px -8px 0;
+        place-items: center;
+        border: 0;
+        border-radius: 50%;
+        color: var(--muted);
+        background: var(--surface-soft);
+        font-size: 21px;
+      }
+
+      .amount-field {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        gap: 4px;
+        margin-bottom: 19px;
+        padding: 10px 15px;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: var(--surface-soft);
+      }
+
+      .currency {
+        color: var(--muted);
+        font-size: 24px;
+        font-weight: 650;
+      }
+
+      .amount-field input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        color: var(--ink);
+        background: transparent;
+        font-size: 34px;
+        font-weight: 720;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: -0.03em;
+      }
+
+      .amount-field input::placeholder {
+        color: var(--faint);
+        opacity: 0.6;
+      }
+
+      .field-label {
+        display: block;
+        margin: 0 0 9px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .category-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 7px;
+        margin-bottom: 18px;
+      }
+
+      .chip {
+        display: grid;
+        min-height: 58px;
+        place-items: center;
+        gap: 2px;
+        padding: 5px 2px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        color: var(--muted);
+        background: var(--surface);
+        font-size: 10px;
+      }
+
+      .chip b {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border-radius: 9px;
+        color: var(--category);
+        background: color-mix(in srgb, var(--category) 12%, var(--surface));
+        font-size: 11px;
+      }
+
+      .chip[aria-pressed="true"] {
+        border-color: color-mix(in srgb, var(--category) 48%, var(--line));
+        color: var(--ink);
+        background: color-mix(in srgb, var(--category) 7%, var(--surface));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--category) 22%, transparent);
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 126px;
+        gap: 10px;
+      }
+
+      .input-shell {
+        display: grid;
+        gap: 6px;
+      }
+
+      .input-shell span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .input-shell input {
+        width: 100%;
+        min-height: 46px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        color: var(--ink);
+        background: var(--surface-soft);
+        font-size: 16px;
+      }
+
+      .error {
+        margin: 14px 0 0;
+        color: light-dark(#9b2d2d, #ffb0b0);
+        font-size: 13px;
+      }
+
+      .save {
+        display: flex;
+        width: 100%;
+        min-height: 51px;
+        align-items: center;
+        justify-content: center;
+        margin-top: 19px;
+        border: 0;
+        border-radius: 15px;
+        color: var(--accent-ink);
+        background: var(--accent);
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .save:disabled {
+        opacity: 0.62;
+      }
+
+      .toast {
+        position: fixed;
+        z-index: 20;
+        top: max(14px, env(safe-area-inset-top));
+        left: 50%;
+        padding: 10px 15px;
+        border-radius: 999px;
+        color: light-dark(#ffffff, #0f1628);
+        background: light-dark(#18202c, #eef3ff);
+        box-shadow: 0 12px 32px rgba(9, 14, 25, 0.24);
+        font-size: 13px;
+        font-weight: 650;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -9px);
+        transition:
+          opacity 180ms ease,
+          transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      .toast.visible {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+
+      @media (min-width: 700px) {
+        main {
+          padding-top: 28px;
+        }
+
+        .dashboard {
+          display: grid;
+          grid-template-columns: minmax(0, 1.18fr) minmax(270px, 0.82fr);
+          gap: 14px;
+          align-items: start;
+        }
+
+        .hero,
+        .wide {
+          grid-column: 1 / -1;
+        }
+
+        .card {
+          margin-top: 0;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="topline">
+        <span>SPENDING PULSE</span>
+        <span id="month-label"></span>
+      </div>
+
+      <div class="dashboard">
+        <section class="hero" aria-labelledby="month-heading">
+          <div class="eyebrow" id="month-heading">本月花费</div>
+          <div class="total" id="total">¥0.00</div>
+          <div class="summary" id="summary">还没有记录</div>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <b id="average">—</b>
+              <span>平均每笔</span>
+            </div>
+            <div class="hero-stat">
+              <b id="top-category">—</b>
+              <span>主要去向</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="pulse-heading">
+          <div class="section-head">
+            <h2 id="pulse-heading">最近的节奏</h2>
+            <span class="section-note">近 7 天</span>
+          </div>
+          <div class="pulse" id="pulse" role="img" aria-label="最近七天支出趋势"></div>
+        </section>
+
+        <section class="card" aria-labelledby="breakdown-heading">
+          <div class="section-head">
+            <h2 id="breakdown-heading">花在了哪里</h2>
+            <span class="section-note">近期构成</span>
+          </div>
+          <div class="insights">
+            <div class="donut" id="donut">
+              <span class="donut-label"><b id="donut-count">0</b>笔</span>
+            </div>
+            <div class="legend" id="legend"></div>
+          </div>
+        </section>
+
+        <section class="card wide" aria-labelledby="recent-heading">
+          <div class="section-head">
+            <h2 id="recent-heading">最近记录</h2>
+            <span class="section-note" id="entries-count">0 笔</span>
+          </div>
+          <div class="entries" id="entries">
+            <div class="empty">
+              <span class="empty-mark" aria-hidden="true">＋</span>
+              <strong>第一笔，从这里开始</strong>
+              <span>记录一次花费，就能看到本月节奏和去向。</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <button class="primary" id="open" type="button">
+      <span aria-hidden="true">＋</span>
+      记一笔
+    </button>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="sheet" aria-labelledby="form-title">
+      <form id="form">
+        <div class="form-head">
+          <h2 id="form-title">记一笔</h2>
+          <button class="close" id="close" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <label class="amount-field">
+          <span class="currency" aria-hidden="true">¥</span>
+          <input
+            name="amount"
+            aria-label="金额"
+            type="number"
+            min="0.01"
+            max="1000000"
+            step="0.01"
+            inputmode="decimal"
+            placeholder="0.00"
+            required
+          />
+        </label>
+
+        <span class="field-label" id="category-label">类别</span>
+        <div class="category-grid" id="categories" role="group" aria-labelledby="category-label">
+          <button class="chip" type="button" data-value="food" aria-pressed="true" style="--category: var(--food)">
+            <b aria-hidden="true">餐</b>餐饮
+          </button>
+          <button class="chip" type="button" data-value="transport" aria-pressed="false" style="--category: var(--transport)">
+            <b aria-hidden="true">行</b>出行
+          </button>
+          <button class="chip" type="button" data-value="learning" aria-pressed="false" style="--category: var(--learning)">
+            <b aria-hidden="true">学</b>学习
+          </button>
+          <button class="chip" type="button" data-value="life" aria-pressed="false" style="--category: var(--life)">
+            <b aria-hidden="true">生</b>生活
+          </button>
+          <button class="chip" type="button" data-value="other" aria-pressed="false" style="--category: var(--other)">
+            <b aria-hidden="true">其</b>其他
+          </button>
+        </div>
+        <input name="category" type="hidden" value="food" />
+
+        <div class="detail-grid">
+          <label class="input-shell">
+            <span>备注</span>
+            <input name="note" aria-label="备注" maxlength="200" placeholder="例如 和朋友吃午饭" />
+          </label>
+          <label class="input-shell">
+            <span>日期</span>
+            <input name="occurred_on" aria-label="日期" type="date" />
+          </label>
+        </div>
+
+        <p class="error" id="error" role="alert" hidden></p>
+        <button class="save" type="submit">保存这笔</button>
+      </form>
+    </dialog>
+
+    <script>
+      const categoryOrder = ["food", "transport", "learning", "life", "other"];
+      const categories = {
+        food: { label: "餐饮", mark: "餐", color: "var(--food)" },
+        transport: { label: "出行", mark: "行", color: "var(--transport)" },
+        learning: { label: "学习", mark: "学", color: "var(--learning)" },
+        life: { label: "生活", mark: "生", color: "var(--life)" },
+        other: { label: "其他", mark: "其", color: "var(--other)" },
+      };
+      const money = new Intl.NumberFormat("zh-CN", {
+        style: "currency",
+        currency: "CNY",
+        minimumFractionDigits: 2,
+      });
+      const compactMoney = new Intl.NumberFormat("zh-CN", {
+        style: "currency",
+        currency: "CNY",
+        maximumFractionDigits: 0,
+      });
+      const dateLabel = new Intl.DateTimeFormat("zh-CN", { month: "long", year: "numeric" });
+      const shortDate = new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" });
+      const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" });
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const total = document.querySelector("#total");
+      const summary = document.querySelector("#summary");
+      const average = document.querySelector("#average");
+      const topCategory = document.querySelector("#top-category");
+      const monthLabel = document.querySelector("#month-label");
+      const pulse = document.querySelector("#pulse");
+      const donut = document.querySelector("#donut");
+      const donutCount = document.querySelector("#donut-count");
+      const legend = document.querySelector("#legend");
+      const entries = document.querySelector("#entries");
+      const entriesCount = document.querySelector("#entries-count");
+      const sheet = document.querySelector("#sheet");
+      const form = document.querySelector("#form");
+      const error = document.querySelector("#error");
+      const save = form.querySelector(".save");
+      const toast = document.querySelector("#toast");
+      const visualViewport = window.visualViewport;
+      let toastTimer;
+
+      function fitSheetToViewport() {
+        if (!visualViewport || !sheet.open) return;
+        const keyboardVisible = visualViewport.height < window.innerHeight - 120;
+        sheet.style.maxHeight = `${Math.max(280, visualViewport.height - 20)}px`;
+        if (keyboardVisible) {
+          sheet.style.top = `${visualViewport.offsetTop + 8}px`;
+          sheet.style.bottom = "auto";
+        } else {
+          sheet.style.top = "auto";
+          sheet.style.bottom = "10px";
+        }
+      }
+
+      function localISO(date) {
+        const offset = date.getTimezoneOffset() * 60000;
+        return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+      }
+
+      function animateMoney(node, value) {
+        if (reducedMotion) {
+          node.textContent = money.format(value);
+          return;
+        }
+        const start = performance.now();
+        const from = Number(node.dataset.value || 0);
+        const duration = 520;
+        function frame(now) {
+          const progress = Math.min(1, (now - start) / duration);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          node.textContent = money.format(from + (value - from) * eased);
+          if (progress < 1) requestAnimationFrame(frame);
+          else node.dataset.value = String(value);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      function makeEntry(item) {
+        const category = categories[item.category] || categories.other;
+        const row = document.createElement("div");
+        row.className = "entry";
+        row.style.setProperty("--category", category.color);
+
+        const icon = document.createElement("span");
+        icon.className = "entry-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = category.mark;
+
+        const copy = document.createElement("div");
+        copy.className = "entry-copy";
+        const title = document.createElement("strong");
+        title.className = "entry-title";
+        title.textContent = item.note || category.label;
+        const meta = document.createElement("span");
+        meta.className = "entry-meta";
+        meta.textContent = `${category.label} · ${weekday.format(new Date(item.occurred_on + "T12:00:00"))}`;
+        copy.append(title, meta);
+
+        const amount = document.createElement("span");
+        amount.className = "entry-amount";
+        amount.textContent = money.format(item.amount);
+        row.append(icon, copy, amount);
+        return row;
+      }
+
+      function renderEntries(items) {
+        entries.replaceChildren();
+        entriesCount.textContent = `${items.length} 笔`;
+        if (!items.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          const mark = document.createElement("span");
+          mark.className = "empty-mark";
+          mark.setAttribute("aria-hidden", "true");
+          mark.textContent = "＋";
+          const title = document.createElement("strong");
+          title.textContent = "第一笔，从这里开始";
+          const detail = document.createElement("span");
+          detail.textContent = "记录一次花费，就能看到本月节奏和去向。";
+          empty.append(mark, title, detail);
+          entries.append(empty);
+          return;
+        }
+
+        const groups = new Map();
+        for (const item of items) {
+          if (!groups.has(item.occurred_on)) groups.set(item.occurred_on, []);
+          groups.get(item.occurred_on).push(item);
+        }
+        for (const [day, rows] of groups) {
+          const group = document.createElement("div");
+          group.className = "day-group";
+          const label = document.createElement("div");
+          label.className = "date-label";
+          label.textContent = shortDate.format(new Date(day + "T12:00:00"));
+          group.append(label);
+          for (const item of rows) group.append(makeEntry(item));
+          entries.append(group);
+        }
+      }
+
+      function renderPulse(items) {
+        pulse.replaceChildren();
+        const days = [];
+        const totals = new Map();
+        for (const item of items) totals.set(item.occurred_on, (totals.get(item.occurred_on) || 0) + item.amount);
+        for (let offset = 6; offset >= 0; offset -= 1) {
+          const date = new Date();
+          date.setDate(date.getDate() - offset);
+          const iso = localISO(date);
+          days.push({ iso, value: totals.get(iso) || 0, today: offset === 0 });
+        }
+        const max = Math.max(...days.map((day) => day.value), 1);
+        for (const day of days) {
+          const column = document.createElement("div");
+          column.className = `day${day.today ? " today" : ""}`;
+          column.title = `${shortDate.format(new Date(day.iso + "T12:00:00"))} ${money.format(day.value)}`;
+          const bar = document.createElement("span");
+          bar.className = "day-bar";
+          bar.style.height = `${Math.max(4, (day.value / max) * 66)}px`;
+          const label = document.createElement("span");
+          label.textContent = day.today ? "今天" : weekday.format(new Date(day.iso + "T12:00:00")).replace("周", "");
+          column.append(bar, label);
+          pulse.append(column);
+        }
+        pulse.setAttribute(
+          "aria-label",
+          days.map((day) => `${weekday.format(new Date(day.iso + "T12:00:00"))}${money.format(day.value)}`).join("，"),
+        );
+      }
+
+      function renderInsights(items, overview) {
+        const byCategory = new Map(categoryOrder.map((key) => [key, 0]));
+        for (const item of items) byCategory.set(item.category, (byCategory.get(item.category) || 0) + item.amount);
+        const active = categoryOrder
+          .map((key) => ({ key, value: byCategory.get(key) || 0 }))
+          .filter((item) => item.value > 0)
+          .sort((a, b) => b.value - a.value);
+        const sum = active.reduce((value, item) => value + item.value, 0);
+        topCategory.textContent = active.length ? categories[active[0].key].label : "—";
+        donutCount.textContent = String(items.length);
+        legend.replaceChildren();
+
+        if (!sum) {
+          donut.style.background = "var(--line)";
+          const empty = document.createElement("span");
+          empty.className = "section-note";
+          empty.textContent = "记下第一笔后，这里会出现分类占比";
+          legend.append(empty);
+          return;
+        }
+
+        let cursor = 0;
+        const stops = active.map((item) => {
+          const start = cursor;
+          cursor += (item.value / sum) * 100;
+          return `${categories[item.key].color} ${start}% ${cursor}%`;
+        });
+        donut.style.background = `conic-gradient(${stops.join(",")})`;
+
+        for (const item of active.slice(0, 4)) {
+          const row = document.createElement("div");
+          row.className = "legend-row";
+          const dot = document.createElement("span");
+          dot.className = "legend-dot";
+          dot.style.background = categories[item.key].color;
+          const name = document.createElement("span");
+          name.className = "legend-name";
+          name.textContent = categories[item.key].label;
+          const value = document.createElement("span");
+          value.className = "legend-value";
+          value.textContent = `${Math.round((item.value / sum) * 100)}% · ${compactMoney.format(item.value)}`;
+          row.append(dot, name, value);
+          legend.append(row);
+        }
+        if (overview.count > items.length) {
+          const note = document.createElement("span");
+          note.className = "section-note";
+          note.textContent = "占比按最近 30 笔计算";
+          legend.append(note);
+        }
+      }
+
+      async function load() {
+        const [overview, recent] = await Promise.all([
+          HymioKit.call("summary", {}),
+          HymioKit.call("entries.list", { limit: 30 }),
+        ]);
+        const items = recent.items.filter((item) => item.occurred_on.startsWith(overview.month));
+        animateMoney(total, overview.total);
+        monthLabel.textContent = dateLabel.format(new Date(`${overview.month}-01T12:00:00`));
+        summary.textContent = overview.count ? `共 ${overview.count} 笔 · 每一笔都算数` : "还没有记录";
+        average.textContent = overview.count ? money.format(overview.total / overview.count) : "—";
+        renderPulse(items);
+        renderInsights(items, overview);
+        renderEntries(overview.count ? recent.items : []);
+      }
+
+      function showToast(message) {
+        clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add("visible");
+        toastTimer = setTimeout(() => toast.classList.remove("visible"), 2400);
+      }
+
+      function setBusy(busy) {
+        save.disabled = busy;
+        save.textContent = busy ? "正在记下…" : "保存这笔";
+        form.setAttribute("aria-busy", String(busy));
+      }
+
+      for (const chip of document.querySelectorAll(".chip")) {
+        chip.addEventListener("click", () => {
+          form.elements.category.value = chip.dataset.value;
+          for (const other of document.querySelectorAll(".chip")) {
+            other.setAttribute("aria-pressed", String(other === chip));
+          }
+        });
+      }
+
+      document.querySelector("#open").addEventListener("click", () => {
+        if (!form.elements.occurred_on.value) form.elements.occurred_on.value = localISO(new Date());
+        error.hidden = true;
+        sheet.showModal();
+        fitSheetToViewport();
+        setTimeout(() => form.elements.amount.focus(), 50);
+      });
+      document.querySelector("#close").addEventListener("click", () => sheet.close());
+      form.addEventListener("focusin", (event) => {
+        if (!(event.target instanceof HTMLInputElement)) return;
+        setTimeout(() => event.target.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+      });
+      if (visualViewport) visualViewport.addEventListener("resize", fitSheetToViewport);
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        error.hidden = true;
+        const values = Object.fromEntries(new FormData(form));
+        const amount = Number(values.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          error.textContent = "请输入大于 0 的金额。";
+          error.hidden = false;
+          return;
+        }
+        setBusy(true);
+        try {
+          await HymioKit.call("entries.create", {
+            ...values,
+            amount,
+          });
+          sheet.close();
+          form.reset();
+          form.elements.occurred_on.value = localISO(new Date());
+          document.querySelector('[data-value="food"]').click();
+          await load();
+          showToast(`已记下 ${money.format(amount)}`);
+        } catch (failure) {
+          error.textContent = failure.message || "暂时无法保存，请稍后再试。";
+          error.hidden = false;
+        } finally {
+          setBusy(false);
+        }
+      });
+
+      load().catch(() => {
+        entries.replaceChildren();
+        const message = document.createElement("div");
+        message.className = "empty";
+        const title = document.createElement("strong");
+        title.textContent = "暂时无法读取账本";
+        const detail = document.createElement("span");
+        detail.textContent = "已有记录不会因此消失。请稍后再打开。";
+        message.append(title, detail);
+        entries.append(message);
+      });
+    </script>
+  </body>
+</html>
