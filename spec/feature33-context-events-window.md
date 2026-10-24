@@ -34,11 +34,14 @@ changes model-visible history and does not delete conversation records or person
 
 ## Conversation feedback
 
-Web and iOS render `context.compaction` as one quiet disclosure above the composer, outside
-chat messages. Async work says it is background preparation; ready says the digest is prepared
-but not applied. Sync work explains why the reply is waiting. Applied confirms older context
-was summarized and recent messages remain verbatim. Expanded detail can show estimated
-input/output sizes, clearly marked approximate. No fabricated percentage or progress bar.
-Completed/failed status expires after one minute; an abandoned started event cannot spin
-indefinitely (15-minute visibility bound). No full prompts, private facts or summary body are
-sent through this status event. A missing event does not imply compression occurred.
+Web and iOS show context preparation only when synchronous compression blocks the current
+reply. One status above the composer says the assistant is organizing earlier conversation and
+will continue. It replaces the generic working indicator so the same wait does not produce two
+spinners. The status follows one `compression_id` from `started` to a terminal event and cannot
+outlive its five-minute visibility bound.
+
+Asynchronous `started`, `ready`, `applied`, skipped and failed events stay silent in the chat
+UI. They neither announce background work nor change an in-flight reply. The interface does
+not expose tokens, token ratios, context windows, summary mechanics or retention guarantees.
+Those details belong in administration and tracing. No full prompts, private facts or summary
+body are sent through this status event.

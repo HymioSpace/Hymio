@@ -25,6 +25,7 @@ import {
 import {
   OathClient,
   buildTurns,
+  compactionState,
   conversation,
   executionActivity,
   createIdentity,
@@ -315,6 +316,7 @@ export default function App() {
     state.runtimeThrough,
   );
   const streaming = model.messages.some((m) => m.streaming);
+  const compacting = compactionState(state.events, clock);
   const lastMessage = model.messages.at(-1);
   const awaitingReply =
     !model.pauseNotice &&
@@ -806,7 +808,7 @@ export default function App() {
                   )}
                 </section>
               ))}
-              {(busy || streaming || awaitingReply) && (
+              {(busy || streaming || awaitingReply) && !compacting && (
                 <div className="message working-indicator">
                   <span>
                     Hymio {streaming ? '正在回复' : awaitingReply ? '正在等候回复' : '正在接着做'}
