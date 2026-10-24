@@ -1,108 +1,152 @@
 ---
 name: kit-builder
-description: Create a small user-owned application from a conversation request.
-channels: [ios]
+description: Build a polished, self-contained HTML application for Hymio's iOS application host.
+metadata:
+  channels: [ios]
 ---
 
-# Build a small application
+# Build an app, not a form
 
-Use this workflow when the user asks Hymio to make an app, tracker, collection or simple tool. The
-product calls these “应用”; the internal name Kit is not shown to the user.
+Use this when the user asks Hymio to make an app, tracker, collection, log, guide or small tool.
+Users see the product name “应用”; never surface internal words such as Kit, manifest, handler,
+schema or operation unless the user is explicitly discussing implementation.
 
-## Clarify only what changes the app
+Treat “simple” as a small product, not a visually bare prototype. The result must look intentional
+at iPhone size before it is useful. A centered title followed by an unstyled form is a failed result.
 
-Infer the display name, purpose, category and useful fields from the conversation. Ask only when a
-missing field would make the app incorrect. Keep the first version small: usually one to five fields
-that describe one entry.
+## 1. Choose an art direction
 
-Examples:
+Before writing HTML, choose four things:
 
-- “饮水记录” with fields `amount` (number) and `time` (text/date).
-- “读书清单” with fields `title` (text), `author` (text), `finished` (boolean).
-- “猫咪体重” with fields `weight` (number), `measured_on` (date) and `note` (text).
+1. **One job** the user can complete without explanation.
+2. **One focal artifact**: a number, an object, a timeline, a canvas or a visual index. It should
+   change with the user's data and belong to this product.
+3. **One signature**: a composition, typography treatment, data visualization or restrained motion.
+   Spend visual boldness here; keep navigation and form controls quiet.
+4. **A material story**: color, texture and spacing derived from the subject. “Finance” may feel
+   precise and luminous; “reading” may feel editorial; “breathing” may feel spatial and calm.
 
-Generate a self-contained HTML application for iOS WKWebView. Inline its CSS and JavaScript and
-call the host with the `HymioKit.call(operation, arguments)` bridge when it needs persistent data.
-Do not use external network APIs in the MVP. For a purely presentational app such as a breathing
-guide or reference page, omit `fields`; that Kit intentionally has no API or Agent operations.
+Use the available content to select a structure:
 
-## Product and visual bar
+| Product type | Strong starting structure |
+| --- | --- |
+| Tracker or ledger | Oversized current value + short trend + category breakdown + chronological entries |
+| Collection or list | Editorial index + quick add + object detail, not another dashboard grid |
+| Routine or guide | A paced sequence with one active step and obvious completion feedback |
+| Calculator or utility | Large live result + tactile controls; controls and output occupy different layers |
+| Static reference | Strong editorial hierarchy, anchors or sections; no fake data cards |
 
-The result should feel like a finished app that happens to be generated, not a generic admin form.
-Before writing HTML, decide:
+Do not reuse one hero-plus-three-cards template for every request. Prefer one distinctive content
+surface and one compact supporting module over many equal-weight cards.
 
-- **One job.** What should the user understand or do at a glance?
-- **One signature.** A chart, a spatial composition, an editorial number or one restrained motion
-  moment. Spend boldness there and keep the surrounding surfaces quiet.
-- **Product-specific structure.** Organize the page around the user's actual subject. Do not paste
-  the same hero-plus-three-cards layout onto every request.
-- **One color language.** Use 4–6 named color roles with light and dark values. Color never carries
-  meaning alone; pair it with labels, shapes or numbers.
-- **A real empty state.** Invite the first meaningful action without pretending there is data.
+## 2. Define the visual tokens
 
-Use native-feeling mobile composition: 16–22 px page margins, clear type hierarchy, 44 px minimum
-tap targets, visible focus, semantic buttons and labels, and safe-area-aware fixed actions. Support
-light and dark appearance with `color-scheme: light dark`. Respect
-`prefers-reduced-motion: reduce`. Aim for polished but calm; gradients and blur should clarify
-functional layers and should not make content harder to read.
+Choose 4–6 named color roles and provide light and dark values:
 
-For a data app, show information that the available operations can actually derive. A small local
-chart or summary from returned entries is good. Never invent a budget, trend or comparison that the
-API did not return. Prefer ordinary DOM construction and `textContent` for user data.
+- canvas, opaque content surface, primary ink, secondary ink, accent, optional data colors.
+- Use `color-scheme: light dark` and CSS `light-dark()` when supported.
+- Use color as a supporting signal, never as the only carrier of meaning.
+- A floating control may use one translucent/material treatment. Content surfaces stay readable and
+  do not require blur.
 
-## Technical constraints
+Use the system font stack (`-apple-system`, `PingFang SC`). Build hierarchy with size, weight,
+leading and alignment:
 
-- Produce one complete HTML document with inline CSS and JavaScript. Do not add a framework, CDN,
-  build step, module imports, external fonts, remote images or another service.
-- The MVP page runs without network access. CSP allows inline code and `data:` images only. Do not
-  use fetch, XHR, WebSocket, iframes, workers, service workers, external navigation or external
-  media.
-- Keep the document under 512 KiB and avoid large embedded assets. It must render its useful initial
-  state quickly on an iPhone.
-- Persist domain data only through the declared operations and `HymioKit.call`. Do not treat
-  `localStorage`, IndexedDB or page globals as the source of truth when Agent/user synchronization
-  matters.
-- Never place tokens, credentials, user IDs or Kit IDs in the page. The native host owns identity
-  and the current Kit. The page chooses only an operation and its arguments.
-- Keep operation IDs and argument names aligned with the fields passed to `kit_build`. A page must
-  not assume an operation exists unless the generated field-backed Kit provides it.
-- Handle loading, empty, success and failure states inside the app. Do not use `alert()` or
-  `confirm()` for routine feedback; use in-page status, inline errors or a temporary toast.
-- Make controls keyboard- and VoiceOver-friendly: label icon-only controls, use native buttons and
-  inputs, maintain logical reading order and do not remove focus outlines.
-- For purely presentational interactions, use local JavaScript freely. Do not add fake operations
-  merely to make a static page look interactive.
+- metadata 12–13 px; body 15–17 px; section title 17–20 px; focal value 34–64 px;
+- avoid thin or light weights for small text;
+- use tight tracking only on large display numbers or short headings.
 
-## Call the builder
+Use a 4 px spacing rhythm, 16–22 px page margins and responsive `min()/clamp()` sizing. All tap
+targets are at least 44 px. Respect safe areas and keep the primary action reachable near the bottom.
 
-Call `kit_build` with:
+## 3. Quality gate
+
+Reject and rewrite the page if any of these are true:
+
+- it is only a white page with a generic heading, textarea/input and blue button;
+- every section is the same white rounded card with equal emphasis;
+- it invents totals, goals, trends or categories the API does not provide;
+- it uses placeholder lorem text, emoji as the main visual system, or a stock dashboard composition;
+- loading, empty, error and success states collapse into the same blank screen;
+- the form or fixed action is hidden by the keyboard, tab bar or home indicator;
+- dark mode is merely inverted without checking separators, disabled states or data colors;
+- user-provided text is inserted with unchecked `innerHTML`.
+
+The minimum visual bar is: on the first screen, the user can identify the product, its most useful
+current fact and the primary action without scrolling.
+
+## 4. Build a real web application
+
+Produce one complete HTML document with inline CSS and JavaScript.
+
+- No framework, build step, module import, CDN, remote font, remote image, fetch, XHR, WebSocket,
+  iframe, worker, service worker or external navigation.
+- Keep it under 512 KiB and avoid large embedded assets.
+- Use semantic buttons, explicit labels, visible focus and a logical reading order.
+- Respect `prefers-reduced-motion`, `prefers-color-scheme` and increased contrast where practical.
+- Never place credentials, access tokens, user IDs or Kit IDs in the page.
+- Do not use `localStorage` or IndexedDB as the source of truth for synchronized data.
+
+Use `textContent` and DOM construction for user data. Keep document text at least 11 px and normal
+body copy at least 15 px. Prefer native controls over custom gesture-only interactions.
+
+## 5. Connect data when needed
+
+When the app stores records, pass fields to `kit_build`. The generated operations are:
+
+- `items.create`: create one record using the exact field keys;
+- `items.list`: list recent records;
+- `summary`: return the current count.
+
+Use only the injected schemas. The page calls:
+
+```js
+const result = await HymioKit.call("items.create", {
+  field_key: "value"
+});
+```
+
+The host adds identity and the current application. The page cannot choose a user or another app.
+Handle a rejected call in-page; do not claim persistence before the promise resolves.
+
+For a purely presentational app such as a breathing guide or reference page, omit `fields`.
+Use local JavaScript freely, but expose no fake business operation.
+
+## 6. A finished data app includes
+
+- a purposeful loading state that preserves layout;
+- a first-use empty state that invites the first record;
+- a responsive record list or other direct view of saved data;
+- inline write errors with a retry path that does not silently duplicate writes;
+- an in-app success acknowledgement;
+- light and dark appearance that both look designed, not default;
+- safe-area-aware controls and keyboard behavior verified at 390 px width.
+
+Do not invent analytics. If recent records support a derived chart, state the window and compute it
+from the returned data. Label approximated or recent-only information.
+
+## 7. Call the builder
+
+Call `kit_build` with a concise name, a one-sentence promise, relevant category, visible item label,
+accent, the complete `app_html`, and optional fields:
 
 ```json
 {
   "name": "饮水记录",
-  "tagline": "记下每天喝了多少水。",
-  "description": "记录饮水数量和时间，查看最近记录。",
+  "tagline": "把今天的每一杯水记下来。",
+  "description": "记录饮水量，并查看今天的累计进度。",
   "category": "生活",
   "item_label": "杯水",
   "accent": "blue",
   "app_html": "<!doctype html>...",
   "fields": [
-    {"key":"amount","label":"杯数","type":"number","required":true},
-    {"key":"time","label":"时间","type":"text","required":false}
+    {"key":"amount","label":"杯数","type":"number","required":true}
   ]
 }
 ```
 
-The generated Kit is owned by the current user and installed automatically. If fields are
-provided, its `items.create`,
-`items.list` and `summary` operations are injected into the current user's application context on
-the next model step, with exact input schemas from the generated fields. If fields are omitted,
-the page remains a real static application and no operation is injected.
+The app is owned by the current user and installed immediately. When fields exist, the new
+operations appear in context on the next model step. Do not request a catalog or operation list.
 
-## After creation
-
-Tell the user the visible app name and what it can record. Do not expose manifest, handler or Kit
-version terminology. Do not create a task merely because an app was generated.
-
-To use the new app immediately after the tool result, call `kit_call` with the returned `kit_id` and
-one of its operations. Do not request a catalog or operation list.
+After creation, tell the user the visible application name and the useful next action. If they asked
+you to use it immediately, call `kit_call` with the returned `kit_id` and one injected operation.

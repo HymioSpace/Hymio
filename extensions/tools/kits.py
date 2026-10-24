@@ -111,10 +111,12 @@ class KitBuildTool(Tool):
             "kit_build",
             "Create and install a small self-contained web application from the user's "
             "requirements. Use when the user asks Hymio to make an app, tracker or collection. "
-            "Choose a concise name, one sentence purpose, and write a self-contained HTML/CSS/JS "
-            "application page. If the page needs to persist entries, provide fields and use "
-            "HymioKit.call through the sandbox bridge. A page with no fields can be static and "
-            "exposes no Agent operations. The app is installed immediately for this user.",
+            "Read the kit-builder skill and apply its visual quality gate before calling. Choose a "
+            "concise name, one sentence purpose, and write a visually finished self-contained "
+            "HTML/CSS/JS application page, not a bare form or generic dashboard. If the page needs "
+            "to persist entries, provide fields and use HymioKit.call through the sandbox bridge. "
+            "A page with no fields can be static and exposes no Agent operations. The app is "
+            "installed immediately for this user.",
             {
                 "type": "object",
                 "properties": {

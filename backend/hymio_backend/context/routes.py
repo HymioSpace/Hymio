@@ -60,8 +60,9 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                         application = await kits.agent_context(uid)
                         parts.append(
                             "## Applications\n"
-                            "- Use `kit_build` when the user asks you to make a small application, "
-                            "tracker or collection. Omit fields for a purely presentational page.\n"
+                            "- Read the `kit-builder` skill before calling `kit_build`. Apply its "
+                            "visual quality gate: create a finished product page, not a bare form. "
+                            "Omit fields for a purely presentational page.\n"
                             "- Use the unified `kit_call({kit_id, operation, arguments})` proxy only "
                             "for an operation listed below. Do not request a catalog or operation "
                             "list. Static applications intentionally have no operations.\n"
