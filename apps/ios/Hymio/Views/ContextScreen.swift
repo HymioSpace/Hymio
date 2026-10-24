@@ -422,19 +422,7 @@ private struct ContextPage: View {
         searchField
         viewControls
         if insights {
-          VStack(alignment: .leading, spacing: 12) {
-            HStack {
-              Text("我对你的理解").font(.headline)
-              Spacer()
-              Menu {
-                Button("查看关联", systemImage: "point.3.connected.trianglepath.dotted") {
-                  showGraph = true
-                }
-              } label: {
-                Image(systemName: "ellipsis").frame(width: 44, height: 44)
-              }
-              .accessibilityLabel("概述操作")
-            }
+          DisclosureGroup("我眼中的你") {
             Text(
               store.overviewError.isEmpty
                 ? (store.overview["stable"]["content"].text.isEmpty
@@ -445,7 +433,10 @@ private struct ContextPage: View {
 
           }.padding(18).background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 18))
         }
-        categoryPicker
+        HStack {
+          categoryPicker
+          if insights { graphButton }
+        }
         if !store.feedback.isEmpty {
           HStack(spacing: 10) {
             Companion(size: 30)
@@ -601,19 +592,17 @@ private struct ContextPage: View {
     if typeSize.isAccessibilitySize {
       VStack(alignment: .trailing, spacing: 6) {
         layerPicker
-        if insights { graphButton }
       }
     } else {
       HStack(spacing: 12) {
         layerPicker
-        if insights { graphButton }
       }.frame(minHeight: 44)
     }
   }
   private var layerPicker: some View {
     Picker("记忆类型", selection: $insights) {
-      Text("原始资料").tag(false)
-      Text("我的理解").tag(true)
+      Text("足迹").tag(false)
+      Text("记忆").tag(true)
     }.pickerStyle(.segmented).frame(maxWidth: .infinity).accessibilityIdentifier("context.tabs")
   }
   private var graphButton: some View {
@@ -621,7 +610,10 @@ private struct ContextPage: View {
       showGraph = true
     } label: {
       HStack(spacing: 6) {
-        Image(systemName: "point.3.connected.trianglepath.dotted")
+        Image(systemName: "sparkle")
+          .foregroundStyle(
+            LinearGradient(
+              colors: [.blue, .purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
         Text("星图")
       }.font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
         .padding(.horizontal, 12).frame(minHeight: typeSize.isAccessibilitySize ? 44 : 32)
@@ -1097,7 +1089,7 @@ private struct ContextGraphScreen: View {
             HStack(spacing: 5) {
               Image(systemName: item["kind"].text == "record" ? "doc.text" : "book")
               Text(
-                item["role"].text == "overview" ? "概述" : item["kind"].text == "record" ? "原文" : "理解"
+                item["role"].text == "overview" ? "概述" : item["kind"].text == "record" ? "足迹" : "记忆"
               )
               Spacer(minLength: 0)
               if !item["change"].text.isEmpty {
@@ -1108,7 +1100,13 @@ private struct ContextGraphScreen: View {
               Brand.ink)
             Text("\(item["degree"].int) 项关联").font(.caption2).foregroundStyle(Brand.muted)
           }.padding(12).frame(width: max(120, width * 0.43), height: 104, alignment: .leading)
-            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 13))
+            .background {
+              RoundedRectangle(cornerRadius: 13).fill(Brand.surface)
+              RoundedRectangle(cornerRadius: 13).fill(
+                (item["role"].text == "overview"
+                  ? Color.purple : item["kind"].text == "record" ? Color.orange : Color.blue)
+                  .opacity(0.08))
+            }
             .overlay(
               RoundedRectangle(cornerRadius: 13).stroke(
                 selected == item["key"].text ? Brand.blue : Brand.line,
