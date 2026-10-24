@@ -7,7 +7,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from . import client_telemetry
+from . import client_telemetry, compression
 from .investigation import trace_triggers
 from .observability import observe_turn
 from .session_store import Unauthorized
@@ -78,6 +78,18 @@ SERIES: dict[str, str] = {
         "histogram_quantile(0.95, sum by (method, route, le) "
         "(rate(hymio_http_request_duration_seconds_bucket[5m])))"
     ),
+    "compaction_attempt_rate": (
+        "sum by (mode, outcome) (rate(oath_compaction_attempts_total[5m]))"
+    ),
+    "compaction_duration_p95": (
+        "histogram_quantile(0.95, sum by (le, mode, outcome) "
+        "(rate(oath_compaction_duration_seconds_bucket[5m])))"
+    ),
+    "compaction_lease_wait_p95": (
+        "histogram_quantile(0.95, sum by (le, mode) "
+        "(rate(oath_compaction_lease_wait_seconds_bucket[5m])))"
+    ),
+    "compaction_blocked_rate": ("sum by (mode) (rate(oath_compaction_blocked_steps_total[5m]))"),
 }
 
 
@@ -172,6 +184,24 @@ async def _alerts(settings, upstream) -> dict[str, Any]:
     return {"active": alerts, "rule_errors": unhealthy}
 
 
+async def _compaction_events(settings, upstream, hours: int) -> list[dict[str, Any]] | None:
+    try:
+        token_file = settings.oath_admin_token_file
+        if token_file is None:
+            return None
+        response = await upstream.get(
+            settings.oath_biz.rstrip("/") + "/admin/compactions",
+            params={"hours": hours},
+            headers={"Authorization": "Bearer " + token_file.read_text().strip()},
+            timeout=5,
+        )
+        response.raise_for_status()
+        events = response.json().get("events")
+        return events if isinstance(events, list) else None
+    except Exception:
+        return None
+
+
 def monitoring_routes(settings, sessions, upstream, bearer, body):
     async def endpoint(request):
         try:
@@ -186,6 +216,15 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                 client = client_telemetry.summary(
                     sessions, since=time.time() - hours * 3600, channel=channel
                 )
+                remote_events = await _compaction_events(settings, upstream, hours)
+                try:
+                    compaction = compression.summary(
+                        sessions,
+                        since=time.time() - hours * 3600,
+                        events=remote_events,
+                    )
+                except Exception:
+                    compaction = compression.empty(window_hours=hours)
                 await asyncio.to_thread(sessions.event_log.annotate, client["recent"])
                 try:
                     values = await asyncio.gather(
@@ -223,6 +262,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                 return JSONResponse(
                     {
                         "client": client,
+                        "compaction": compaction,
                         "prometheus": prometheus,
                         "grafana_url": settings.grafana_url,
                     }
