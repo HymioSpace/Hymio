@@ -12,11 +12,11 @@ def _manifests():
     if configured:
         return Path(configured)
     here = Path(__file__).resolve()
-    for candidate in (
-        here.parents[1] / "kits",
-        here.parents[2] / "kits",
-        here.parents[3] / "kits",
-    ):
+    candidates = []
+    for depth in (1, 2, 3):
+        if depth < len(here.parents):
+            candidates.append(here.parents[depth] / "kits")
+    for candidate in candidates:
         if candidate.is_dir():
             return candidate
     raise RuntimeError("Kit manifest directory is not configured")
