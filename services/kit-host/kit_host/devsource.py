@@ -608,6 +608,7 @@ _CSS_TEMPLATE = """
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
 }
 * { box-sizing: border-box; }
+html, body, #root { min-width: 0; overflow-x: hidden; }
 body { margin: 0; color: var(--ink); background: var(--canvas); }
 main { width: min(100%, 680px); margin: auto; padding: 20px 18px 96px; }
 .hero { padding: 26px 22px; border-radius: 28px; background:
@@ -629,6 +630,8 @@ label span { display: block; margin-bottom: 6px; color: var(--muted); font-size:
 input, select { width: 100%; min-height: 46px; padding: 11px 13px; border-radius: 13px;
   border: 1px solid var(--line); background: var(--canvas); color: var(--ink); font: inherit; }
 button { min-height: 46px; border: 0; border-radius: 13px; font: 600 16px inherit; }
+.actions { display: flex; min-width: 0; gap: 10px; }
+.actions > button, .fields > * { min-width: 0; }
 .primary { width: 100%; color: white; background: var(--accent); }
 article { display: flex; justify-content: space-between; gap: 16px; padding: 14px 0;
   border-bottom: 1px solid var(--line); }

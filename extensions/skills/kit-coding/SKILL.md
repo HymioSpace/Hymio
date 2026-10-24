@@ -46,6 +46,8 @@ If a patch fails because the source changed, read the file again. Never reuse an
 - Use React 19 and plain CSS. Do not add packages, remote assets, CDNs, network calls or routing.
 - The app is shown inside an iPhone-sized WebView. Design for 390 px first and respect safe areas,
   browser text scaling and dark mode.
+- Set `min-width: 0` on flex children and guard horizontal overflow. Buttons and long labels must
+  fit a 390 px CSS viewport without clipping.
 - Build one coherent product surface with a clear focal element. Do not turn the app into generic
   dashboard cards or a bare form.
 - Use controlled inputs and JSX escaping for all user data. Never inject user-provided strings with
