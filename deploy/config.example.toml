@@ -18,6 +18,8 @@ e2b_api_key = ""
 # For an international key, use its matching API endpoint.
 minimax_api_base = "https://api.minimax.cn/v1"
 models = ["MiniMax-M2.7", "MiniMax-M3"]
+# Optional hosted-model context limits, shared by Backend and Oath.
+model_context_windows = {}
 vision_model = "MiniMax-M3"
 
 # E2B key: https://console.e2b.dev/ — absent template is built automatically.

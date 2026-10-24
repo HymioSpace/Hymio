@@ -19,6 +19,8 @@ class MediaStore:
                 CREATE INDEX IF NOT EXISTS attachments_owner ON attachments(user_id, created);
                 CREATE TABLE IF NOT EXISTS model_preferences (
                     user_id TEXT PRIMARY KEY, model TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS context_preferences (
+                    user_id TEXT PRIMARY KEY, context_window INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS media_operations (
                     user_id TEXT NOT NULL, invocation_id TEXT NOT NULL,
                     fingerprint TEXT NOT NULL, status TEXT NOT NULL, result TEXT,
@@ -87,6 +89,26 @@ class MediaStore:
                 "INSERT INTO model_preferences VALUES (?,?) ON CONFLICT(user_id) "
                 "DO UPDATE SET model=excluded.model",
                 (user, model),
+            )
+
+    def context_window(self, user, default=256_000):
+        with self.sessions.transaction() as db:
+            row = db.execute(
+                "SELECT context_window FROM context_preferences WHERE user_id=?", (user,)
+            ).fetchone()
+        return row[0] if row else default
+
+    def select_preferences(self, user, model, context_window):
+        with self.sessions.transaction() as db:
+            db.execute(
+                "INSERT INTO model_preferences VALUES (?,?) ON CONFLICT(user_id) "
+                "DO UPDATE SET model=excluded.model",
+                (user, model),
+            )
+            db.execute(
+                "INSERT INTO context_preferences VALUES (?,?) ON CONFLICT(user_id) "
+                "DO UPDATE SET context_window=excluded.context_window",
+                (user, context_window),
             )
 
     def begin(self, user, invocation, args):

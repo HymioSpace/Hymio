@@ -76,6 +76,7 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
         )
     source = oath_config.read_text()
     choices = config.get("model_options", ["MiniMax-M2.7", "MiniMax-M3"])
+    capacities = config.get("model_context_windows", {})
     source = re.sub(r"^selectable_models\s*=.*$", "", source, flags=re.MULTILINE)
     source = source.replace(
         "[agent]", "[agent]\nselectable_models = " + json.dumps(choices), 1
@@ -96,6 +97,12 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
             count=1,
             flags=re.MULTILINE,
         )
+    from bootstrap_config import toml
+
+    # Serialize the existing config once; do not append duplicate TOML tables.
+    data = tomllib.loads(source)
+    data["agent"]["model_context_windows"] = capacities
+    source = toml(data)
     generated = oath_config.with_name("hymio-runtime.local.toml")
     fd = os.open(generated, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as file:
@@ -286,8 +293,8 @@ def main():
                     (config_path.parent / Path(overlay[key]).expanduser()).resolve()
                 )
         config_path = config_path.with_name("hymio-media.local.toml")
-        from local_network import private_write
         from bootstrap_config import toml
+        from local_network import private_write
 
         private_write(
             config_path,

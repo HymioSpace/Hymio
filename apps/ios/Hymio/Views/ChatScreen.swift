@@ -186,9 +186,12 @@ struct ChatScreen: View {
             for photo in photos {
               if let data = try await photo.loadTransferable(type: Data.self) {
                 guard
-                  let jpeg = try await Task.detached(priority: .userInitiated, operation: {
-                    ImagePipeline.attachment(data)
-                  }).value
+                  let jpeg = try await Task.detached(
+                    priority: .userInitiated,
+                    operation: {
+                      ImagePipeline.attachment(data)
+                    }
+                  ).value
                 else {
                   throw ServiceError.message("照片格式无法读取")
                 }
@@ -235,9 +238,12 @@ struct ChatScreen: View {
             defer { uploading = false }
             do {
               guard
-                let data = try await Task.detached(priority: .userInitiated, operation: {
-                  ImagePipeline.attachment(image)
-                }).value
+                let data = try await Task.detached(
+                  priority: .userInitiated,
+                  operation: {
+                    ImagePipeline.attachment(image)
+                  }
+                ).value
               else { throw ServiceError.message("照片格式无法读取") }
               let value = try await account.upload(data, name: "camera.jpg")
               attachments.append(value)
@@ -258,6 +264,7 @@ struct ChatScreen: View {
   }
   private var composer: some View {
     VStack(spacing: 8) {
+      CompactionNotice(events: client.state.events)
       if !client.connected && !client.state.pending.isEmpty {
         Text("消息已保存在本机，连接恢复后继续发送。")
           .font(.caption2).foregroundStyle(.secondary).frame(
@@ -535,12 +542,77 @@ private struct ComposerAttachment: View {
       .task(id: file["attachment_id"].text) {
         guard isImage else { return }
         if let data = try? await account.image(file["url"].text),
-          let decoded = await Task.detached(priority: .userInitiated, operation: {
-            ImagePipeline.display(data, maxPixel: 480)
-          }).value
+          let decoded = await Task.detached(
+            priority: .userInitiated,
+            operation: {
+              ImagePipeline.display(data, maxPixel: 480)
+            }
+          ).value
         {
           image = decoded
         }
       }
+  }
+}
+
+private struct CompactionNotice: View {
+  let events: [Event]
+  @State private var expanded = false
+  var body: some View {
+    TimelineView(.periodic(from: .now, by: 2)) { timeline in
+      if let event = events.last(where: { $0.event_type == "context.compaction" }),
+        let at = ISO8601DateFormatter().date(
+          from: event.occur_dt.replacingOccurrences(
+            of: #"\.\d+(?=Z|[+-]\d\d:\d\d$)"#, with: "", options: .regularExpression)),
+        ["started", "ready", "applied", "failed"].contains(event.payload["status"].text),
+        timeline.date.timeIntervalSince(at) < (event.payload["status"].text == "started" ? 900 : 60)
+      {
+        let status = event.payload["status"].text
+        let background = event.payload["mode"].text == "async"
+        VStack(alignment: .leading, spacing: 4) {
+          Button {
+            expanded.toggle()
+          } label: {
+            HStack(spacing: 8) {
+              if status == "started" {
+                ProgressView().controlSize(.mini)
+              } else {
+                Image(systemName: "square.stack.3d.up").font(.caption)
+              }
+              Text(title(status, background)).font(.caption)
+              Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.system(size: 9))
+              Spacer(minLength: 0)
+            }.frame(minHeight: 36).contentShape(Rectangle())
+          }.buttonStyle(.plain).accessibilityIdentifier("chat.compaction")
+          if expanded {
+            Text(detail(status, background)).font(.caption).fixedSize(
+              horizontal: false, vertical: true)
+            if event.payload["input_tokens"].int > 0 && event.payload["output_tokens"].int > 0 {
+              Text(
+                "本次整理约 \(event.payload["input_tokens"].int / 1000)K → \(event.payload["output_tokens"].int) tokens"
+              )
+              .font(.caption2)
+            }
+          }
+        }.foregroundStyle(.secondary).padding(.horizontal, 8)
+          .id(event.event_seq)
+      }
+    }
+  }
+  private func title(_ status: String, _ background: Bool) -> String {
+    switch status {
+    case "started": return background ? "正在后台整理较早的对话" : "正在整理前面的对话…"
+    case "ready": return "较早的对话已备好摘要"
+    case "applied": return "已整理较早的对话"
+    default: return "这次整理未完成"
+    }
+  }
+  private func detail(_ status: String, _ background: Bool) -> String {
+    switch status {
+    case "started": return background ? "在后台准备摘要，不影响当前对话。" : "正在保留关键内容，完成后继续回复。聊天记录不会删除。"
+    case "ready": return "摘要已准备好，达到需要整理的长度时才会使用。聊天记录完整保留。"
+    case "applied": return "已将较早的对话整理成摘要，近期内容保留原文。聊天记录不会删除。"
+    default: return "聊天记录仍完整保留，已有摘要不变。"
+    }
   }
 }

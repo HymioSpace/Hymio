@@ -166,6 +166,7 @@ public struct ConversationState: Codable, Sendable {
     [
       "user.message", "assistant.delta", "assistant.message", "tool.terminal",
       "permission.requested", "permission.resolved", "step.status", "message.reaction.changed",
+      "context.compaction",
     ].contains(event.event_type)
   }
   public mutating func reconcile() {

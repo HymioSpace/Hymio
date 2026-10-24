@@ -7,6 +7,9 @@ struct AccountScreen: View {
   @State private var diagnostics = false
   @State private var modelOptions: [String] = []
   @State private var selectedModel = ""
+  @State private var contextWindow = 256_000
+  @State private var effectiveWindow = 256_000
+  @State private var contextWindows: [Int] = []
   @State private var modelBusy = false
   @State private var modelError = ""
   private var modelSection: some View {
@@ -17,20 +20,29 @@ struct AccountScreen: View {
       } label: {
         Label("对话模型", systemImage: "slider.horizontal.3")
       }.pickerStyle(.menu).disabled(modelBusy || modelOptions.isEmpty)
+      Picker(selection: Binding(get: { contextWindow }, set: { saveWindow($0) })) {
+        ForEach(contextWindows, id: \.self) { value in
+          Text(windowLabel(value) + (value == 256_000 ? "（默认）" : "")).tag(value)
+        }
+      } label: {
+        Label("上下文长度", systemImage: "square.stack.3d.up")
+      }.pickerStyle(.menu).disabled(modelBusy || contextWindows.isEmpty)
       if !modelError.isEmpty {
         Text(modelError).font(.caption).foregroundStyle(.secondary)
         Button("重新读取") { Task { await loadModels() } }
       }
     } footer: {
-      Text("保留对话，下次发送时生效。")
+      Text(
+        effectiveWindow < contextWindow
+          ? "当前模型最多使用 \(windowLabel(effectiveWindow))。保留对话，下次发送时生效。"
+          : "较短更轻快，较长保留更多近期细节。下次发送时生效。")
     }
     .task { await loadModels() }
   }
   private func loadModels() async {
     do {
       let value = try await account.request("settings/models")
-      modelOptions = value["models"].items.map { $0.text }
-      selectedModel = value["selected"].text
+      applyPreferences(value)
       modelError = ""
     } catch { modelError = "暂时无法读取模型设置" }
   }
@@ -40,10 +52,34 @@ struct AccountScreen: View {
     Task {
       defer { modelBusy = false }
       do {
-        _ = try await account.request("settings/models", body: .object(["model": .string(model)]))
-        selectedModel = model
+        let value = try await account.request(
+          "settings/models", body: .object(["model": .string(model)]))
+        applyPreferences(value)
         modelError = ""
       } catch { modelError = "模型未更换，请稍后重试。" }
+    }
+  }
+  private func windowLabel(_ value: Int) -> String {
+    value >= 1_000_000 ? "1M" : String(format: "%gK", Double(value) / 1000)
+  }
+  private func applyPreferences(_ value: JSON) {
+    modelOptions = value["models"].items.map { $0.text }
+    selectedModel = value["selected"].text
+    contextWindow = value["context_window"].int
+    effectiveWindow = value["effective_context_window"].int
+    contextWindows = value["context_windows"].items.map { $0.int }
+  }
+  private func saveWindow(_ size: Int) {
+    guard !modelBusy, size != contextWindow else { return }
+    modelBusy = true
+    Task {
+      defer { modelBusy = false }
+      do {
+        let value = try await account.request(
+          "settings/models", body: .object(["context_window": .number(Double(size))]))
+        applyPreferences(value)
+        modelError = ""
+      } catch { modelError = "上下文长度未更改，请稍后重试。" }
     }
   }
   var body: some View {

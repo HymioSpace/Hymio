@@ -1,6 +1,6 @@
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -34,6 +34,7 @@ class Settings:
     e2b_key_file: Path | None = None
     e2b_template: str = "hymio-desktop"
     model_options: tuple[str, ...] = ("MiniMax-M2.7", "MiniMax-M3")
+    model_context_windows: dict[str, int] = field(default_factory=dict)
     vision_model: str = "MiniMax-M3"
     media_api_base: str = "https://api.minimax.cn/v1"
     media_credential: str = ""
@@ -86,6 +87,11 @@ class Settings:
             file = Path(data["nostalgia_connections_file"]).expanduser()
             data["nostalgia_connections_file"] = file if file.is_absolute() else path.parent / file
         result = cls(**data)
+        if not isinstance(result.model_context_windows, dict) or any(
+            not isinstance(k, str) or not k or type(v) is not int or v < 4096
+            for k, v in result.model_context_windows.items()
+        ):
+            raise ValueError("model_context_windows requires model IDs and token capacities")
         if not result.model_options or any(
             not isinstance(m, str) or not m.strip() or len(m) > 128 for m in result.model_options
         ):

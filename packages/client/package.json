@@ -16,6 +16,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\"",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/conversation.test.ts src/presentation.test.ts src/quick-replies.test.ts src/turns.test.ts"
+    "test": "node --experimental-strip-types --test src/conversation.test.ts src/presentation.test.ts src/quick-replies.test.ts src/turns.test.ts src/compaction.test.ts"
   }
 }

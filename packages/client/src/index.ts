@@ -4,3 +4,4 @@ export * from './presentation';
 export * from './turns';
 export * from './agent-ui';
 export * from './quick-replies';
+export * from './compaction';
