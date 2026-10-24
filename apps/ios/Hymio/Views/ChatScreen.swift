@@ -72,14 +72,17 @@ struct ChatScreen: View {
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
               ApprovalCard(approval: approval, client: client)
             }
-            if (client.model.working || client.model.awaitingReply)
-              && !client.model.messages.contains(where: \.streaming)
-            {
-              HStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                Text(client.model.awaitingReply ? "正在探索…" : "继续探索中…").font(.caption)
-                  .foregroundStyle(.secondary)
-              }.accessibilityIdentifier("chat.working")
+            TimelineView(.periodic(from: .now, by: 2)) { timeline in
+              if (client.model.working || client.model.awaitingReply)
+                && !client.model.messages.contains(where: \.streaming)
+                && CompactionNotice.active(in: client.state.events, at: timeline.date) == nil
+              {
+                HStack(spacing: 10) {
+                  ProgressView().controlSize(.small)
+                  Text(client.model.awaitingReply ? "正在探索…" : "继续探索中…").font(.caption)
+                    .foregroundStyle(.secondary)
+                }.accessibilityIdentifier("chat.working")
+              }
             }
             if !client.model.failure.isEmpty {
               Label(client.model.failure, systemImage: "exclamationmark.circle").font(.footnote)
@@ -557,62 +560,43 @@ private struct ComposerAttachment: View {
 
 private struct CompactionNotice: View {
   let events: [Event]
-  @State private var expanded = false
   var body: some View {
     TimelineView(.periodic(from: .now, by: 2)) { timeline in
-      if let event = events.last(where: { $0.event_type == "context.compaction" }),
-        let at = ISO8601DateFormatter().date(
-          from: event.occur_dt.replacingOccurrences(
-            of: #"\.\d+(?=Z|[+-]\d\d:\d\d$)"#, with: "", options: .regularExpression)),
-        ["started", "ready", "applied", "failed"].contains(event.payload["status"].text),
-        timeline.date.timeIntervalSince(at) < (event.payload["status"].text == "started" ? 900 : 60)
-      {
-        let status = event.payload["status"].text
-        let background = event.payload["mode"].text == "async"
-        VStack(alignment: .leading, spacing: 4) {
-          Button {
-            expanded.toggle()
-          } label: {
-            HStack(spacing: 8) {
-              if status == "started" {
-                ProgressView().controlSize(.mini)
-              } else {
-                Image(systemName: "square.stack.3d.up").font(.caption)
-              }
-              Text(title(status, background)).font(.caption)
-              Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.system(size: 9))
-              Spacer(minLength: 0)
-            }.frame(minHeight: 36).contentShape(Rectangle())
-          }.buttonStyle(.plain).accessibilityIdentifier("chat.compaction")
-          if expanded {
-            Text(detail(status, background)).font(.caption).fixedSize(
-              horizontal: false, vertical: true)
-            if event.payload["input_tokens"].int > 0 && event.payload["output_tokens"].int > 0 {
-              Text(
-                "本次整理约 \(event.payload["input_tokens"].int / 1000)K → \(event.payload["output_tokens"].int) tokens"
-              )
-              .font(.caption2)
-            }
-          }
-        }.foregroundStyle(.secondary).padding(.horizontal, 8)
-          .id(event.event_seq)
+      if Self.active(in: events, at: timeline.date) != nil {
+        HStack(spacing: 8) {
+          ProgressView().controlSize(.mini)
+          Text("我整理一下前面的内容，马上继续").font(.caption)
+          Spacer(minLength: 0)
+        }
+        .foregroundStyle(.secondary)
+        .frame(minHeight: 36)
+        .padding(.horizontal, 8)
+        .accessibilityIdentifier("chat.compaction")
       }
     }
   }
-  private func title(_ status: String, _ background: Bool) -> String {
-    switch status {
-    case "started": return background ? "正在后台整理较早的对话" : "正在整理前面的对话…"
-    case "ready": return "较早的对话已备好摘要"
-    case "applied": return "已整理较早的对话"
-    default: return "这次整理未完成"
+
+  static func active(in events: [Event], at now: Date) -> Event? {
+    var finished = Set<String>()
+    for event in events.reversed() where event.event_type == "context.compaction" {
+      let payload = event.payload
+      let status = payload["status"].text
+      let compression = payload["compression_id"].text
+      if ["ready", "applied", "failed", "skipped"].contains(status), !compression.isEmpty {
+        finished.insert(compression)
+        continue
+      }
+      guard status == "started", payload["mode"].text == "sync" else { continue }
+      if !compression.isEmpty && finished.contains(compression) { continue }
+      guard
+        let at = ISO8601DateFormatter().date(
+          from: event.occur_dt.replacingOccurrences(
+            of: #"\.\d+(?=Z|[+-]\d\d:\d\d$)"#, with: "", options: .regularExpression)),
+        now.timeIntervalSince(at) >= 0,
+        now.timeIntervalSince(at) <= 300
+      else { continue }
+      return event
     }
-  }
-  private func detail(_ status: String, _ background: Bool) -> String {
-    switch status {
-    case "started": return background ? "在后台准备摘要，不影响当前对话。" : "正在保留关键内容，完成后继续回复。聊天记录不会删除。"
-    case "ready": return "摘要已准备好，达到需要整理的长度时才会使用。聊天记录完整保留。"
-    case "applied": return "已将较早的对话整理成摘要，近期内容保留原文。聊天记录不会删除。"
-    default: return "聊天记录仍完整保留，已有摘要不变。"
-    }
+    return nil
   }
 }

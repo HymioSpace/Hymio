@@ -3341,37 +3341,13 @@ a {
 }
 
 .compaction-status {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 0 8px 8px;
-}
-.compaction-status summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: fit-content;
-  min-height: 32px;
-  cursor: pointer;
-  list-style: none;
-}
-.compaction-status summary::-webkit-details-marker {
-  display: none;
-}
-.compaction-status summary::after {
-  content: '⌄';
+  color: var(--muted);
   font-size: 12px;
-  opacity: 0.65;
-}
-.compaction-status[open] summary::after {
-  transform: rotate(180deg);
-}
-.compaction-detail {
-  max-width: 420px;
-  padding: 2px 0 8px 22px;
-  line-height: 1.6;
-}
-.compaction-detail p {
-  margin: 0 0 4px;
+  min-height: 32px;
+  margin: 0 8px 8px;
 }
 .compaction-spinner {
   animation: compaction-spin 1.6s linear infinite;
