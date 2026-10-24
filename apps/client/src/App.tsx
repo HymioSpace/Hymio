@@ -1,3 +1,4 @@
+import { MomentsPanel } from './MomentsPanel';
 import { HomePanel } from './HomePanel';
 import { enqueueTelemetry, flushTelemetry } from './telemetry';
 import { Home, MessageCircle, UserRound } from 'lucide-react';
@@ -7,6 +8,7 @@ import {
   Flag,
   ArrowUp,
   ArrowDown,
+  Bookmark,
   Circle,
   CheckCheck,
   ChevronDown,
@@ -61,10 +63,18 @@ export default function App() {
   });
   const [tasksOpen, setTasksOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState('');
-  const [page, setPage] = useState<'home' | 'chat'>(
-    window.location.hash === '#/chat' ? 'chat' : 'home',
+  const [page, setPage] = useState<'home' | 'chat' | 'moments'>(
+    window.location.hash === '#/moments'
+      ? 'moments'
+      : window.location.hash === '#/chat'
+        ? 'chat'
+        : 'home',
   );
-  function navigate(next: 'home' | 'chat') {
+  const [memoryVisited, setMemoryVisited] = useState(page === 'moments');
+  useEffect(() => {
+    if (page === 'moments') setMemoryVisited(true);
+  }, [page]);
+  function navigate(next: 'home' | 'chat' | 'moments') {
     setPage(next);
     changeDebug(false);
     window.location.hash = '/' + next;
@@ -91,6 +101,7 @@ export default function App() {
   useEffect(() => {
     const route = () => {
       changeDebug(window.location.hash === '#/trace');
+      if (window.location.hash === '#/moments') setPage('moments');
       if (window.location.hash === '#/home') setPage('home');
       if (window.location.hash === '#/chat') setPage('chat');
     };
@@ -558,6 +569,14 @@ export default function App() {
             <MessageCircle size={19} />
             <span>对话</span>
           </button>
+          <button
+            className={`rail-button ${page === 'moments' && !debug ? 'active' : ''}`}
+            aria-current={page === 'moments' && !debug ? 'page' : undefined}
+            onClick={() => navigate('moments')}
+          >
+            <Bookmark size={19} />
+            <span>记忆</span>
+          </button>
           <button className={`rail-button ${tasksOpen ? 'active' : ''}`} onClick={() => openTask()}>
             <Flag size={19} />
             <span>任务</span>
@@ -588,6 +607,11 @@ export default function App() {
           onChat={() => navigate('chat')}
           onTask={openTask}
         />
+      )}
+      {memoryVisited && (
+        <div className="memory-route" hidden={debug || page !== 'moments'}>
+          <MomentsPanel key={`${login.session.backend}|${login.session.user_id}`} login={login} />
+        </div>
       )}
       <main className="main" hidden={debug || page !== 'chat'}>
         <header className="topbar">

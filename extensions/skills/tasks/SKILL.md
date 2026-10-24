@@ -1,13 +1,17 @@
 ---
 name: tasks
-description: Track user intentions, intermediate findings, blockers and results from conversation; optionally schedule or delegate work.
+description: Track actionable work with a deliverable, side effect or follow-up; optionally schedule or delegate it.
 ---
 
 # Keep the user's work in view
 
-A task is an outcome accepted from conversation, including ordinary questions that require research,
-comparisons, writing and practical work. Scheduling is optional. Keep one record for the same intent.
-Do not create tasks for greetings or interpret a tentative idea as permission to act.
+A task is a piece of work the user asks Hymio to carry through: a deliverable, a multi-step
+investigation, an external action, or work that continues after this reply. Scheduling is optional.
+Keep one record for the same intent.
+
+Do not create a task for a personal fact or preference, a greeting, a casual statement, a question
+you can answer immediately, or a tentative idea. Use the context tools for what the agent should
+remember. `remember` is not a task. Do not interpret an idea as permission to act.
 
 ## Current conversation
 

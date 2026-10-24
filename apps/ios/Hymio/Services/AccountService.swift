@@ -140,7 +140,7 @@ struct SecureSession {
       !url.absoluteString.contains("invalid.example")
     else { throw ServiceError.message("服务尚未配置，请联系部署者。") }
   }
-  func raw(_ path: String, body: JSON? = nil, token: String? = nil, timeout: Double = 25)
+  func raw(_ path: String, body: JSON? = nil, token: String? = nil, timeout: Double = 25, idempotencyKey: String? = nil)
     async throws -> Data
   {
     guard let url = URL(string: path, relativeTo: backend.appendingPathComponent("/"))?.absoluteURL
@@ -148,6 +148,7 @@ struct SecureSession {
     try validated(url)
     var req = URLRequest(url: url)
     req.timeoutInterval = timeout
+    if let idempotencyKey { req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key") }
     if let body {
       req.httpMethod = "POST"
       req.httpBody = try JSONEncoder().encode(body)
@@ -231,10 +232,10 @@ struct SecureSession {
       throw ServiceError.unauthorized
     }
   }
-  func request(_ path: String, body: JSON? = nil, timeout: Double = 25) async throws -> JSON {
+  func request(_ path: String, body: JSON? = nil, timeout: Double = 25, idempotencyKey: String? = nil) async throws -> JSON {
     let s = try await credential()
     let owner = generation
-    let data = try await raw(path, body: body, token: s.access_token, timeout: timeout)
+    let data = try await raw(path, body: body, token: s.access_token, timeout: timeout, idempotencyKey: idempotencyKey)
     let value = try await Task.detached(priority: .userInitiated) {
       try JSON.decode(data)
     }.value

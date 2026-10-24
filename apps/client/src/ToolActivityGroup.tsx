@@ -9,6 +9,7 @@ import {
   Monitor,
   BookOpen,
   Laptop,
+  Bookmark,
 } from 'lucide-react';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { obj, str } from '@hymio/protocol';
@@ -21,6 +22,8 @@ const names: Record<string, string> = {
   browser: '操作浏览器',
   computer: '操作桌面',
   skill: '使用技能',
+  remember: '提炼并记下',
+  recall: '查找记忆',
 };
 const states: Record<string, string> = {
   expired: '授权已过期',
@@ -64,12 +67,25 @@ export function ToolCalls({
         const name = str(call.name);
         const ToolIcon =
           (
-            { browser: Globe, computer: Monitor, skill: BookOpen, devices: Laptop } as Record<
-              string,
-              typeof Terminal
-            >
+            {
+              browser: Globe,
+              computer: Monitor,
+              skill: BookOpen,
+              devices: Laptop,
+              remember: Bookmark,
+              recall: BookOpen,
+            } as Record<string, typeof Terminal>
           )[name] || Terminal;
-        const hint = name === 'skill' ? str(args.query) || str(args.name) : str(args.action);
+        const hint =
+          name === 'recall'
+            ? args.action === 'read'
+              ? '读取完整内容'
+              : str(args.query)
+            : name === 'remember'
+              ? str(args.topic)
+              : name === 'skill'
+                ? str(args.query) || str(args.name)
+                : str(args.action);
         return (
           <details key={i} className="tool-call-detail">
             <summary>

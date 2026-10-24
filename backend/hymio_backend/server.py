@@ -18,6 +18,7 @@ from starlette.routing import Route, WebSocketRoute
 from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .context.routes import context_routes
 from .devices.admin import admin_routes
 from .devices.routes import device_routes
 from .devices.service import DeviceService
@@ -276,7 +277,8 @@ def build_app(settings, *, provider=None):
         await relay_agent(websocket, settings, store, channel_devices, media)
 
     routes = (
-        task_routes(settings, store, tasks, bearer, body)
+        context_routes(settings, store, bearer, body)
+        + task_routes(settings, store, tasks, bearer, body)
         + media_routes(
             settings,
             store,
@@ -333,6 +335,12 @@ def build_app(settings, *, provider=None):
         CORSMiddleware,
         allow_origins=list(settings.origins),
         allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "X-Oath-User-Id", "X-File-Name"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Oath-User-Id",
+            "X-File-Name",
+            "Idempotency-Key",
+        ],
     )
     return app

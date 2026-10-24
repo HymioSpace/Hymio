@@ -65,7 +65,7 @@ import SwiftUI
   }
 }
 
-enum ProductTab: Hashable { case today, chat, tasks, account }
+enum ProductTab: Hashable { case today, chat, tasks, moments, account }
 
 struct ProductShell: View {
   @ObservedObject var account: AccountService
@@ -83,6 +83,9 @@ struct ProductShell: View {
       }
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) {
         NavigationStack { TasksScreen(account: account, board: board) }
+      }
+      Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
+        ContextScreen(account: account)
       }
       Tab("我的", systemImage: "person.crop.circle", value: ProductTab.account) {
         AccountScreen(account: account, client: client)
@@ -110,8 +113,8 @@ struct HomeScreen: View {
   private var attention: [JSON] {
     board.items.filter { ["blocked", "failed"].contains(taskStatus($0)) }
   }
-  private var ongoing: JSON? {
-    board.items.first { ["running", "ready", "delivering"].contains(taskStatus($0)) }
+  private var ongoing: [JSON] {
+    board.items.filter { ["running", "ready", "delivering"].contains(taskStatus($0)) }
   }
   private var firstVisit: Bool {
     board.loaded && board.items.isEmpty && client.connected && client.model.messages.isEmpty
@@ -139,13 +142,13 @@ struct HomeScreen: View {
   }
   private var modules: [(kind: Module, items: [JSON])] {
     let updates = board.changes.filter {
-      !attention.contains($0) && $0["id"].text != ongoing?["id"].text
+      !attention.contains($0) && !ongoing.contains($0)
         && !["scheduled", "paused", "cancelled", "expired"].contains(taskStatus($0))
     }
     let upcoming = board.items.filter { taskStatus($0) == "scheduled" }
     return [
       (.attention, attention), (.updates, updates),
-      (.ongoing, ongoing.map { [$0] } ?? []), (.upcoming, Array(upcoming.prefix(1))),
+      (.ongoing, ongoing), (.upcoming, upcoming),
     ]
     .filter { !$0.1.isEmpty }
   }
@@ -167,7 +170,7 @@ struct HomeScreen: View {
               )
               .font(.subheadline).foregroundStyle(Brand.muted)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Companion(size: 78, mood: ongoing == nil ? .idle : .working)
+            Companion(size: 78, mood: ongoing.isEmpty ? .idle : .working)
           }.padding(.top, 16)
           ForEach(modules, id: \.kind) { module in
             homeSection(
@@ -177,7 +180,7 @@ struct HomeScreen: View {
                 ? Brand.attention : module.kind == .ongoing ? Brand.blue : Brand.muted,
               count: module.kind == .ongoing ? nil : module.items.count
             ) {
-              ForEach(Array(module.items.prefix(2)), id: \.self) { item in taskLink(item) }
+              ForEach(module.items, id: \.self) { item in taskLink(item) }
             }
           }
           if !board.error.isEmpty {

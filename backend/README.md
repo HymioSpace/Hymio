@@ -59,6 +59,59 @@ Revocation is visible to Oath on the next verification (within 30 seconds for id
 
 The Dockerfile builds the same backend. Mount private configuration and credential files read-only, mount a writable database directory, and set `host = "0.0.0.0"` in container configuration. Use HTTPS/WSS for deployed clients.
 
+## Nostalgia and dreaming
+
+Run the sibling Nostalgia service separately. Casdoor already uses port 8000 locally, so publish
+Nostalgia on 8001 (`NOSTALGIA_PUBLISHED_PORT=8001` for its Compose). Obtain the stable Hymio user ID
+from authenticated `GET /auth/me`. Configure a Nostalgia token scoped to that user's context;
+the Nostalgia-side user ID can match the Hymio user ID or be independently mapped by its token.
+
+Copy `nostalgia-connections.example.json` to ignored `private/nostalgia-connections.json`, replace
+the user ID and endpoint, and put the token in `private/nostalgia-token` with private file permissions.
+`token_file` resolves relative to the connections JSON. Add to `hymio.toml`:
+
+```toml
+nostalgia_connections_file = "./private/nostalgia-connections.json"
+```
+
+Restart Backend. An absent binding is denied, never routed to another user's default endpoint.
+Backend must be able to reach the configured Nostalgia URL. From Docker, use service DNS or a
+host gateway instead of localhost. No context token is sent to the browser, Oath or the model.
+
+The unified launcher prepares `extensions/tools/_connection.local` and mounts the context tools
+and skills along with the device tools. For a separately managed Oath deployment, mount
+`extensions/tools` and `extensions/skills`, disable built-in Bash as described in the extensions
+guide, and privately create `_connection.local` containing
+`{"url":"http://BACKEND_REACHABLE_FROM_OATH:8080","token":"BACKEND_SERVICE_CREDENTIAL"}`.
+That service credential is the same one referenced by Backend's `service_token_file`.
+
+Example calls with a Hymio application access token (a fresh request key per new operation):
+
+```bash
+curl http://localhost:8080/context/records \
+  -H "Authorization: Bearer $HYMIO_ACCESS_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: capture-example-1' \
+  -d '{"item_type":"context","context_type":"text","context":{"text":"I use Vim"}}'
+```
+
+Dreaming is owned by Nostalgia. Its scheduler creates a bounded draft on a configured interval
+(default 600 seconds), calls a configured proposal provider, validates the result through the
+Nostalgia state machine and commits atomically. Hymio exposes a stateless internal proposal
+adapter at `/internal/dreaming/propose`; it is not an Agent tool and cannot be called from the
+public edge. The normal Agent only receives `remember` and `recall`. Published artifacts and the
+pending buffer are available through `GET /context/injection`.
+
+Run Backend regressions and the cross-repository Oath/Nostalgia integration from `backend/`:
+
+```bash
+uv run python -m pytest -q
+uv run --with-editable ../../Oath --with-editable ../../Nostalgia python -m pytest -q
+```
+
+The second command uses real HTTP for both services and loads the Hymio context extension into
+the generic Oath tool registry. It verifies context transport and tool behavior, not live model
+quality.
+
 ## Registration and Google sign-in
 
 Use a dedicated Hymio organization, not `built-in`. Enable **Enable signup** on the Hymio application and leave **Disable self signup** off. Keep password sign-in enabled in account mode.
@@ -86,3 +139,16 @@ cron setup is required. The authenticated `/tasks` API and the `tasks` Oath exte
 state, scheduled runs and progress records. Deploy with an Oath build supporting `/events` and
 `/subagents/*`, using the existing remote identity verifier. See
 [task design](../spec/feature23-tasks-and-delegation.md) for admission and cancellation rules.
+
+### 记忆 and layered context
+
+The authenticated `/context/assembly` proxy returns stable content/cache_key separately from
+changing navigation. `/context/events?after=0&limit=50` exposes durable invalidations.
+`hymio_backend.context.events.deliver` checkpoints after successful durable callback acceptance;
+run one worker per user/consumer and deduplicate event IDs downstream. It is not automatically
+scheduled or connected to Oath's queue yet.
+
+Both clients use `/context/search`, paged GET `/context/records`, exact
+`/context/records/{id}` / `/context/artifacts/{id}`, and POST `/context/saves` with `{text}`
+and `Idempotency-Key`. Saves are source-stamped by the backend. Deployment still requires the
+private per-user Nostalgia connection binding above.

@@ -117,13 +117,13 @@ export function HomePanel({
       ) &&
       (baseline ? baseline[t.id] !== fingerprint(t) : workState(t) === 'succeeded'),
   );
-  const ongoing = tasks.find((t) => ['running', 'ready', 'delivering'].includes(workState(t)));
-  const upcoming = tasks.filter((t) => workState(t) === 'scheduled').slice(0, 1);
+  const ongoing = tasks.filter((t) => ['running', 'ready', 'delivering'].includes(workState(t)));
+  const upcoming = tasks.filter((t) => workState(t) === 'scheduled');
   const firstVisit = loaded && conversationReady && !tasks.length && !hasConversation;
   const modules = [
     { kind: 'attention' as const, title: '需要你看看', items: attention },
     { kind: 'updates' as const, title: baseline ? '新的进展' : '最近进展', items: updates },
-    { kind: 'ongoing' as const, title: '正在推进', items: ongoing ? [ongoing] : [] },
+    { kind: 'ongoing' as const, title: '正在推进', items: ongoing },
     { kind: 'upcoming' as const, title: '接下来的安排', items: upcoming },
   ].filter((module) => module.items.length);
   function markSeen(task: Work) {
@@ -181,7 +181,7 @@ export function HomePanel({
             <h2>{title}</h2>
             <span>{values.length}</span>
           </header>
-          <div className="home-work-grid">{values.slice(0, 2).map(card)}</div>
+          <div className="home-work-grid">{values.map(card)}</div>
         </section>
       )
     );

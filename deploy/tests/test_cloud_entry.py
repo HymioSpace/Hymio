@@ -64,6 +64,7 @@ class CloudEntryTests(unittest.TestCase):
                 caddy = (cloud.OUTPUT / "Caddyfile").read_text()
                 self.assertEqual(caddy.count("app.example.com"), 1)
                 self.assertIn("/agent/*", caddy)
+                self.assertIn("/context/*", caddy)
                 self.assertIn("/telemetry/*", caddy.split("handle @backend")[0])
                 self.assertEqual(
                     json.loads(
