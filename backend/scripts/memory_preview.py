@@ -222,6 +222,27 @@ async def login(request):
 
 
 async def empty(request):
+    if request.url.path == "/tasks":
+        tasks = []
+        for index, title in enumerate(["整理本周阅读笔记", "准备周末出行清单", "明天的语言练习"]):
+            tasks.append(
+                {
+                    "id": f"preview-plan-{index}",
+                    "title": title,
+                    "objective": title,
+                    "success_criteria": "完成清单",
+                    "state": "active",
+                    "source": "user",
+                    "updated_at": time.time() - index,
+                    "schedule": {
+                        "mode": "once",
+                        "at": f"2026-11-0{index + 1}T09:00:00+08:00",
+                        "timezone": "Asia/Shanghai",
+                    },
+                    "runs": [],
+                }
+            )
+        return JSONResponse({"tasks": tasks})
     return JSONResponse({"tasks": [], "models": []})
 
 
