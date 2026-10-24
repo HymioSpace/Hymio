@@ -331,6 +331,62 @@ final class HymioUITests: XCTestCase {
     add(screenshot)
   }
 
+  @MainActor func testCloudGeneratedKitBridge() throws {
+    let defaults = UserDefaults.standard
+    guard
+      let base = defaults.string(forKey: "HYMIO_KIT_E2E_BACKEND"),
+      let username = defaults.string(forKey: "HYMIO_KIT_E2E_USERNAME"),
+      let password = defaults.string(forKey: "HYMIO_KIT_E2E_PASSWORD"),
+      let kitID = defaults.string(forKey: "HYMIO_KIT_E2E_KIT_ID"),
+      let kitName = defaults.string(forKey: "HYMIO_KIT_E2E_KIT_NAME")
+    else {
+      throw XCTSkip("Cloud Kit E2E defaults are not configured")
+    }
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
+    app.launchEnvironment["HYMIO_BACKEND_URL_OVERRIDE"] = base
+    app.terminate()
+    app.launch()
+    logoutIfNeeded(app)
+    XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 20))
+    app.textFields["login.username"].tap()
+    app.textFields["login.username"].typeText(username)
+    app.secureTextFields["login.password"].tap()
+    app.secureTextFields["login.password"].typeText(password)
+    app.buttons["login.submit"].tap()
+    XCTAssertTrue(app.tabBars.buttons["应用"].waitForExistence(timeout: 40))
+    app.tabBars.buttons["应用"].tap()
+    let card = app.descendants(matching: .any)
+      .matching(identifier: "kit.card." + kitID).firstMatch
+    XCTAssertTrue(card.waitForExistence(timeout: 30), app.debugDescription)
+    card.tap()
+    let web = app.webViews.firstMatch
+    XCTAssertTrue(web.waitForExistence(timeout: 30), app.debugDescription)
+    let write = web.buttons["页面写入"]
+    XCTAssertTrue(write.waitForExistence(timeout: 20), web.debugDescription)
+    write.tap()
+    XCTAssertTrue(web.staticTexts["已保存"].waitForExistence(timeout: 30), web.debugDescription)
+
+    let session = requestJSON(
+      base, "auth/account",
+      body: ["action": "login", "username": username, "password": password])
+    XCTAssertEqual(session.status, 200, String(describing: session.json))
+    let accessToken = try XCTUnwrap(session.json["access_token"] as? String)
+    let records = requestJSON(
+      base, "kits/\(kitID)/actions/items.list",
+      body: ["limit": 20], bearer: accessToken)
+    XCTAssertEqual(records.status, 200, String(describing: records.json))
+    let notes = notes(records.json)
+    XCTAssertTrue(notes.contains("页面写入"), String(describing: records.json))
+    XCTAssertTrue(notes.contains("Agent写入"), String(describing: records.json))
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "cloud-generated-kit-bridge"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    XCTAssertTrue(kitName.isEmpty == false)
+  }
+
   @MainActor private func logoutIfNeeded(_ app: XCUIApplication) {
     guard app.tabBars.buttons["此刻"].waitForExistence(timeout: 8) else { return }
     let menu = app.buttons["打开菜单"]
