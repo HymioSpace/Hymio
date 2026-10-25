@@ -21,7 +21,22 @@ class EventLogHandler(logging.Handler):
                 message += "\n" + "".join(traceback.format_exception(*record.exc_info))
             attributes = {
                 key: getattr(record, key)
-                for key in ("trace_id", "message_id", "user_id", "channel")
+                for key in (
+                    "trace_id",
+                    "message_id",
+                    "user_id",
+                    "channel",
+                    "invocation_id",
+                    "media_operation",
+                    "media_model",
+                    "media_error_code",
+                    "credential_ms",
+                    "duration_ms",
+                    "media_queue_ms",
+                    "processing_ms",
+                    "finish_reason",
+                    "completion_tokens",
+                )
                 if getattr(record, key, None) not in (None, "")
             }
             attributes.update(

@@ -38,7 +38,8 @@ Passive UI list polling is read-only. Device preparation never replays a previou
 Browser `tabs` returns stable page_id values. Specify page_id for multi-tab tasks.
 For blocked/unknown executions, report the condition rather than repeat effects. A browser or
 computer screenshot result contains `screenshot.media_id` (also exposed as
-`screenshot.attachment_id`). Pass that ID directly to `multimodal_understand`; it can resolve
+`screenshot.attachment_id`). If the screenshot is included as native image input, inspect it
+directly without a second vision call. Otherwise pass the ID to `multimodal_understand`; it can resolve
 device screenshots and user attachments. Do not pass `/devices/media/...`, `page_id` or
 `device_id` as the media ID, and do not download and re-upload the screenshot just to inspect it.
 Never claim a screenshot was seen until multimodal analysis or an image-capable context confirms it.

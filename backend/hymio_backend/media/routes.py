@@ -2,6 +2,8 @@ import asyncio
 import hmac
 import io
 import json
+import logging
+import time
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
@@ -12,11 +14,12 @@ from starlette.routing import Route
 from ..session_store import Unauthorized
 from .conversion import DOCUMENTS, to_markdown
 from .model_policy import CONTEXT_WINDOWS, effective_window, model_capacity
-from .providers import MiniMaxMedia, ModelUnavailable
+from .providers import MiniMaxMedia, ModelUnavailable, operation_context
 from .store import LIMIT, MAX_ITEMS
 
 IMAGE_MAX_DIMENSION = 2560
 IMAGE_QUALITY = 82
+_log = logging.getLogger(__name__)
 
 
 def normalize_image(content):
@@ -44,6 +47,11 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
     slots = asyncio.Semaphore(4)
 
     async def endpoint(request):
+        started = time.monotonic()
+        operation = None
+        context_token = None
+        queue_ms = None
+        processing_at = None
         try:
             origin = request.headers.get("origin")
             if origin and origin not in settings.origins:
@@ -130,7 +138,9 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
                         + quote(row["name"], safe="")
                     },
                 )
-            identifiers = data.get("media_ids", data.get("attachment_ids", []))
+            identifiers = data.get(
+                "image_refs", data.get("media_ids", data.get("attachment_ids", []))
+            )
             if "media_ids" in data and "attachment_ids" in data:
                 identifiers = list(
                     dict.fromkeys(
@@ -169,6 +179,19 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
                     }
                 rows.append(row)
             operation = path.rsplit("/", 1)[-1]
+            if internal and operation == "resolve":
+                images = {}
+                total = 0
+                for row in rows:
+                    if not row["mime"].startswith("image/"):
+                        raise ValueError("Native image reference is not an image")
+                    content = await asyncio.to_thread(normalize_image, row["content"])
+                    url = MiniMaxMedia.image({"mime": "image/jpeg", "content": content})
+                    total += len(url)
+                    if total > 7_500_000:
+                        return JSONResponse({"error": "native_images_too_large"}, 413)
+                    images[row["id"]] = url
+                return JSONResponse({"images": images})
             question = data.get("prompt", "Describe the attachment.")
             if not isinstance(question, str) or not 1 <= len(question) <= 4000:
                 raise ValueError("Invalid prompt")
@@ -177,6 +200,7 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
                 raise ValueError("Missing invocation identity")
             if operation not in {"understand", "generate"}:
                 raise ValueError("Unknown media operation")
+            context_token = operation_context.set({"user_id": user, "invocation_id": invocation})
             if operation == "understand" and not rows:
                 raise ValueError("Provide attachments")
             if operation == "generate":
@@ -187,10 +211,13 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
                 ratio = data.get("aspect_ratio", "1:1")
                 if ratio not in {"1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"}:
                     raise ValueError("Invalid aspect ratio")
+            waiting_at = time.monotonic()
             async with slots:
+                processing_at = time.monotonic()
+                queue_ms = round((processing_at - waiting_at) * 1000, 3)
                 prior = await asyncio.to_thread(store.begin, user, invocation, data)
                 if prior is not None:
-                    return JSONResponse(prior)
+                    return JSONResponse(prior, 503 if prior.get("error") else 200)
                 if operation == "understand":
                     sections = []
                     images = []
@@ -266,16 +293,39 @@ def media_routes(settings, sessions, bearer, body, store, device_media=None):
             return JSONResponse({"error": "attachment_not_found"}, 404)
         except (ValueError, KeyError, json.JSONDecodeError, Image.DecompressionBombError):
             return JSONResponse({"error": "invalid_media_request"}, 400)
-        except ModelUnavailable:
-            return JSONResponse(
-                {
-                    "error": "model_unavailable",
-                    "notice": "Check configured model access and balance. Do not retry.",
+        except ModelUnavailable as error:
+            _log.warning(
+                "Media operation failed",
+                extra={
+                    **operation_context.get(),
+                    "media_error_code": error.code,
+                    "media_operation": request.url.path,
                 },
+            )
+            failure = {"error": "model_unavailable", "reason": error.code, "notice": str(error)}
+            if operation == "understand" and processing_at is not None:
+                await asyncio.to_thread(store.finish, user, invocation, failure, "failed")
+            return JSONResponse(
+                failure,
                 503,
             )
         except Exception:
             return JSONResponse({"error": "media_unavailable"}, 503)
+        finally:
+            if context_token is not None:
+                _log.info(
+                    "Media operation finished",
+                    extra={
+                        **operation_context.get(),
+                        "media_operation": operation,
+                        "duration_ms": round((time.monotonic() - started) * 1000, 3),
+                        "media_queue_ms": queue_ms,
+                        "processing_ms": round((time.monotonic() - processing_at) * 1000, 3)
+                        if processing_at is not None
+                        else None,
+                    },
+                )
+                operation_context.reset(context_token)
 
     return [
         Route("/settings/models", endpoint, methods=["GET", "POST"]),

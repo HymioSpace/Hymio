@@ -57,7 +57,12 @@ def invoke(invocation, operation):
                 "Media processing failed after dispatch. Query or report the blocker; do not loop."
             ),
         }
-        raise ToolExecutionError(messages.get(code, "Media operation failed: " + code)) from error
+        detail = messages.get(code, "Media operation failed: " + code)
+        if code == "model_unavailable" and isinstance(failure, dict):
+            reason = failure.get("reason")
+            if isinstance(reason, str) and reason.replace("_", "").isalnum():
+                detail += " Reason: " + reason[:80] + ". Do not retry automatically."
+        raise ToolExecutionError(detail) from error
     except (URLError, TimeoutError) as error:
         raise ToolExecutionError(
             "Media backend did not answer. The operation may still be pending; do not "

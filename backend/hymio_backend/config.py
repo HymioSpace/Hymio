@@ -37,6 +37,12 @@ class Settings:
     model_options: tuple[str, ...] = ("MiniMax-M2.7", "MiniMax-M3")
     model_context_windows: dict[str, int] = field(default_factory=dict)
     vision_model: str = "MiniMax-M3"
+    native_image_models: tuple[str, ...] = (
+        "MiniMax-M3",
+        "deepseek-flash",
+        "Qwen/Qwen3.8-27B",
+        "Qwen/Qwen3-VL-32B-Instruct",
+    )
     media_api_base: str = "https://api.minimax.cn/v1"
     media_credential: str = ""
     vault_url: str = "http://127.0.0.1:8200"

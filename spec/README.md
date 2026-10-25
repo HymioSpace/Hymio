@@ -43,6 +43,8 @@
 
 ## 设计与实现
 
+Native image input: [feature36](feature36-native-images.md).
+
 先写方案，再实现。文档从总览展开机制、边界和失败恢复；不把开发流水、命令输出或测试数量写成设计。状态使用 Draft → Accepted → Implementing → Implemented，只对实际交付的范围标记完成。
 
 修改已有功能更新原 feature，跨模块调整同步 overview。共享规则在本目录维护；本地 `AGENTS.md` 被忽略，不 force-add。

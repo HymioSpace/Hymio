@@ -1,12 +1,20 @@
 import base64
+import logging
 import re
+import time
+from contextvars import ContextVar
 from urllib.parse import quote
 
 import httpx
 
+_log = logging.getLogger(__name__)
+operation_context = ContextVar("media_operation_context", default={})
+
 
 class ModelUnavailable(Exception):
-    pass
+    def __init__(self, message, *, code="media_unavailable"):
+        super().__init__(message)
+        self.code = code
 
 
 class MiniMaxMedia:
@@ -42,8 +50,13 @@ class MiniMaxMedia:
             return response.json()["data"]["data"]["value"]
 
     def call(self, path, payload):
+        started = time.monotonic()
+        credential_ms = None
+        stage = "credential"
         try:
             key = self.key()
+            credential_ms = round((time.monotonic() - started) * 1000, 3)
+            stage = "provider"
             with httpx.Client(timeout=110, trust_env=False, follow_redirects=False) as client:
                 response = client.post(
                     self.settings.media_api_base.rstrip("/") + path,
@@ -52,15 +65,41 @@ class MiniMaxMedia:
                 )
                 response.raise_for_status()
                 result = response.json()
+            if not isinstance(result, dict) or not isinstance(result.get("base_resp", {}), dict):
+                raise ModelUnavailable("Invalid media provider response", code="invalid_response")
             if result.get("base_resp", {}).get("status_code", 0) != 0:
                 raise ModelUnavailable(
-                    "Provider rejected the request; check model access or balance"
+                    "Provider rejected the request; check model access or balance",
+                    code="provider_rejected",
                 )
             return result
         except ModelUnavailable:
             raise
+        except httpx.HTTPStatusError as error:
+            raise ModelUnavailable(
+                "Media " + stage + " returned HTTP " + str(error.response.status_code),
+                code=stage + "_http_" + str(error.response.status_code),
+            ) from error
+        except httpx.TimeoutException as error:
+            raise ModelUnavailable(
+                "Media " + stage + " timed out", code=stage + "_timeout"
+            ) from error
         except (httpx.HTTPError, OSError, ValueError, KeyError) as error:
-            raise ModelUnavailable("Media model unavailable; do not automatically retry") from error
+            raise ModelUnavailable(
+                "Media model unavailable; do not automatically retry",
+                code=stage + "_transport_or_response",
+            ) from error
+        finally:
+            _log.info(
+                "Media provider call finished",
+                extra={
+                    **operation_context.get(),
+                    "media_operation": path,
+                    "media_model": payload.get("model"),
+                    "credential_ms": credential_ms,
+                    "duration_ms": round((time.monotonic() - started) * 1000, 3),
+                },
+            )
 
     @staticmethod
     def image(row):
@@ -76,14 +115,42 @@ class MiniMaxMedia:
                 "messages": [{"role": "user", "content": content}],
                 "max_tokens": 4096,
                 "stream": False,
+                **(
+                    {"thinking": {"type": "disabled"}}
+                    if self.settings.vision_model == "MiniMax-M3"
+                    else {}
+                ),
             },
         )
-        content = response["choices"][0]["message"]["content"]
+        try:
+            choice = response["choices"][0]
+            content = choice["message"]["content"]
+        except (KeyError, IndexError, TypeError) as error:
+            raise ModelUnavailable(
+                "Provider returned malformed analysis", code="invalid_analysis_response"
+            ) from error
+        _log.info(
+            "Media analysis response",
+            extra={
+                **operation_context.get(),
+                "media_model": self.settings.vision_model,
+                "finish_reason": choice.get("finish_reason"),
+                "completion_tokens": (response.get("usage") or {}).get("completion_tokens"),
+            },
+        )
+        if choice.get("finish_reason") == "length":
+            raise ModelUnavailable(
+                "Image analysis exceeded the output budget; no complete result was returned",
+                code="analysis_output_limit",
+            )
         if not isinstance(content, str):
-            raise ModelUnavailable("Provider returned no textual analysis")
+            raise ModelUnavailable("Provider returned no textual analysis", code="empty_analysis")
         analysis = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
         if not analysis:
-            raise ModelUnavailable("Provider returned empty analysis; do not retry automatically")
+            raise ModelUnavailable(
+                "Provider returned empty analysis; do not retry automatically",
+                code="empty_analysis",
+            )
         return analysis
 
     def transcribe(self, row):

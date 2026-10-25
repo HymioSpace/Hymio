@@ -39,7 +39,13 @@ def call(invocation, operation, capability=None):
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            return ToolResult(json.loads(response.read(1024 * 1024)))
+            value = json.loads(response.read(1024 * 1024))
+            result = value.get("result") if isinstance(value, dict) else None
+            screenshot = result.get("screenshot") if isinstance(result, dict) else None
+            media_id = screenshot.get("media_id") if isinstance(screenshot, dict) else None
+            if isinstance(media_id, str) and media_id:
+                value["image_refs"] = [media_id]
+            return ToolResult(value)
     except HTTPError as error:
         try:
             failure = json.loads(error.read(65536))
