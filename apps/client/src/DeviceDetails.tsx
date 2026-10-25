@@ -53,13 +53,15 @@ export function DeviceDetails({
       <h4>{device.name}</h4>
       <code>{device.device_id}</code>
       <p className="dialog-note">
-        {device.state === 'preparing'
-          ? '正在自动准备云电脑，无需手动绑定。'
-          : device.replaces_device_id
-            ? '原环境已失效，系统已自动更换为空环境。旧文件未恢复，聊天记录保留。'
-            : device.state === 'missing'
-              ? '原沙箱已不存在，无法继续运行。系统会自动绑定新环境；原沙箱文件无法恢复，聊天记录仍保留。'
-              : '到期自动暂停，继续时回到原来的工作。'}
+        {device.provider === 'link'
+          ? '个人设备由本机 HymioDevice 控制。暂停会阻止新操作，解除绑定会保留本机数据；已开始的操作不能撤销。'
+          : device.state === 'preparing'
+            ? '正在自动准备云电脑，无需手动绑定。'
+            : device.replaces_device_id
+              ? '原环境已失效，系统已自动更换为空环境。旧文件未恢复，聊天记录保留。'
+              : device.state === 'missing'
+                ? '原沙箱已不存在，无法继续运行。系统会自动绑定新环境；原沙箱文件无法恢复，聊天记录仍保留。'
+                : '到期自动暂停，继续时回到原来的工作。'}
       </p>
       <div className="device-actions">
         <button
@@ -73,7 +75,7 @@ export function DeviceDetails({
           {device.state === 'missing'
             ? '重试连接'
             : device.state === 'online'
-              ? device.provider === 'device_api'
+              ? ['device_api', 'link'].includes(device.provider)
                 ? '暂停自动操作'
                 : '暂停电脑'
               : device.state === 'recovery_required'
@@ -122,6 +124,27 @@ export function DeviceDetails({
             </span>
           </summary>
           <pre>{JSON.stringify(record, null, 2)}</pre>
+          {device.provider === 'link' && record.status === 'outcome_unknown' && (
+            <button
+              className="text-button"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    '请先在目标设备上确认操作已停止，并检查实际结果。继续后保留未知记录，但允许新的操作；不会重试原命令。',
+                  )
+                )
+                  return;
+                void deviceRequest(login, `/link/${device.device_id}/resolve`, {
+                  invocation_id: record.invocation_id,
+                  acknowledge_unknown: true,
+                })
+                  .then(() => setError('已解除执行锁，原操作仍记录为结果未知。'))
+                  .catch(() => setError('暂时无法解除执行锁，请确认操作已结束。'));
+              }}
+            >
+              我已在设备上核对，允许新操作
+            </button>
+          )}
         </details>
       ))}
       {error && (

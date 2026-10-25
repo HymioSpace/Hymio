@@ -1,5 +1,7 @@
 # Hymio 设计
 
+- [Personal device Link](feature35-personal-device-link.md)：个人 Mac 的出站连接、配对与原生操作。
+
 [整体架构](overview.md) 是入口，每个 feature 使用递增的 `featureNN-short-name.md`。
 
 | 编号 | 方案 | 状态 |

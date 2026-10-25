@@ -1,5 +1,8 @@
 # Hymio 整体架构
 
+个人 Mac 的反向连接与本机操作由独立 HymioDevice 代理提供，接入现有设备工具；
+设计与边界见 [Personal device Link](feature35-personal-device-link.md)。
+
 Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后端、连接器、Kit、Oath 扩展与部署。Oath 负责 Agent 执行；Nostalgia 负责 personal context 的实体、存储和检索，两者独立维护。
 
 当前提供 React/TypeScript/Vite + Tauri 2 客户端 MVP，直接接入已部署 Oath。产品后端已提供 OIDC 登录、应用凭证与 Oath 验证器，见 [feature08](feature08-login-auth.md)；Nostalgia 已接入原始写入、Agent 查询、内部周期 dreaming 与稳定 context assembly，见 [feature30](feature30-context-foundation.md)。本机组合启动见 [feature09](feature09-local-start.md)，单机云部署见 [feature11](feature11-cloud-deployment.md)，本机可执行命令见 [feature12](feature12-command-line.md)。详见 [feature07](feature07-client-mvp.md)。

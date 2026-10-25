@@ -4,6 +4,7 @@ import type { LoginState } from './useLogin';
 import { deviceImage, deviceRequest, type Device } from './deviceApi';
 import { DeviceDetails } from './DeviceDetails';
 import { DesktopSnapshot } from './DesktopSnapshot';
+import { LinkPairing } from './LinkPairing';
 
 export function DeviceManager({ login }: { login: LoginState }) {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -127,6 +128,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
         <h3>我的设备</h3>
         <span>一个 Hymio，随处继续</span>
       </div>
+      <LinkPairing login={login} />
       {loading && (
         <div className="device-loading" role="status">
           <LoaderCircle size={18} className="spin" />
@@ -141,7 +143,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
       {devices.map((device) => (
         <div className="device-row" key={device.device_id}>
           <span className="device-symbol">
-            {device.kind === 'ios' ? (
+            {['ios', 'personal_android'].includes(device.kind) ? (
               <Smartphone size={20} />
             ) : device.kind === 'web' ? (
               <Globe size={20} />
@@ -163,7 +165,37 @@ export function DeviceManager({ login }: { login: LoginState }) {
                   recovery_required: '需要恢复',
                 } as Record<string, string>
               )[device.state] || device.state}{' '}
-              · {device.capabilities.length ? '终端 · 浏览器 · 桌面' : '对话与消息同步'}
+              ·{' '}
+              {device.provider === 'link'
+                ? device.capabilities
+                    .map(
+                      (capability) =>
+                        (
+                          ({
+                            bash: '终端',
+                            computer: device.kind === 'personal_android' ? '手机操作' : '桌面',
+                          }) as Record<string, string>
+                        )[capability] || capability,
+                    )
+                    .join(' · ') ||
+                  (device.kind === 'personal_android' &&
+                  (device.permissions?.unlocked === false ||
+                    device.permissions?.screen_awake === false)
+                    ? '请在手机唤醒并解锁'
+                    : device.permissions?.screen_recording === false
+                      ? device.kind === 'personal_android'
+                        ? '请在手机开启屏幕共享'
+                        : '请在 Mac 允许屏幕录制'
+                      : device.permissions?.accessibility === false
+                        ? device.kind === 'personal_android'
+                          ? '请在手机开启无障碍服务'
+                          : '请在 Mac 允许辅助功能'
+                        : device.kind === 'personal_android'
+                          ? '等待手机权限上报'
+                          : '等待权限上报；Shell 默认关闭')
+                : device.capabilities.length
+                  ? '终端 · 浏览器 · 桌面'
+                  : '对话与消息同步'}
             </small>
           </div>
           {device.kind === 'cloud_desktop' && device.state === 'paused' && (
@@ -189,7 +221,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
               查看
             </button>
           )}
-          {device.capabilities.length > 0 && (
+          {(device.capabilities.length > 0 || device.provider === 'link') && (
             <button
               className="text-button"
               onClick={() => setExpanded(expanded === device.device_id ? '' : device.device_id)}
@@ -197,7 +229,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
               管理
             </button>
           )}
-          {!device.capabilities.length && (
+          {!device.capabilities.length && device.provider !== 'link' && (
             <button
               className="text-button"
               disabled={busy}

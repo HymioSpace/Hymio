@@ -20,9 +20,10 @@ from .validation import validate
 
 
 class DeviceService:
-    def __init__(self, settings, sessions):
+    def __init__(self, settings, sessions, link=None):
         self.settings = settings
         self.store = DeviceStore(sessions)
+        self.link = link
         self.resources = self.store.resources
         self.providers = {}
         import os
@@ -63,6 +64,8 @@ class DeviceService:
         return provider.state(device)
 
     def describe(self, device):
+        if device["provider"] == "link" and self.link:
+            return self.link.describe(device)
         channel = device["provider"] == "channel"
         configured = self.providers.get(device["provider"])
         profile = (
@@ -311,6 +314,14 @@ class DeviceService:
             raise ValueError("invalid_timeout")
         request = {"capability": capability, "arguments": arguments}
         selected = self.store.get(user_id, device_id)
+        if (
+            capability == "computer"
+            and arguments.get("action") == "swipe"
+            and (selected["provider"] != "link" or selected["kind"] != "personal_android")
+        ):
+            raise ValueError("device_action_not_supported")
+        if selected["provider"] == "link" and self.link:
+            return self.link.execute(user_id, data)
         if selected["provider"] == "channel":
             raise ValueError("device_is_not_controllable")
         self.resources.require(user_id, selected["provider"])
@@ -422,6 +433,10 @@ class DeviceService:
 
     def control(self, user_id, device_id, action, *, administrator=False):
         device = self.store.get(user_id, device_id)
+        if device["provider"] == "link" and self.link:
+            if action not in ("pause", "resume"):
+                raise ValueError("invalid_control")
+            return self.link.control(user_id, device_id, action)
         if device["provider"] == "channel" or not device["provider_ref"]:
             raise ValueError("not_a_provisioned_computer")
         if action not in ("pause", "resume"):
@@ -456,7 +471,10 @@ class DeviceService:
             ).fetchone()
             if row is None:
                 raise KeyError("device_not_found")
-            device = dict(row)
+            selected = dict(row)
+        if selected["provider"] == "link" and self.link:
+            return self.link.control(user_id, device_id, "revoke")
+        device = selected
         if not device["revoked_at"] and device["provider"] != "channel" and device["provider_ref"]:
             try:
                 physical = self.physical(device)

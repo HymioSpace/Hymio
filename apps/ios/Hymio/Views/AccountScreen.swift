@@ -101,7 +101,10 @@ struct AccountScreen: View {
             HStack(alignment: .top, spacing: 12) {
               Image(
                 systemName: device["kind"].text == "cloud_desktop"
-                  ? "desktopcomputer" : device["kind"].text == "ios" ? "iphone" : "globe"
+                  ? "desktopcomputer"
+                  : device["kind"].text == "personal_mac"
+                    ? "desktopcomputer"
+                    : ["ios", "personal_android"].contains(device["kind"].text) ? "iphone" : "globe"
               ).frame(width: 24).foregroundStyle(.secondary)
               VStack(alignment: .leading, spacing: 5) {
                 Text(
@@ -111,6 +114,10 @@ struct AccountScreen: View {
                 Text(deviceStatus(device)).font(.caption).foregroundStyle(.secondary)
                 if device["kind"].text == "cloud_desktop" {
                   Text("终端 · 浏览器 · 桌面").font(.caption2).foregroundStyle(.tertiary)
+                } else if device["kind"].text == "personal_android" {
+                  Text("HymioDevice · 手机操作").font(.caption2).foregroundStyle(.tertiary)
+                } else if device["kind"].text == "personal_mac" {
+                  Text("HymioDevice · 本机操作").font(.caption2).foregroundStyle(.tertiary)
                 }
               }
               Spacer()

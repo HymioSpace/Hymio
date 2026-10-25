@@ -20,6 +20,7 @@ from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
 from .context.routes import context_routes
 from .devices.admin import admin_routes
+from .devices.link import DeviceLink, link_routes
 from .devices.routes import device_routes
 from .devices.service import DeviceService
 from .kits.routes import kit_routes
@@ -275,6 +276,8 @@ def build_app(settings, *, provider=None):
 
     media = MediaStore(store)
     channel_devices = DeviceService(settings, store)
+    device_link = DeviceLink(channel_devices.store)
+    channel_devices.link = device_link
 
     async def agent_socket(websocket):
         await relay_agent(websocket, settings, store, channel_devices, media)
@@ -291,7 +294,8 @@ def build_app(settings, *, provider=None):
             media,
             device_media=channel_devices.store.read_media_record,
         )
-        + device_routes(settings, store, bearer, body)
+        + link_routes(settings, store, bearer, body, device_link)
+        + device_routes(settings, store, bearer, body, link=device_link)
         + admin_routes(settings, store, bearer, body)
         + monitoring_routes(settings, store, upstream, bearer, body)
         + reaction_routes(settings, bearer, body)

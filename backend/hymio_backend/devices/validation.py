@@ -1,7 +1,7 @@
 FIELDS = {
     "bash": {"command", "cwd"},
     "browser": {"action", "url", "selector", "text", "key", "page_id"},
-    "computer": {"action", "x", "y", "text", "key", "amount"},
+    "computer": {"action", "x", "y", "x2", "y2", "duration_ms", "text", "key", "amount"},
 }
 REQUIRED = {
     "browser": {
@@ -25,6 +25,7 @@ REQUIRED = {
         "type": ("text",),
         "key": ("key",),
         "scroll": (),
+        "swipe": ("x", "y", "x2", "y2"),
     },
 }
 
@@ -42,9 +43,11 @@ def validate(capability, args):
     if any(field not in args for field in required):
         raise ValueError("missing_argument")
     for field, value in args.items():
-        if field in ("x", "y", "amount"):
-            upper = {"x": 1279, "y": 799, "amount": 20}[field]
-            lower = -20 if field == "amount" else 0
+        if field in ("x", "y", "x2", "y2", "duration_ms", "amount"):
+            upper = {"x": 1279, "y": 799, "x2": 1279, "y2": 799, "duration_ms": 2000, "amount": 20}[
+                field
+            ]
+            lower = -20 if field == "amount" else 100 if field == "duration_ms" else 0
             if (
                 type(value) is not int
                 or not lower <= value <= upper

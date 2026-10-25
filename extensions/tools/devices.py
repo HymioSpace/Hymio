@@ -9,7 +9,8 @@ class DevicesTool(Tool):
     def definition(self):
         return ToolDefinition(
             "devices",
-            "Ensure this user's cloud computer is available, then list bound devices and capabilities. "
+            "List owned personal and cloud devices with capabilities. "
+            "Ensure an approved cloud computer is available when configured. "
             "Automatically creates a missing computer and resumes a paused one. "
             "Read binding notices: a replaced computer is empty; do not assume old files exist. "
             "Call before choosing an explicit execution device.",
@@ -26,7 +27,7 @@ class DeviceBashTool(Tool):
         return ToolDefinition(
             "bash",
             "Run Bash on an explicit owned device. Never run on the Oath host "
-            "or silently switch devices. Returns device_id, stdout, stderr and duration.",
+            "or silently switch devices. Returns device_id and bounded command output.",
             schema(
                 {
                     "device_id": DEVICE,
@@ -110,7 +111,8 @@ class ComputerTool(Tool):
     def definition(self):
         return ToolDefinition(
             "computer",
-            "Control the target desktop: screenshot, click(x,y), type(text), key(X11 key), "
+            "Control the target desktop: screenshot, click(x,y), type(text), key(shortcut), "
+            "Use cmd+l/cmd+c on macOS, Ctrl+l/Ctrl+c on Linux. "
             "scroll(amount positive down). "
             "Screenshots return authenticated media references. "
             "Never guess screen coordinates without seeing a screenshot.",
@@ -119,10 +121,13 @@ class ComputerTool(Tool):
                     "device_id": DEVICE,
                     "action": {
                         "type": "string",
-                        "enum": ["screenshot", "click", "type", "key", "scroll"],
+                        "enum": ["screenshot", "click", "type", "key", "scroll", "swipe"],
                     },
                     "x": {"type": "integer", "minimum": 0, "maximum": 1279},
                     "y": {"type": "integer", "minimum": 0, "maximum": 799},
+                    "x2": {"type": "integer", "minimum": 0, "maximum": 1279},
+                    "y2": {"type": "integer", "minimum": 0, "maximum": 799},
+                    "duration_ms": {"type": "integer", "minimum": 100, "maximum": 2000},
                     "amount": {"type": "integer", "minimum": -20, "maximum": 20},
                     "text": TEXT,
                     "key": TEXT,
