@@ -8,6 +8,7 @@ export function LinkPairing({ login }: { login: LoginState }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [addressCopied, setAddressCopied] = useState(false);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!pairing) return;
@@ -21,6 +22,7 @@ export function LinkPairing({ login }: { login: LoginState }) {
     setBusy(true);
     setError('');
     setCopied(false);
+    setAddressCopied(false);
     try {
       setPairing(await deviceRequest(login, '/link/pairings', {}));
       setNow(Date.now());
@@ -51,7 +53,8 @@ export function LinkPairing({ login }: { login: LoginState }) {
     <div className="link-pairing">
       {!pairing ? (
         <button className="text-button" disabled={busy} onClick={() => void create()}>
-          {busy ? <LoaderCircle size={15} className="spin" /> : <Link2 size={15} />} 连接我的设备
+          {busy ? <LoaderCircle size={15} className="spin" /> : <Link2 size={15} />}
+          连接 Mac 或 Android
         </button>
       ) : (
         <section className="link-pairing-card" aria-label="连接个人设备">
@@ -66,7 +69,20 @@ export function LinkPairing({ login }: { login: LoginState }) {
             </button>
           </header>
           <p>在设备上打开 HymioDevice，填写当前服务地址并输入配对码。仅连接你信任的设备。</p>
-          <code>{login.session?.backend}</code>
+          <div className="link-pairing-address">
+            <code>{login.session?.backend}</code>
+            <button
+              className="text-button"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(login.session?.backend || '')
+                  .then(() => setAddressCopied(true))
+                  .catch(() => setError('复制失败，请手动填写服务地址。'));
+              }}
+            >
+              <Copy size={14} /> {addressCopied ? '已复制' : '复制地址'}
+            </button>
+          </div>
           {sameMacAddress && (
             <p>
               若 Backend 就在运行 HymioDevice 的这台 Mac 上，请填写 <code>{sameMacAddress}</code>。

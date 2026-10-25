@@ -13,7 +13,7 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 ## Personal devices
 
 The companion **HymioDevice** repository provides outbound macOS and Android device agents.
-Pair from Web's device settings to expose native desktop control and locally opted-in Bash on
+Pair from Web or iOS account settings to expose native desktop control and locally opted-in Bash on
 Mac, or screenshots, taps, swipes and text input on Android 10+. Home networks need no inbound
 ports or SSH access. See [personal-device design](spec/feature35-personal-device-link.md).
 OS permissions and Android screen-sharing consent remain explicit; Android exposes no Bash.

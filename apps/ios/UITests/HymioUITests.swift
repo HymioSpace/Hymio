@@ -170,6 +170,7 @@ final class HymioUITests: XCTestCase {
     account.name = "Hymio-iOS-account"
     account.lifetime = .keepAlways
     add(account)
+    XCTAssertTrue(app.buttons["device.connect"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["account.logout"].waitForExistence(timeout: 10))
     app.buttons["连接诊断"].tap()
     XCTAssertTrue(app.navigationBars["连接诊断"].waitForExistence(timeout: 5))

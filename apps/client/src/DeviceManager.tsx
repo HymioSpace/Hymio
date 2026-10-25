@@ -262,7 +262,10 @@ export function DeviceManager({ login }: { login: LoginState }) {
       {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
         <p className="dialog-note">当前没有云电脑。需要使用时，请联系管理员开通；对话不受影响。</p>
       )}
-      <p className="dialog-note">云电脑可执行命令、浏览网页和操作桌面。手机仅用于对话。</p>
+      <p className="dialog-note">
+        云电脑可执行命令、浏览网页和操作桌面。Mac 和 Android 经 HymioDevice 接入；iPhone
+        聊天端本身不提供远程控制。
+      </p>
       {screen && (
         <div className="device-preview">
           <button
