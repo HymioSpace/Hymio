@@ -5,6 +5,22 @@ description: Choose an explicit device for Bash, browser and desktop actions.
 
 There is one personal agent and one conversation. Clients are channels, not execution targets.
 Call `devices` before executing. Use the exact device_id and required capability from its response.
+
+Personal Android phones use provider `link`, kind `personal_android`, and the `computer`
+capability. Read `android-phone` for phone operations. A chat-only iOS/Android channel is
+not a controllable phone. Respect the target's supported_actions; swipe is Android-only.
+
+Personal Macs use provider `link` and kind `personal_mac`. They are user-owned computers,
+not cloud sandboxes: preserve local files, foreground apps and user activity. Use a personal
+Mac only when the user requests that target. Do not silently move a task between devices.
+HymioDevice supports native `computer` actions; it does not expose DOM `browser` automation.
+Shell is available only when enabled on that Mac. Missing local permissions require the user
+to grant them; do not try to bypass macOS consent or repair the device in a loop.
+An online device with no capabilities is awaiting local enablement, not a reason to probe it.
+Never call an absent capability, including Bash as a connection test. Report the permission
+guidance and wait for the user; refresh devices after permissions change.
+After outcome_unknown, query the original invocation or await reconciliation; never repeat
+effects under a new invocation. Manual lock resolution belongs to the human operator.
 An iPhone or Web client does not imply control of that phone or browser.
 Keep the same target for a task. Refresh devices if unavailable; inspect binding notices before using a new target.
 A replacement is empty, so do not assume files or applications from the deleted computer survived.
@@ -30,7 +46,8 @@ Never claim a screenshot was seen until multimodal analysis or an image-capable 
 Cloud computers are bound automatically only for users granted access by an administrator.
 If resource_access_denied or capacity exhaustion is returned, explain it and stop; do not retry
 creation or repair account permissions. Do not ask authorized users to manually create a computer. If binding says preparing, wait then call devices again. Provider
-outages are not grounds to destroy an existing environment. Mac native control is not implemented.
+outages are not grounds to destroy an existing environment. For personal Mac application
+workflows, read the `macos-apps` skill and its relevant application recipe.
 
 For a web-page screenshot, use browser(action="screenshot", page_id="...") with the selected
 page_id from tabs or navigation. It captures that page even if another desktop window is in front.

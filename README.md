@@ -10,6 +10,14 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 <p align="center"><img src="apps/client/assets/welcome.png" alt="Hymio client: a single conversation, an animated line companion and a focused message composer." width="960" /></p>
 
+## Personal devices
+
+The companion **HymioDevice** repository provides outbound macOS and Android device agents.
+Pair from Web's device settings to expose native desktop control and locally opted-in Bash on
+Mac, or screenshots, taps, swipes and text input on Android 10+. Home networks need no inbound
+ports or SSH access. See [personal-device design](spec/feature35-personal-device-link.md).
+OS permissions and Android screen-sharing consent remain explicit; Android exposes no Bash.
+
 ## iOS preview
 
 Start with Now for task progress, continue the shared conversation, or open Tasks, Memory and real

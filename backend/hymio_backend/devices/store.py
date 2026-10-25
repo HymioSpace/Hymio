@@ -373,12 +373,12 @@ class DeviceStore:
             )
         return device, None
 
-    def finish(self, user_id, invocation_id, result, *, release=True):
+    def finish(self, user_id, invocation_id, result, *, release=True, recover=False):
         with self.transaction() as db:
             updated = db.execute(
                 "UPDATE device_commands SET status=?,result=? WHERE user_id=? AND invocation_id=? "
-                "AND status='running'",
-                (result["status"], json.dumps(result), user_id, invocation_id),
+                "AND (status='running' OR (? AND status='outcome_unknown'))",
+                (result["status"], json.dumps(result), user_id, invocation_id, recover),
             )
             if not updated.rowcount:
                 known = db.execute(

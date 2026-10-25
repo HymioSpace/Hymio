@@ -3362,3 +3362,53 @@ a {
     animation: none;
   }
 }
+
+.link-pairing {
+  margin: 12px 0 18px;
+}
+.link-pairing > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.link-pairing-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--subtle);
+}
+.link-pairing-card header,
+.link-pairing-card footer,
+.link-pairing-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.link-pairing-card strong {
+  font-size: 14px;
+}
+.link-pairing-card p,
+.link-pairing-card footer {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.link-pairing-card > code {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.link-pairing-code {
+  margin: 12px 0 8px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.link-pairing-code code {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  user-select: all;
+  overflow-wrap: anywhere;
+}

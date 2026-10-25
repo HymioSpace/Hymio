@@ -13,8 +13,8 @@ from .store import DeviceConflict
 _log = logging.getLogger(__name__)
 
 
-def device_routes(settings, sessions, bearer, body):
-    service = DeviceService(settings, sessions)
+def device_routes(settings, sessions, bearer, body, *, link=None):
+    service = DeviceService(settings, sessions, link=link)
     store = service.store
     preparing = {}
 
@@ -148,11 +148,12 @@ def device_routes(settings, sessions, bearer, body):
                     "binding": binding,
                     "guidance": (
                         "Use an online device with the required capability. "
-                        "Web, iOS and Mac bindings currently provide conversation only; "
-                        "binding them does not enable native control."
+                        "Conversation channels provide no native control. Personal devices "
+                        "require HymioDevice and local OS permissions."
                         if any(device["capabilities"] for device in described)
                         else "Cloud computer may be preparing. Report binding state and wait. "
-                        "Web, iOS and Mac are conversation channels, not execution targets."
+                        "Conversation channels are not execution targets. Connect HymioDevice "
+                        "for personal-device control."
                     ),
                 }
             )
