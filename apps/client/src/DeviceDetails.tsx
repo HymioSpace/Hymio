@@ -48,13 +48,35 @@ export function DeviceDetails({
       clearInterval(timer);
     };
   }, [device.device_id, login.session?.access_token]);
+  const isLink = device.provider === 'link';
+  const paused = device.state === 'paused';
+  const actionPath =
+    device.state === 'missing'
+      ? null
+      : isLink
+        ? `/${device.device_id}/${paused ? 'resume' : 'pause'}`
+        : `/${device.device_id}/${device.state === 'online' ? 'pause' : 'resume'}`;
+  const actionLabel =
+    device.state === 'missing'
+      ? '重试连接'
+      : isLink
+        ? paused
+          ? '恢复连接'
+          : '暂停连接'
+        : device.state === 'online'
+          ? device.provider === 'device_api'
+            ? '暂停自动操作'
+            : '暂停电脑'
+          : device.state === 'recovery_required'
+            ? '核对并继续'
+            : '继续运行';
   return (
     <section className="device-details" aria-label="设备详情">
       <h4>{device.name}</h4>
       <code>{device.device_id}</code>
       <p className="dialog-note">
         {device.provider === 'link'
-          ? '个人设备由本机 HymioDevice 控制。暂停会阻止新操作，解除绑定会保留本机数据；已开始的操作不能撤销。'
+          ? '个人设备由本机 HymioDevice 控制。暂停会阻止新操作，解除连接会保留本机数据；已开始的操作不能撤销。'
           : device.state === 'preparing'
             ? '正在自动准备云电脑，无需手动绑定。'
             : device.replaces_device_id
@@ -66,21 +88,9 @@ export function DeviceDetails({
       <div className="device-actions">
         <button
           disabled={busy || ['changing', 'preparing'].includes(device.state)}
-          onClick={() =>
-            device.state === 'missing'
-              ? onEnsure()
-              : onAction(`/${device.device_id}/${device.state === 'online' ? 'pause' : 'resume'}`)
-          }
+          onClick={() => (actionPath ? onAction(actionPath) : onEnsure())}
         >
-          {device.state === 'missing'
-            ? '重试连接'
-            : device.state === 'online'
-              ? ['device_api', 'link'].includes(device.provider)
-                ? '暂停自动操作'
-                : '暂停电脑'
-              : device.state === 'recovery_required'
-                ? '核对并继续'
-                : '继续运行'}
+          {actionLabel}
         </button>
         <button
           disabled={busy}
@@ -90,14 +100,14 @@ export function DeviceDetails({
                 device.state === 'missing'
                   ? '移除失效设备记录？历史执行记录仍会保留。'
                   : device.preserves_files_on_revoke
-                    ? '解除绑定？服务器和文件会保留。'
+                    ? '解除连接？HymioDevice 的本机文件和操作历史会保留，已开始的远程操作不能撤销。'
                     : '解除会销毁云电脑及文件，确认已备份？',
               )
             )
               onAction(`/${device.device_id}/revoke`);
           }}
         >
-          {device.state === 'missing' ? '移除失效设备' : '解除绑定'}
+          {device.state === 'missing' ? '移除失效设备' : '解除连接'}
         </button>
       </div>
       <h4>最近执行</h4>

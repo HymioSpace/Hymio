@@ -22,6 +22,7 @@ flowchart LR
 `POST /devices/link/pairings` 使用用户凭证，返回五分钟有效的随机配对码。
 `POST /devices/link/claim` 消费该码，创建 `personal_mac` / `link` 设备和独立设备凭证。
 每个账号至多绑定一台 personal Mac；与 Mac 对话客户端的 channel 绑定分开。
+Web 和 iOS 账号页都可生成配对码、暂停/恢复连接并解除绑定；配对码不进入消息历史。
 凭证保存在 macOS Keychain，Backend 只保存摘要，九十天到期后重新配对。
 用户可暂停、继续或解除绑定。解除不关机、不删除本机文件，立即阻止后续调度。
 暂停/撤销不声称能回滚已开始的点击或命令。本机菜单可断开代理，Shell 默认关闭。
@@ -64,5 +65,6 @@ MediaProjection 负责用户确认后的屏幕共享，AccessibilityService 负�
 
 ## 跨仓库影响
 
-Hymio 新增 Link API、个人设备执行路径、Web 配对入口和设备工具指引；HymioDevice
-实现 v1 协议、Keychain、设备执行与本地 journal。Oath 工具接口不变。
+Hymio 新增 Link API、个人设备执行路径、Web/iOS 配对与生命周期入口和设备工具指引；
+HymioDevice 实现 v1 协议、Keychain、设备执行与本地 journal。Mac App 可以清除本地
+配对并切换服务，但服务端绑定仍需在 Hymio 中解除。Oath 工具接口不变。

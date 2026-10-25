@@ -1,4 +1,6 @@
+import Foundation
 import SwiftUI
+import UIKit
 
 struct AccountScreen: View {
   @ObservedObject var account: AccountService
@@ -13,6 +15,9 @@ struct AccountScreen: View {
   @State private var contextWindows: [Int] = []
   @State private var modelBusy = false
   @State private var modelError = ""
+  @State private var pairingPresented = false
+  @State private var revokeTarget: JSON?
+  @State private var revokePresented = false
   private var modelSection: some View {
     Section {
       Picker(selection: Binding(get: { selectedModel }, set: { saveModel($0) })) {
@@ -97,6 +102,12 @@ struct AccountScreen: View {
         }
         modelSection
         Section {
+          Button {
+            pairingPresented = true
+          } label: {
+            Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
+          }
+          .accessibilityIdentifier("device.connect")
           ForEach(client.devices, id: \.self) { device in
             HStack(alignment: .top, spacing: 12) {
               Image(
@@ -133,6 +144,34 @@ struct AccountScreen: View {
                   .accessibilityIdentifier("device.resume")
                 }
               }
+              if device["provider"].text == "link" {
+                if client.deviceActionID == device["device_id"].text {
+                  ProgressView().controlSize(.small)
+                } else {
+                  Menu {
+                    Button(
+                      device["state"].text == "paused" ? "继续连接" : "暂停连接"
+                    ) {
+                      Task {
+                        await client.controlDevice(
+                          device["device_id"].text,
+                          action: device["state"].text == "paused" ? "resume" : "pause")
+                      }
+                    }
+                    Button("解除连接", role: .destructive) {
+                      revokeTarget = device
+                      revokePresented = true
+                    }
+                  } label: {
+                    Image(systemName: "ellipsis.circle")
+                      .frame(width: 30, height: 30)
+                      .contentShape(Rectangle())
+                  }
+                  .menuStyle(.borderlessButton)
+                  .disabled(client.devicesLoading || !client.deviceActionID.isEmpty)
+                  .accessibilityLabel("管理 \(device["name"].text)")
+                }
+              }
               if device["online"].flag {
                 Circle().fill(Brand.blue).frame(width: 5, height: 5).padding(.top, 7)
               }
@@ -150,7 +189,7 @@ struct AccountScreen: View {
         } header: {
           Text("我的设备")
         } footer: {
-          Text("iPhone 用于对话、记忆和应用。云电脑负责执行命令、浏览网页和操作桌面。")
+          Text("Mac 和 Android 经 HymioDevice 接入。iPhone 用于对话、记忆和应用。")
         }
         Section {
           NavigationLink {
@@ -188,6 +227,26 @@ struct AccountScreen: View {
         }
       }
       .refreshable { await client.loadDevices() }
+      .sheet(isPresented: $pairingPresented) {
+        LinkPairingSheet(account: account) {
+          await client.loadDevices()
+        }
+      }
+      .confirmationDialog(
+        "解除这台设备？",
+        isPresented: $revokePresented,
+        titleVisibility: .visible
+      ) {
+        Button("解除连接", role: .destructive) {
+          guard let device = revokeTarget else { return }
+          let id = device["device_id"].text
+          revokeTarget = nil
+          Task { await client.controlDevice(id, action: "revoke") }
+        }
+        Button("取消", role: .cancel) { revokeTarget = nil }
+      } message: {
+        Text("会立即停止新的远程操作。已开始的点击或命令不能撤销；HymioDevice 的本机文件和操作历史会保留。")
+      }
       .confirmationDialog(
         "退出后会清除本机缓存，云端探索仍会继续。", isPresented: $loggingOut, titleVisibility: .visible
       ) {
@@ -226,5 +285,118 @@ struct AccountScreen: View {
     case "offline": return "暂时无法连接"
     default: return "暂不可用"
     }
+  }
+}
+
+private struct LinkPairingSheet: View {
+  @ObservedObject var account: AccountService
+  let refreshDevices: () async -> Void
+  @Environment(\.dismiss) private var dismiss
+  @State private var code = ""
+  @State private var expiresAt = 0.0
+  @State private var now = Date()
+  @State private var busy = false
+  @State private var copied = false
+  @State private var addressCopied = false
+  @State private var error = ""
+  private var remaining: Int { max(0, Int(ceil(expiresAt - now.timeIntervalSince1970))) }
+  private var backend: String {
+    account.backend.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+  }
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          Text("在 Mac 或 Android 上打开 HymioDevice，填写下面的服务地址和一次性配对码。")
+            .font(.callout)
+          VStack(alignment: .leading, spacing: 5) {
+            Text("服务地址").font(.subheadline)
+            Text(backend)
+              .font(.caption.monospaced())
+              .foregroundStyle(.secondary)
+              .textSelection(.enabled)
+          }
+          Button {
+            UIPasteboard.general.string = backend
+            addressCopied = true
+          } label: {
+            Label(
+              addressCopied ? "服务地址已复制" : "复制服务地址",
+              systemImage: addressCopied ? "checkmark" : "doc.on.doc")
+          }
+          if busy && code.isEmpty {
+            HStack {
+              ProgressView()
+              Text("正在生成配对码…").foregroundStyle(.secondary)
+            }
+          } else if !code.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+              Text(code)
+                .font(.system(.title2, design: .monospaced, weight: .semibold))
+                .textSelection(.enabled)
+                .accessibilityLabel("配对码 \(code)")
+              Text(remaining > 0 ? "\(remaining / 60):\(String(format: "%02d", remaining % 60)) 后失效" : "配对码已过期")
+                .font(.caption)
+                .foregroundStyle(remaining > 0 ? Color.secondary : Color.orange)
+            }
+            Button {
+              UIPasteboard.general.string = code
+              copied = true
+            } label: {
+              Label(copied ? "已复制" : "复制配对码", systemImage: copied ? "checkmark" : "doc.on.doc")
+            }
+          }
+          if !error.isEmpty {
+            Text(error).font(.footnote).foregroundStyle(.red)
+          }
+        } footer: {
+          Text("配对码五分钟内有效且只能使用一次。连接后仍需在设备上授予屏幕或辅助功能权限。")
+        }
+        Section {
+          Button("重新生成配对码") { Task { await create() } }
+            .disabled(busy)
+          Button("刷新设备列表") {
+            Task {
+              await refreshDevices()
+              dismiss()
+            }
+          }
+        }
+      }
+      .navigationTitle("连接个人设备")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("完成") { dismiss() }
+        }
+      }
+      .task {
+        await create()
+        while !Task.isCancelled {
+          now = Date()
+          do { try await Task.sleep(for: .seconds(1)) } catch { return }
+        }
+      }
+    }
+  }
+  private func create() async {
+    guard !busy else { return }
+    busy = true
+    error = ""
+    copied = false
+    addressCopied = false
+    do {
+      let value = try await account.request("devices/link/pairings", body: .object([:]))
+      guard value["code"].text.count == 20, value["expires_at"].double > 0 else {
+        throw ServiceError.message("服务返回了无效的配对码")
+      }
+      code = value["code"].text
+      expiresAt = value["expires_at"].double
+      now = Date()
+    } catch {
+      code = ""
+      self.error = error.localizedDescription
+    }
+    busy = false
   }
 }

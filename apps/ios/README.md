@@ -8,7 +8,8 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
 - Streaming Markdown replies (headings, emphasis, lists, task lists, quotes, tables, links and fenced code with copy), compact tool details and independent approval cards.
 - Authenticated screenshots, image expansion, older-history pagination.
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
-- Foreground reconnect, offline progress, account/device view and connection diagnostics.
+- Foreground reconnect, offline progress, account/device management and connection diagnostics.
+- Pair personal Mac/Android devices from Account, then pause, resume or revoke them there.
 - A five-tab product shell with account settings behind a leading Companion avatar.
 - Installed or generated React applications with bounded Python operations and an
   account-scoped `HymioKit.call` bridge.

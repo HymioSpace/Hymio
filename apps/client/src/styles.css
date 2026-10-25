@@ -3383,6 +3383,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 .link-pairing-card strong {
@@ -3396,6 +3397,20 @@ a {
 }
 .link-pairing-card > code {
   display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.link-pairing-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+.link-pairing-address code {
+  min-width: 0;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
