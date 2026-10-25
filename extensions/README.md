@@ -16,9 +16,12 @@ oath start \
 ```
 
 This mounts extension directories. Use the unified Hymio launcher for the full product: it prepares
-the private Backend connection, disables host Bash and registers `remember`, `recall`, `devices`, device-aware `bash`,
-`browser`, `computer` and the read-only `device_command`. Running the command above against default Oath config would conflict with
-the built-in Bash; set `agent.builtin_bash = false`. See the [device guide](../deploy/computer/README.md).
+the private Backend connection, disables host Bash and registers `remember`, `recall`, `devices`,
+device-aware `bash`, `browser`, `computer`, the read-only `device_command`, the unified
+`kit_call` proxy and `kit_build` for generated applications. Running the command above against
+default Oath config would conflict
+with the built-in Bash; set `agent.builtin_bash = false`. See the
+[device guide](../deploy/computer/README.md).
 
 Extension code is a deployment dependency. CLI handlers can call Hymio business APIs; keep authorization and business invariants in those APIs, and avoid copying backend implementations into tools. Private capabilities use ignored `extensions-local/` directories or external repositories and must be passed explicitly; they are not auto-discovered.
 
@@ -40,3 +43,18 @@ It selectively retains useful context, not whole conversation streams. Both are 
 in one record with `hymio.remember.v2` provenance; published understanding is still a later step.
 The runtime does not provide a verified message index to this tool, so no model-supplied index
 is accepted. Legacy records remain readable; new text-only tool calls must supply the summary.
+
+The Agent always uses one `kit_call` proxy. Available Kit operations and their argument signatures
+are injected into the system prompt, while the proxy schema stays generic, so there is no
+`kit_call(action=list)`
+step. Execution still checks whether the current user installed the requested application. The
+same Kit operation API serves iOS and Agent calls. Web does not expose Kits or request their data.
+
+`kit_call`, `kit_build` and the `kit-builder` skill are scoped to the `ios` channel through Oath's
+generic channel-exposure mechanism. `kit_build` delegates source work to one long-lived coding
+context per application; the main Agent supplies product requirements rather than code.
+
+The subagent-only `kit_dev` tool reads, patches, checks and publishes the bound React/Python
+project. `kit-coding` explains that workflow inside the delegated context. Oath filters
+`kit_dev` from main-Agent definitions and server-side admission, not only from prompt text.
+Web and Mac receive no application tools, skill entries, instructions or context.

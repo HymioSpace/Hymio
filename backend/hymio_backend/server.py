@@ -22,6 +22,8 @@ from .context.routes import context_routes
 from .devices.admin import admin_routes
 from .devices.routes import device_routes
 from .devices.service import DeviceService
+from .kits.routes import kit_routes
+from .kits.service import KitsService
 from .media.routes import media_routes
 from .media.store import MediaStore
 from .monitoring import monitoring_routes, record_client_turn
@@ -69,6 +71,7 @@ def build_app(settings, *, provider=None):
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
+    kits = KitsService(settings, upstream)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -277,8 +280,9 @@ def build_app(settings, *, provider=None):
         await relay_agent(websocket, settings, store, channel_devices, media)
 
     routes = (
-        context_routes(settings, store, bearer, body)
+        context_routes(settings, store, bearer, body, kits)
         + task_routes(settings, store, tasks, bearer, body)
+        + kit_routes(settings, store, kits, bearer, body)
         + media_routes(
             settings,
             store,

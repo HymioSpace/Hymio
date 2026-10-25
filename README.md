@@ -12,9 +12,14 @@ Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). I
 
 ## iOS preview
 
-Start with Now for task progress, continue the shared conversation, or open Tasks and Account. iOS uses five native tabs; Web uses a labelled sidebar and a wider task inspector.
+Start with Now for task progress, continue the shared conversation, or open Tasks, Memory and real
+applications. iOS uses five native tabs; account settings live behind the leading three-line menu.
+Web uses a labelled sidebar and a wider task inspector and does not expose Kits. iOS applications
+may be generated as versioned React + bounded Python projects with a dedicated Oath coding context.
 
-The native SwiftUI client lives in [apps/ios](apps/ios/README.md). It supports the same account and continuous conversation as Web/Desktop, streaming replies, tool approvals, screenshots and foreground reconnection.
+The native SwiftUI client lives in [apps/ios](apps/ios/README.md). It supports the same account and
+continuous conversation as Web/Desktop, streaming replies, tool approvals, screenshots, foreground
+reconnection and self-contained HTML applications in WKWebView.
 
 ```sh
 hymio start --client web
@@ -48,7 +53,8 @@ without replaying commands, and browser tools support explicit tabs and navigati
 | [packages](packages/README.md) | Shared UI, A2UI rendering, protocols and client communication |
 | [backend](backend/README.md) | Accounts, authorization, connectors, context ingress and product APIs |
 | [extensions](extensions/README.md) | Hymio-specific Oath skills, tools and CLI commands |
-| [kits](kits/README.md) | Applications that expose operations to agents and experiences to users |
+| [kits](kits/README.md) | Application API contract and trusted built-in packages |
+| [services/kit-host](services/kit-host/README.md) | React/Python build, source revisions, installation, data and APIs |
 | [deploy](deploy/README.md) | Product deployment and dependency composition |
 | [spec](spec/README.md) | Architecture and feature designs |
 

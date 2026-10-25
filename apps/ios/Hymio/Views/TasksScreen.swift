@@ -34,6 +34,7 @@ func taskSchedule(_ value: JSON) -> String {
 struct TasksScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var board: TaskBoard
+  let onAccount: () -> Void
   @State private var filter = 0
   @State private var creating = false
   private let groups: [(String, [String])] = [
@@ -108,6 +109,9 @@ struct TasksScreen: View {
         maxWidth: .infinity)
     }.background(Brand.surface).navigationTitle("任务").navigationBarTitleDisplayMode(.inline)
       .toolbar {
+        ToolbarItemGroup(placement: .topBarLeading) {
+          AccountButton(account: account, action: onAccount)
+        }.accountUnframed()
         ToolbarItem(placement: .topBarTrailing) {
           Button("安排一件事", systemImage: "plus") { creating = true }
         }

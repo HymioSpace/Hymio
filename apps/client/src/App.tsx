@@ -2,7 +2,7 @@ import { CompactionStatus } from './CompactionStatus';
 import { MomentsPanel } from './MomentsPanel';
 import { HomePanel } from './HomePanel';
 import { enqueueTelemetry, flushTelemetry } from './telemetry';
-import { Home, MessageCircle, UserRound } from 'lucide-react';
+import { Home, Menu, MessageCircle } from 'lucide-react';
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
@@ -551,10 +551,24 @@ export default function App() {
   return (
     <div className={`app ${debug ? 'trace-page-open' : ''} ${desktop ? 'desktop' : ''}`}>
       <nav className="rail product-rail" aria-label="主导航">
-        <button className="product-brand" onClick={() => navigate('home')} aria-label="Hymio 首页">
-          <Companion compact />
-          <b>hymio</b>
-        </button>
+        <div className="rail-head">
+          <button
+            className="product-brand"
+            onClick={() => navigate('home')}
+            aria-label="Hymio 首页"
+          >
+            <Companion compact />
+            <b>hymio</b>
+          </button>
+          <button
+            className="account-mark rail-account"
+            onClick={() => setSettings(true)}
+            aria-label="打开菜单"
+            title="打开菜单"
+          >
+            <Menu size={20} strokeWidth={1.8} />
+          </button>
+        </div>
         <div className="rail-primary">
           <button
             className={`rail-button ${page === 'home' && !debug ? 'active' : ''}`}
@@ -584,13 +598,6 @@ export default function App() {
             <Flag size={19} />
             <span>任务</span>
           </button>
-          <button
-            className={`rail-button ${settings ? 'active' : ''}`}
-            onClick={() => setSettings(true)}
-          >
-            <UserRound size={19} />
-            <span>我的</span>
-          </button>
         </div>
         <div className="rail-bottom">
           <small>
@@ -609,6 +616,7 @@ export default function App() {
           conversationReady={connected}
           onChat={() => navigate('chat')}
           onTask={openTask}
+          onAccount={() => setSettings(true)}
         />
       )}
       {memoryVisited && (
@@ -625,7 +633,7 @@ export default function App() {
             <button
               className={`connection-pill ${connected ? 'online' : ''}`}
               onClick={() => setSettings(true)}
-              aria-label="我的账号与连接状态"
+              aria-label="账号与连接状态"
             >
               {(busy || streaming || awaitingReply) && <Companion compact mood={mood} />}
               <StatusBadge tone={connected ? 'active' : 'neutral'}>{status}</StatusBadge>

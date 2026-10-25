@@ -63,6 +63,29 @@ export interface Trace {
   duration_ms: number | null;
   spans: Span[];
 }
+export interface KitCatalogItem {
+  id: string;
+  version: string;
+  name: string;
+  tagline: string;
+  description: string;
+  category: string;
+  icon: string;
+  accent: 'blue' | 'amber' | 'green' | 'rose' | 'violet';
+  installed: boolean;
+  managed: boolean;
+  preview?: { label: string; value: string; detail: string; latest: string };
+}
+export interface KitApp {
+  kit_id: string;
+  html: string;
+  bridge: 'hymio.kit.bridge/v1';
+}
+export interface KitInvocation {
+  kit_id: string;
+  operation: string;
+  result: Record<string, unknown>;
+}
 export const obj = (v: unknown): Data =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Data) : {};
 export const str = (v: unknown): string => (typeof v === 'string' ? v : '');

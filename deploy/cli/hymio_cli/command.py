@@ -293,7 +293,7 @@ def main():
                     return
                 if args.command == "stop":
                     print(
-                        "Managed Backend/client stopped. Oath, Casdoor and E2B remain running."
+                        "Managed Backend/Kit Host/client stopped. Oath, Casdoor and E2B remain running."
                     )
                     return
             installation = read(home / "installation.json")

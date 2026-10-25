@@ -3,6 +3,7 @@ import SwiftUI
 struct AccountScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
+  @Environment(\.dismiss) private var dismiss
   @State private var loggingOut = false
   @State private var diagnostics = false
   @State private var modelOptions: [String] = []
@@ -142,7 +143,7 @@ struct AccountScreen: View {
         } header: {
           Text("我的设备")
         } footer: {
-          Text("iPhone 只用于对话。云电脑负责执行命令、浏览网页和操作桌面。")
+          Text("iPhone 用于对话、记忆和应用。云电脑负责执行命令、浏览网页和操作桌面。")
         }
         Section {
           NavigationLink {
@@ -162,7 +163,17 @@ struct AccountScreen: View {
           }.accessibilityIdentifier("account.logout")
         }
       }
-      .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
+      .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button {
+            dismiss()
+          } label: {
+            Image(systemName: "xmark")
+          }
+          .accessibilityLabel("关闭账号设置")
+        }
+      }
       .task {
         while !Task.isCancelled {
           await client.loadDevices()

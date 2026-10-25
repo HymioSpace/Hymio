@@ -163,7 +163,12 @@ class BootstrapTests(unittest.TestCase):
                 patch.object(
                     launcher.subprocess,
                     "run",
-                    return_value=SimpleNamespace(stdout="--system-prompt --name"),
+                    return_value=SimpleNamespace(
+                        stdout=(
+                            "--system-prompt --name --context-provider "
+                            "--context-provider-token-file"
+                        )
+                    ),
                 ),
                 patch.object(launcher.subprocess, "Popen", return_value=child) as popen,
                 patch.object(launcher, "run") as run,

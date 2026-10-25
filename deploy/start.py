@@ -37,7 +37,7 @@ def wait_http(url, child=None, timeout=90):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if child is not None and child.poll() is not None:
-            raise RuntimeError("Backend exited before becoming ready")
+            raise RuntimeError("Service exited before becoming ready")
         try:
             with urlopen(url, timeout=2) as response:
                 if response.status == 200:
@@ -147,9 +147,13 @@ def main():
             check=True,
             timeout=10,
         ).stdout
-        if "--system-prompt" not in help_text:
+        if (
+            "--system-prompt" not in help_text
+            or "--context-provider" not in help_text
+            or "--context-provider-token-file" not in help_text
+        ):
             raise RuntimeError(
-                "Update Oath: this launcher requires --system-prompt support"
+                "Update Oath: this launcher requires system prompt and context provider support"
             )
         unified = args.config
         default_input = Path.home() / ".hymio/config.toml"
@@ -305,6 +309,7 @@ def main():
         free_port(8080)
         if args.client != "none":
             free_port(1420)
+        free_port(8090)
         run(["docker", "info"], cwd=ROOT)
         if managed:
             owned = subprocess.run(
@@ -377,6 +382,37 @@ def main():
             from bootstrap_identity import verify
 
             verify(config["issuer"], credentials)
+        database = Path(config["database"]).expanduser()
+        if not database.is_absolute():
+            database = config_path.parent / database
+        kit_database = database.with_name("kits.sqlite3")
+        service_token = (
+            config_path.parent / Path(config["service_token_file"]).expanduser()
+        ).resolve()
+        kit_host = subprocess.Popen(
+            [
+                "uv",
+                "run",
+                "--frozen",
+                *extras,
+                "python",
+                "-m",
+                "kit_host",
+            ],
+            cwd=ROOT / "backend",
+            env={
+                **os.environ,
+                "PYTHONPATH": str(ROOT / "services/kit-host"),
+                "KIT_HOST_DATABASE": str(kit_database),
+                "KIT_HOST_MANIFESTS_DIR": str(ROOT / "kits"),
+                "KIT_HOST_HOST": "127.0.0.1",
+                "KIT_HOST_PORT": "8090",
+                "KIT_HOST_TOKEN_FILE": str(service_token),
+            },
+            start_new_session=True,
+        )
+        children.append(kit_host)
+        wait_http("http://127.0.0.1:8090/health", kit_host)
         backend = subprocess.Popen(
             [
                 "uv",
@@ -416,6 +452,12 @@ def main():
                 (
                     config_path.parent / Path(config["service_token_file"]).expanduser()
                 ).resolve(),
+                "--context-provider",
+                "http://host.docker.internal:8080/internal/agent/context",
+                "--context-provider-token-file",
+                (
+                    config_path.parent / Path(config["service_token_file"]).expanduser()
+                ).resolve(),
                 "--tool",
                 tools_dir,
                 "--skill",
@@ -448,7 +490,7 @@ def main():
                 flush=True,
             )
         print(
-            "Ctrl+C stops Backend/client. Docker services remain running.", flush=True
+            "Ctrl+C stops Backend/Kit Host/client. Docker services remain running.", flush=True
         )
         if args.ready_file and args.instance:
             temporary = args.ready_file.with_suffix(".tmp")

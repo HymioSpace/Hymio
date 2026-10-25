@@ -75,12 +75,56 @@ struct ConnectionStatus: View {
   }
 }
 
+struct AccountButton: View {
+  @ObservedObject var account: AccountService
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Companion(size: 31, mood: .greeting)
+        .padding(5)
+        .background(Brand.softBlue, in: Circle())
+        .overlay(Circle().stroke(Brand.blue.opacity(0.14), lineWidth: 1))
+        .frame(width: 44, height: 44)
+    }
+    .buttonStyle(AccountAvatarStyle())
+    .contentShape(Circle())
+    .accessibilityLabel("账号与设置")
+    .accessibilityHint("打开个人资料、设备和偏好设置")
+  }
+}
+
+private struct AccountAvatarStyle: ButtonStyle {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .scaleEffect(configuration.isPressed && !reduceMotion ? 0.94 : 1)
+      .opacity(configuration.isPressed ? 0.8 : 1)
+      .animation(
+        reduceMotion ? nil : .easeOut(duration: 0.14),
+        value: configuration.isPressed)
+  }
+}
+
+extension ToolbarContent {
+  @ToolbarContentBuilder func accountUnframed() -> some ToolbarContent {
+    if #available(iOS 26.0, *) {
+      self.sharedBackgroundVisibility(.hidden)
+    } else {
+      self
+    }
+  }
+}
+
 struct ToolOutcomeLabel: View {
   let outcome: String
   private var label: String {
-    ["running": "执行中", "succeeded": "已完成", "failed": "失败", "denied": "已拒绝",
-     "awaiting_approval": "等待授权", "expired": "授权已过期", "timeout": "超时",
-     "timed_out": "超时", "outcome_unknown": "结果待确认"][outcome] ?? outcome
+    [
+      "running": "执行中", "succeeded": "已完成", "failed": "失败", "denied": "已拒绝",
+      "awaiting_approval": "等待授权", "expired": "授权已过期", "timeout": "超时",
+      "timed_out": "超时", "outcome_unknown": "结果待确认",
+    ][outcome] ?? outcome
   }
   var body: some View { Text(label).font(.caption).foregroundStyle(Brand.muted) }
 }

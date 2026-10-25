@@ -10,6 +10,7 @@ import {
   Sparkle,
   CircleDot,
   CalendarDays,
+  Menu,
   Sunrise,
 } from 'lucide-react';
 import { Companion, type Mood } from '@hymio/ui';
@@ -57,6 +58,7 @@ export function HomePanel({
   mood,
   hasConversation,
   conversationReady,
+  onAccount,
 }: {
   login: LoginState;
   onChat: () => void;
@@ -64,6 +66,7 @@ export function HomePanel({
   mood: Mood;
   hasConversation: boolean;
   conversationReady: boolean;
+  onAccount: () => void;
 }) {
   const [tasks, setTasks] = useState<Work[]>([]),
     [loaded, setLoaded] = useState(false),
@@ -190,13 +193,18 @@ export function HomePanel({
     <main className="product-home">
       <header className="home-heading">
         <div>
-          <span className="home-date">
-            {new Date().toLocaleDateString(undefined, {
-              month: 'long',
-              day: 'numeric',
-              weekday: 'long',
-            })}
-          </span>
+          <div className="home-kicker">
+            <button className="account-mark home-account" onClick={onAccount} aria-label="打开菜单">
+              <Menu size={20} strokeWidth={1.8} />
+            </button>
+            <span className="home-date">
+              {new Date().toLocaleDateString(undefined, {
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long',
+              })}
+            </span>
+          </div>
           <h1>{firstVisit ? '嗨，我是 Hymio。' : '今天，继续向前。'}</h1>
           <p>{firstVisit ? '从一个想法，或一件小事开始。' : '进展、安排和重要的事，都在这里。'}</p>
         </div>

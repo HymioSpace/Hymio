@@ -21,9 +21,10 @@ from hymio_backend.session_store import SessionStore
 class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
     async def test_large_status_does_not_disconnect_and_heartbeats_continue(self):
         payload = "x" * (9 * 1024 * 1024)
+        forwarded = []
 
         async def agent(ws):
-            await ws.recv()
+            forwarded.append(json.loads(await ws.recv()))
             await ws.send(payload)
             async for message in ws:
                 if message == "close-too-large":
@@ -67,11 +68,13 @@ class AgentGatewayTests(unittest.IsolatedAsyncioTestCase):
                                     "credential": "synthetic",
                                     "user_id": "alice",
                                     "client_id": "synthetic-web",
+                                    "channel_kind": "ios",
                                 },
                             }
                         )
                     )
                     self.assertEqual(len(await asyncio.wait_for(client.recv(), 10)), len(payload))
+                    self.assertEqual(forwarded[0]["payload"]["channel_kind"], "ios")
                     for i in range(3):
                         await client.send(f"heartbeat-{i}")
                         self.assertEqual(await asyncio.wait_for(client.recv(), 5), f"heartbeat-{i}")
