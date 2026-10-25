@@ -25,6 +25,7 @@ struct ChatScreen: View {
   @FocusState private var typing: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
+  @State private var followTask: Task<Void, Never>?
   var body: some View {
     NavigationStack {
       ScrollViewReader { proxy in
@@ -112,15 +113,18 @@ struct ChatScreen: View {
           atBottom = near
         }
         .onScrollPhaseChange { _, phase in
-          if phase == .interacting { following = false }
+          if phase == .interacting {
+            following = false
+            followTask?.cancel()
+            followTask = nil
+          }
           if phase == .idle && atBottom { following = true }
         }
         .onScrollGeometryChange(for: CGFloat.self) {
           $0.contentSize.height
         } action: { before, after in
-          if after > before && following && !client.loadingHistory && positioned {
-            proxy.scrollTo("bottom", anchor: .bottom)
-            atBottom = true
+          if after > before + 0.5 && following && !client.loadingHistory && positioned {
+            scheduleFollow(proxy)
           }
         }
         .onChange(of: client.model.messages.count) { _, _ in
@@ -267,8 +271,25 @@ struct ChatScreen: View {
       )
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
       .sensoryFeedback(.selection, trigger: sentCount)
+      .onDisappear {
+        followTask?.cancel()
+        followTask = nil
+      }
     }
   }
+
+  private func scheduleFollow(_ proxy: ScrollViewProxy) {
+    guard followTask == nil else { return }
+    followTask = Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(24))
+      guard !Task.isCancelled else { return }
+      followTask = nil
+      guard following, !client.loadingHistory else { return }
+      proxy.scrollTo("bottom", anchor: .bottom)
+      atBottom = true
+    }
+  }
+
   private var composer: some View {
     VStack(spacing: 8) {
       CompactionNotice(events: client.state.events)
