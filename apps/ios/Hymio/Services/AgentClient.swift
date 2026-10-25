@@ -16,6 +16,7 @@ import UIKit
   private var cache: ConversationCache?
   private var loop: Task<Void, Never>?
   private var persistence: Task<Void, Never>?
+  private var persistenceDirty = false
   private var socket: URLSessionWebSocketTask?
   private var replayAfter: Int?
   private var sent: Set<String> = []
@@ -47,6 +48,7 @@ import UIKit
   func suspend() {
     persistence?.cancel()
     persistence = nil
+    persistenceDirty = false
     if let cache {
       saveAtSuspension(state, cache: cache)
     }
@@ -299,7 +301,9 @@ import UIKit
       ready = true
       phase = "随时在这里"
       error = ""
-      try cache?.save(state)
+      if let cache {
+        try await persist(state, cache: cache)
+      }
       try await ack(ws)
       try await flush(ws)
       Task { await register() }
@@ -319,16 +323,30 @@ import UIKit
     }
   }
   private func schedulePersistence(_ ws: URLSessionWebSocketTask) {
-    guard persistence == nil else { return }
+    guard persistence == nil else {
+      persistenceDirty = true
+      return
+    }
     let token = generation
+    persistenceDirty = false
     persistence = Task { [weak self] in
       do {
-        try await Task.sleep(for: .milliseconds(150))
-        guard let self, token == self.generation, self.socket === ws else { return }
-        self.persistence = nil
-        guard let cache = self.cache else { return }
-        try cache.save(self.state)
-        try await self.ack(ws)
+        while !Task.isCancelled {
+          try await Task.sleep(for: .milliseconds(150))
+          guard let self, token == self.generation, self.socket === ws else { return }
+          guard let cache = self.cache else {
+            self.persistence = nil
+            return
+          }
+          let snapshot = self.state
+          self.persistenceDirty = false
+          try await self.persist(snapshot, cache: cache)
+          try await self.ack(ws, cursor: snapshot.cursor)
+          if !self.persistenceDirty {
+            self.persistence = nil
+            return
+          }
+        }
       } catch is CancellationError { return } catch {
         guard let self, token == self.generation else { return }
         self.persistence = nil
@@ -336,6 +354,11 @@ import UIKit
         ws.cancel(with: .goingAway, reason: nil)
       }
     }
+  }
+  private func persist(_ snapshot: ConversationState, cache: ConversationCache) async throws {
+    try await Task.detached(priority: .utility) {
+      try cache.save(snapshot)
+    }.value
   }
   var unread: (turnID: String, count: Int)? {
     guard let after = state.unreadAfter, let through = state.unreadThrough else { return nil }
@@ -384,9 +407,11 @@ import UIKit
       }
     } catch { self.error = error.localizedDescription }
   }
-  private func ack(_ ws: URLSessionWebSocketTask) async throws {
+  private func ack(_ ws: URLSessionWebSocketTask, cursor: Int? = nil) async throws {
     try await send(
-      Command(type: "event.ack", payload: .object(["cursor": .number(Double(state.cursor))])),
+      Command(
+        type: "event.ack",
+        payload: .object(["cursor": .number(Double(cursor ?? state.cursor))])),
       socket: ws)
   }
   private func flush(_ ws: URLSessionWebSocketTask) async throws {
@@ -433,7 +458,7 @@ import UIKit
     guard token == generation else { throw CancellationError() }
     do {
       guard let cache else { throw ServiceError.message("消息存储未准备好") }
-      try cache.save(state)
+      try await persist(state, cache: cache)
     } catch {
       state.pending.removeAll { $0.id == command.id }
       model = Conversation(

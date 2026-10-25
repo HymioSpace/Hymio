@@ -57,17 +57,25 @@ private final class ProsePresenter: ObservableObject {
   func receive(_ source: String, immediate: Bool) {
     buffer.set(source, now: ProcessInfo.processInfo.systemUptime, immediate: immediate)
     publish()
-    startTicker()
+    if immediate {
+      task?.cancel()
+      task = nil
+    } else {
+      startTicker()
+    }
   }
   private func startTicker() {
-    guard task == nil else { return }
+    guard task == nil, buffer.pending else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        let delay = self?.buffer.pending == true ? 32 : 160
-        do { try await Task.sleep(for: .milliseconds(delay)) } catch { return }
+        do { try await Task.sleep(for: .milliseconds(32)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
+        if !self.buffer.pending {
+          self.task = nil
+          return
+        }
       }
     }
   }
