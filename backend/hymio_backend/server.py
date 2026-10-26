@@ -18,6 +18,8 @@ from starlette.routing import Route, WebSocketRoute
 from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .connectors.routes import connector_routes
+from .connectors.service import ConnectorService
 from .context.routes import context_routes
 from .devices.admin import admin_routes
 from .devices.link import DeviceLink, link_routes
@@ -69,6 +71,7 @@ def text(data, key):
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
     tasks = TaskService(settings, TaskStore(store))
+    connectors = ConnectorService(settings, store)
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
@@ -81,10 +84,14 @@ def build_app(settings, *, provider=None):
         log_capture = LogCapture(store.event_log)
         _log.info("Hymio backend started")
         scheduler = asyncio.create_task(tasks.run())
+        connector_worker = asyncio.create_task(connectors.run())
         indexer = asyncio.create_task(run_indexer(settings, store, upstream))
         try:
             yield
         finally:
+            connector_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await connector_worker
             scheduler.cancel()
             indexer.cancel()
             with suppress(asyncio.CancelledError):
@@ -283,7 +290,8 @@ def build_app(settings, *, provider=None):
         await relay_agent(websocket, settings, store, channel_devices, media)
 
     routes = (
-        context_routes(settings, store, bearer, body, kits)
+        connector_routes(settings, store, connectors, bearer, body)
+        + context_routes(settings, store, bearer, body, kits)
         + task_routes(settings, store, tasks, bearer, body)
         + kit_routes(settings, store, kits, bearer, body)
         + media_routes(

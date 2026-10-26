@@ -53,11 +53,14 @@ class Settings:
     vault_role_id_file: Path | None = None
     vault_secret_id_file: Path | None = None
     nostalgia_connections_file: Path | None = None
+    connectors_config_file: Path | None = None
 
     @classmethod
     def load(cls, path):
         path = Path(path).expanduser().resolve()
         data = tomllib.loads(path.read_text())
+        if os.environ.get("HYMIO_CONNECTORS_CONFIG_FILE"):
+            data["connectors_config_file"] = os.environ["HYMIO_CONNECTORS_CONFIG_FILE"]
         if os.environ.get("HYMIO_PROMETHEUS_URL"):
             data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
         if os.environ.get("HYMIO_KITS_URL"):
@@ -77,6 +80,7 @@ class Settings:
             "vault_secret_id_file",
             "daytona_key_file",
             "oath_admin_token_file",
+            "connectors_config_file",
         ):
             if data.get(key):
                 file = Path(data[key]).expanduser()

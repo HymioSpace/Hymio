@@ -69,3 +69,5 @@ Native image input: [feature36](feature36-native-images.md).
 - [Models and media](feature22-models-and-media.md): model preferences, private attachments, multimodal understanding and image creation.
 
 - [Tasks and delegation](feature23-tasks-and-delegation.md): conversational intentions, milestones, optional schedules, bounded experts and Web/iOS task panels.
+
+- [Connections](feature37-connectors.md): read-only cloud and device-source foundation.

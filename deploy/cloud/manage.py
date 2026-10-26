@@ -100,7 +100,7 @@ def generate(path):
             "  try_files {path} /index.html\n  file_server\n }\n"
             " @backend path /health /auth/* /agent/* /context/* /oath-biz/* "
             "/devices /devices/* "
-            "/tasks /kits /kits/* /attachments /attachments/* /settings/* /telemetry/*\n"
+            "/connectors /connectors/* /tasks /kits /kits/* /attachments /attachments/* /settings/* /telemetry/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )

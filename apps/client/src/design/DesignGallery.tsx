@@ -1,3 +1,4 @@
+import { ConnectionsPanel } from '../ConnectionsPanel';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Companion, IconButton, Sheet, StatusBadge, type Mood } from '@hymio/ui';
@@ -180,4 +181,20 @@ function Gallery() {
     </main>
   );
 }
-createRoot(document.getElementById('root')!).render(<Gallery />);
+createRoot(document.getElementById('root')!).render(
+  new URLSearchParams(location.search).has('connectors') ? (
+    <main
+      style={{
+        maxWidth: 1120,
+        margin: '40px auto',
+        padding: 32,
+        background: 'white',
+        borderRadius: 28,
+      }}
+    >
+      <ConnectionsPanel preview onBack={() => {}} />
+    </main>
+  ) : (
+    <Gallery />
+  ),
+);

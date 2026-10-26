@@ -36,6 +36,7 @@
 		BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31402 /* ProductShell.swift */; };
 		BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31404 /* KitsScreen.swift */; };
 		C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */; };
+		C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C037C0000000000000000002; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +82,7 @@
 		BDA902D5620B4EAE99A31402 /* ProductShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProductShell.swift; path = Views/ProductShell.swift; sourceTree = "<group>"; };
 		BDA902D5620B4EAE99A31404 /* KitsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KitsScreen.swift; path = Views/KitsScreen.swift; sourceTree = "<group>"; };
 		C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContextScreen.swift; path = Views/ContextScreen.swift; sourceTree = "<group>"; };
+		C037C0000000000000000002 /* ConnectorsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ConnectorsScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +157,7 @@
 				EA3D248CD2A928457B0A2209 /* AgentClient.swift */,
 				18D3FAA0D7647724918AD510 /* NetworkSession.swift */,
 				69CFA0574482053C3DD45B96 /* AccountScreen.swift */,
+				C037C0000000000000000002 /* ConnectorsScreen.swift */,
 				A08D683071705B687119808D /* ChatScreen.swift */,
                 B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
 				BDA902D5620B4EAE99A31402 /* ProductShell.swift */,
@@ -311,6 +314,7 @@
 				91D3F0F9152056EB18F0238F /* AgentClient.swift in Sources */,
 				03200C2275DCBB80B943D092 /* NetworkSession.swift in Sources */,
 				208550A64016FE008FF214B4 /* AccountScreen.swift in Sources */,
+				C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */,
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
                 B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
 				BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */,
@@ -360,6 +364,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = Hymio/Hymio.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Hymio/Simulator.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -460,6 +465,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = "";
 				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = Hymio/Hymio.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Hymio/Simulator.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

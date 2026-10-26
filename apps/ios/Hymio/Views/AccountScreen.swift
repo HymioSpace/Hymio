@@ -100,6 +100,11 @@ struct AccountScreen: View {
             }
           }.padding(.vertical, 6)
         }
+        Section {
+          NavigationLink { ConnectorsScreen(account: account) } label: {
+            Label("连接来源", systemImage: "link")
+          }.accessibilityIdentifier("account.connectors")
+        } footer: { Text("邮件、清单和来自 iPhone 的日常，由你选择分享。") }
         modelSection
         Section {
           Button {

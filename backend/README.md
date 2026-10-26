@@ -152,3 +152,7 @@ Both clients use `/context/search`, paged GET `/context/records`, exact
 `/context/records/{id}` / `/context/artifacts/{id}`, and POST `/context/saves` with `{text}`
 and `Idempotency-Key`. Saves are source-stamped by the backend. Deployment still requires the
 private per-user Nostalgia connection binding above.
+
+## Connections
+
+See [Connections](../docs/connectors.md) for private OAuth registration, encryption-key backup, worker recovery and API contracts. Missing OAuth registrations keep the services unavailable.
