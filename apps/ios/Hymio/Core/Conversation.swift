@@ -1,6 +1,6 @@
 import Foundation
 
-public struct ChatMessage: Identifiable {
+public struct ChatMessage: Identifiable, Equatable {
   public var id: String
   public var role: String
   public var content: String
@@ -18,7 +18,7 @@ public struct ChatMessage: Identifiable {
   public var delivery: String?
   public var reactions: [String: String] = [:]
 }
-public struct Approval: Identifiable {
+public struct Approval: Identifiable, Equatable {
   public var id: String
   public var tool: String
   public var arguments: JSON

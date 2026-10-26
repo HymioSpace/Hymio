@@ -3,7 +3,8 @@ import Foundation
 import UIKit
 
 @MainActor final class AgentClient: ObservableObject {
-  @Published private(set) var state = ConversationState()
+  // Durable receipt state advances immediately; only the presentation model publishes in batches.
+  private(set) var state = ConversationState()
   @Published private(set) var phase = "未连接"
   @Published var error = ""
   @Published var devices: [JSON] = []
@@ -12,7 +13,33 @@ import UIKit
   @Published private(set) var deviceActionID = ""
   private var devicesRequest = UUID()
   @Published var loadingHistory = false
-  @Published private(set) var model = Conversation(events: [])
+  @Published private(set) var model = Conversation(events: []) {
+    didSet {
+      turns = model.turns
+      presentationEvents.removeAll(keepingCapacity: true)
+      presentationTask?.cancel()
+      presentationTask = nil
+    }
+  }
+  private(set) var turns: [Turn] = []
+  private var presentationEvents: [Event] = []
+  private var presentationTask: Task<Void, Never>?
+
+  private func present(_ event: Event) {
+    presentationEvents.append(event)
+    guard presentationTask == nil else { return }
+    presentationTask = Task { [weak self] in
+      do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+      self?.flushPresentation()
+    }
+  }
+
+  private func flushPresentation() {
+    guard !presentationEvents.isEmpty else { return }
+    var next = model
+    for event in presentationEvents { next.apply(event) }
+    model = next
+  }
   private var cache: ConversationCache?
   private var loop: Task<Void, Never>?
   private var persistence: Task<Void, Never>?
@@ -46,6 +73,7 @@ import UIKit
     loop = Task { [weak self] in await self?.run(token) }
   }
   func suspend() {
+    flushPresentation()
     persistence?.cancel()
     persistence = nil
     persistenceDirty = false
@@ -277,7 +305,7 @@ import UIKit
         try next.append(event, user: user)
         if event.event_seq > previous {
           state = next
-          model.apply(event)
+          present(event)
           observeTelemetry(event)
         }
         schedulePersistence(ws)
@@ -367,7 +395,7 @@ import UIKit
         && $0.calls.isEmpty && !$0.streaming
     }
     guard let first = messages.first,
-      let turn = model.turns.first(where: {
+      let turn = turns.first(where: {
         $0.final?.id == first.id || $0.activity.contains(where: { $0.id == first.id })
           || $0.trailing.contains(where: { $0.id == first.id })
       })

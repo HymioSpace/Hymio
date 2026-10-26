@@ -1,43 +1,12 @@
 import SwiftUI
 
-@available(iOS 18.0, *)
-private struct StreamingFadeRenderer: TextRenderer {
-  var animatableData: Double = 0
-
-  func draw(layout: Text.Layout, in context: inout GraphicsContext) {
-    let total = layout.reduce(0) { count, line in
-      count + line.reduce(0) { $0 + $1.characterIndices.count }
-    }
-    var index = 0
-    for line in layout {
-      for run in line {
-        for slice in run {
-          let length = max(1, slice.characterIndices.count)
-          let distance = max(0, total - index - length)
-          let settled = min(1, Double(distance) / 18)
-          context.opacity = 0.04 + settled * 0.96
-          let lift = distance < 7 ? CGFloat(7 - distance) * 0.55 : 0
-          context.translateBy(x: 0, y: lift)
-          context.draw(slice)
-          context.translateBy(x: 0, y: -lift)
-          index += length
-        }
-      }
-    }
+private struct StableMarkdown: View, Equatable {
+  let content: String
+  let account: AccountService
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.content == rhs.content && lhs.account === rhs.account
   }
-}
-
-private struct StreamingInlineText: View {
-  let value: AttributedString
-  let animate: Bool
-
-  var body: some View {
-    if animate, #available(iOS 18.0, *) {
-      Text(value).textRenderer(StreamingFadeRenderer())
-    } else {
-      Text(value)
-    }
-  }
+  var body: some View { MessageContent(content: content, account: account) }
 }
 
 @MainActor
@@ -68,7 +37,7 @@ private final class ProsePresenter: ObservableObject {
     guard task == nil, buffer.pending else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .milliseconds(32)) } catch { return }
+        do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
@@ -107,24 +76,27 @@ struct BufferedProse: View {
       if plain {
         Text(frame.text).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
           .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-      } else if frame.pending || streaming {
+      } else {
         let parts = AgentSurface.stableMarkdown(frame.text)
         VStack(alignment: .leading, spacing: 8) {
-          if !parts.stable.isEmpty { MessageContent(content: parts.stable, account: account) }
+          if !parts.stable.isEmpty {
+            StableMarkdown(content: parts.stable, account: account).equatable()
+          }
           if !parts.tail.isEmpty {
-            StreamingInlineText(
-              value: (try? AttributedString(
-                markdown: parts.tail,
-                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                ?? AttributedString(parts.tail),
-              animate: !reduceMotion
-            )
-            .font(.body).lineSpacing(4).textSelection(.enabled).frame(
-              maxWidth: .infinity, alignment: .leading)
+            if frame.pending || streaming {
+              Text(
+                (try? AttributedString(
+                  markdown: parts.tail,
+                  options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                  ?? AttributedString(parts.tail)
+              )
+              .font(.body).lineSpacing(4).textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+              StableMarkdown(content: parts.tail, account: account).equatable()
+            }
           }
         }.frame(minHeight: 24, alignment: .topLeading)
-      } else {
-        MessageContent(content: frame.text, account: account)
       }
     }
     .contextMenu {
@@ -138,8 +110,8 @@ struct BufferedProse: View {
         .frame(width: 28, height: 22).allowsHitTesting(false).accessibilityHidden(true)
       }
     }
-    .task(id: source) {
-      presentation.receive(source, immediate: reduceMotion || (!streaming && frame.text == source))
+    .onChange(of: source, initial: true) { _, value in
+      presentation.receive(value, immediate: reduceMotion || (!streaming && frame.text == value))
     }
     .onDisappear { presentation.receive(source, immediate: true) }
     .onChange(of: scene) { _, phase in
@@ -347,3 +319,91 @@ struct AgentSurfaceView: View {
     }
   }
 }
+
+#if DEBUG
+  /// Deterministic local stream; no account, network or private conversation data.
+  struct StreamingPerformancePreview: View {
+    let account: AccountService
+    @State private var messages: [ChatMessage] = []
+    @State private var status = "Streaming synthetic Markdown"
+    private let answer =
+      String(repeating: "A small step, clearly explained. 中文和 🦦 stay intact. ", count: 10)
+      + "\n\n## Next steps\n\n- Keep the answer in place.\n- Preserve the final frame.\n\n```swift\nlet reply = \"Hello\"\n```\n\nDone."
+    var body: some View {
+      VStack {
+        Text(status).font(.caption).accessibilityIdentifier("stream.preview.status")
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(buildTurns(messages)) { turn in
+              TraceRow(turn: turn, tools: [:], account: account).equatable()
+            }
+          }.padding(18)
+        }.defaultScrollAnchor(.bottom)
+          .defaultScrollAnchor(.bottom, for: .sizeChanges)
+      }.background(Brand.surface)
+        .task {
+          let clock = StreamFrameProbe()
+          clock.start()
+          for index in 0..<12 {
+            messages.append(
+              ChatMessage(
+                id: "history-\(index)", role: "assistant",
+                content:
+                  "A completed reply with **stable Markdown**.\n\nNothing here should animate again.",
+                time: "2026-01-01T00:00:00Z"))
+          }
+          messages.append(
+            ChatMessage(
+              id: "question", role: "user", content: "Show me a streamed reply.",
+              time: "2026-01-01T00:00:01Z"))
+          var reply = ChatMessage(
+            id: "reply", role: "assistant", content: "", time: "2026-01-01T00:00:02Z")
+          reply.streaming = true
+          messages.append(reply)
+          let characters = Array(answer)
+          for count in stride(from: 8, through: characters.count + 7, by: 8) {
+            guard !Task.isCancelled else {
+              clock.stop()
+              return
+            }
+            messages[messages.count - 1].content = String(
+              characters.prefix(min(count, characters.count)))
+            try? await Task.sleep(for: .milliseconds(40))
+          }
+          messages[messages.count - 1].streaming = false
+          try? await Task.sleep(for: .seconds(8))
+          let result = clock.stop()
+          status = "Complete · \(result)"
+          let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("stream-preview-metrics.txt")
+          try? status.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+  }
+
+  @MainActor private final class StreamFrameProbe: NSObject {
+    private var link: CADisplayLink?
+    private var previous = 0.0
+    private var frames = 0
+    private var stalls = 0
+    private var maxGap = 0.0
+    func start() {
+      link = CADisplayLink(target: self, selector: #selector(frame(_:)))
+      link?.add(to: .main, forMode: .common)
+    }
+    @objc private func frame(_ sender: CADisplayLink) {
+      if previous > 0 {
+        let gap = sender.timestamp - previous
+        maxGap = max(maxGap, gap)
+        if gap > 0.05 { stalls += 1 }
+      }
+      previous = sender.timestamp
+      frames += 1
+    }
+    @discardableResult func stop() -> String {
+      link?.invalidate()
+      link = nil
+      return "\(frames) frames, \(stalls) gaps >50ms, max \(Int(maxGap * 1000))ms"
+    }
+  }
+#endif

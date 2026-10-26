@@ -75,9 +75,25 @@ final class TurnsTests: XCTestCase {
       original.streaming = true
       let live = buildTurns([original])[0]
       XCTAssertFalse(live.foldable)
-      XCTAssertEqual(live.activity[0].content, content)
-      XCTAssertEqual(live.activity[0].reasoning, "核对结果")
+      let visible = content.isEmpty ? live.activity.first : live.final
+      XCTAssertEqual(visible?.content, content)
+      XCTAssertEqual(visible?.reasoning, "核对结果")
     }
+  }
+
+  func testStreamingAnswerKeepsItsSlotOnCompletion() {
+    let user = ChatMessage(id: "user", role: "user", content: "Question", time: start)
+    var answer = ChatMessage(id: "answer", role: "assistant", content: "Partial reply", time: start)
+    answer.streaming = true
+    let live = buildTurns([user, answer])[0]
+    XCTAssertEqual(live.final?.id, "answer")
+    XCTAssertTrue(live.activity.isEmpty)
+    XCTAssertFalse(live.settled)
+    answer.streaming = false
+    let finished = buildTurns([user, answer])[0]
+    XCTAssertEqual(live.id, finished.id)
+    XCTAssertEqual(live.final?.id, finished.final?.id)
+    XCTAssertTrue(finished.settled)
   }
 
   func testProactiveReplyPreservesPreviousFinalAnswer() {

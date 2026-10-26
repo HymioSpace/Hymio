@@ -33,7 +33,7 @@ struct ChatScreen: View {
           LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
-                let first = client.model.turns.first?.id
+                let first = client.turns.first?.id
                 Task {
                   await client.loadHistory()
                   if let first { proxy.scrollTo(first, anchor: .top) }
@@ -53,7 +53,7 @@ struct ChatScreen: View {
                 }
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
-            ForEach(client.model.turns) { turn in
+            ForEach(client.turns) { turn in
               if let unread = client.unread, unread.turnID == turn.id {
                 HStack(spacing: 12) {
                   Rectangle().fill(Brand.line).frame(height: 1)
@@ -69,7 +69,7 @@ struct ChatScreen: View {
                 }, onRetry: { client.retryDelivery($0) },
                 onDiscard: { client.discardDelivery($0) },
                 account: account
-              ).id(turn.id)
+              ).equatable().id(turn.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
               ApprovalCard(approval: approval, client: client)
@@ -130,7 +130,7 @@ struct ChatScreen: View {
         .onChange(of: client.model.messages.count) { _, _ in
           if client.model.messages.last?.role == "user" {
             following = true
-            if let last = client.model.turns.last { proxy.scrollTo(last.id, anchor: .top) }
+            if let last = client.turns.last { proxy.scrollTo(last.id, anchor: .top) }
           } else if !positioned && !client.model.messages.isEmpty {
             proxy.scrollTo("bottom", anchor: .bottom)
           }
@@ -281,7 +281,7 @@ struct ChatScreen: View {
   private func scheduleFollow(_ proxy: ScrollViewProxy) {
     guard followTask == nil else { return }
     followTask = Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(24))
+      try? await Task.sleep(for: .milliseconds(100))
       guard !Task.isCancelled else { return }
       followTask = nil
       guard following, !client.loadingHistory else { return }

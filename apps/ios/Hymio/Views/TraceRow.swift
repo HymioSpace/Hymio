@@ -1,7 +1,11 @@
 import SwiftUI
 
 /// 一次探索：用户消息在上，过程收成一行，最终回复留在下面。
-struct TraceRow: View {
+struct TraceRow: View, Equatable {
+  static func == (lhs: Self, rhs: Self) -> Bool {
+    lhs.turn == rhs.turn && lhs.tools == rhs.tools && lhs.approvals == rhs.approvals
+      && lhs.account === rhs.account
+  }
   let turn: Turn
   let tools: [String: JSON]
   var approvals: [Approval] = []

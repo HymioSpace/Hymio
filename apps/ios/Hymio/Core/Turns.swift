@@ -2,7 +2,7 @@ import Foundation
 
 /// 一次工作。对齐 Oath 的 trace：用户发话开新 trace，只要上一步还在产出工具调用就续同一条，
 /// 直到某一步给出没有工具调用的最终回复，这条 trace 才结束。
-public struct Turn: Identifiable {
+public struct Turn: Identifiable, Equatable {
   public var id: String
   public var trace: String
   /// 用户那条消息，留在折叠块上方。
@@ -90,7 +90,9 @@ public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
     var finalAt = -1
     var i = items.count - 1
     while i >= 0 {
-      if isFinal(items[i]) {
+      if isFinal(items[i])
+        || (items[i].streaming && items[i].calls.isEmpty && !items[i].content.isEmpty)
+      {
         finalAt = i
         break
       }
@@ -100,11 +102,13 @@ public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
     let last = items.last
     // 没有最终回复的 trace，只有在它后面又开了新 trace、且自己不再流式时才算结束。
     let settled =
-      finalAt >= 0 ? finalAt == items.count - 1 : index < drafts.count - 1 && !streaming
+      finalAt >= 0
+      ? finalAt == items.count - 1 && !streaming : index < drafts.count - 1 && !streaming
     let head = finalAt < 0 ? items.count : finalAt
     var final: ChatMessage? = finalAt >= 0 ? items[finalAt] : nil
     var activity = items[0..<head].filter { $0.role == "assistant" }
-    if var answer = final, !answer.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    if var answer = final, !answer.streaming,
+      !answer.reasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     {
       var reasoning = answer
       reasoning.id += ":reasoning"

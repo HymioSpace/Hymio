@@ -1,6 +1,24 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testSyntheticStreamingCompletion() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioStreamingPreview"]
+    app.launch()
+    let status = app.staticTexts["stream.preview.status"]
+    XCTAssertTrue(status.waitForExistence(timeout: 10))
+    let finished = NSPredicate(format: "label BEGINSWITH 'Complete'")
+    expectation(for: finished, evaluatedWith: status)
+    waitForExpectations(timeout: 25)
+    let done = app.staticTexts["Done."]
+    for _ in 0..<8 where !done.isHittable { app.scrollViews.firstMatch.swipeUp() }
+    XCTAssertTrue(done.isHittable, app.debugDescription)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "synthetic-stream-completed"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   @MainActor func testNativeSurfaceInteraction() throws {
     continueAfterFailure = false
     let app = XCUIApplication()
@@ -211,7 +229,8 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     editor.typeText("请只给这条消息发 🎉 表情，不要回复文字，也不要调用其他工具。")
     app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)).tap()
-    expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
+    expectation(
+      for: NSPredicate(format: "exists == false"), evaluatedWith: app.keyboards.firstMatch)
     waitForExpectations(timeout: 4)
 
     app.buttons["chat.send"].tap()
@@ -431,9 +450,10 @@ final class HymioUITests: XCTestCase {
     URLSession.shared.dataTask(with: request) { data, response, _ in
       defer { semaphore.signal() }
       let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-      let json = data.flatMap {
-        (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
-      } ?? [:]
+      let json =
+        data.flatMap {
+          (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any]
+        } ?? [:]
       output = (status, json)
     }.resume()
     _ = semaphore.wait(timeout: .now() + 35)
