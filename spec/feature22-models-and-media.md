@@ -26,6 +26,10 @@ flowchart LR
 
 ## Attachments
 
+Vision-capable main models can receive images directly using immutable references and a private
+resolver, see [native images](feature36-native-images.md). The explicit media tool remains available
+for documents, audio, screenshots and text-only choices.
+
 Upload is a bounded raw body with an encoded filename header, not a base64 WebSocket frame. Images and files share one per-message limit of 12 references. Each original file is limited to 20 MiB, with a 256 MiB account quota. Metadata and bytes live together in SQLite under the authenticated user. Clients downsample large images before upload; the server strips metadata and normalizes accepted images to at most 2560 px and JPEG quality 82. Reading an attachment always checks ownership; UUIDs are not authorization.
 
 Web/Desktop accepts screenshot paste in the composer as well as file selection. iOS offers PhotosPicker, camera, Files and system image paste. Clipboard access occurs only during an explicit paste action; ordinary text paste remains unchanged. Upload progress is separate from message submission. Draft text remains editable while uploading; sending waits for completed uploads. Images render through the authenticated image loader, never bearer tokens in URLs.

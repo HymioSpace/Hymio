@@ -154,3 +154,58 @@ class MediaIdentifierTests(unittest.TestCase):
             self.assertRaises(ModelUnavailable),
         ):
             provider.understand([row], "Describe")
+
+    def test_private_native_resolver_checks_owner_and_authentication(self):
+        raw = io.BytesIO()
+        Image.new("RGB", (16, 16), "red").save(raw, format="PNG")
+        item = self.media.save("alice", "square.png", "image/png", raw.getvalue())
+        request = {"user_id": "alice", "image_refs": [item["attachment_id"]]}
+        self.assertEqual(self.client.post("/internal/media/resolve", json=request).status_code, 401)
+        headers = {"Authorization": "Bearer synthetic-service-token"}
+        response = self.client.post("/internal/media/resolve", headers=headers, json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            response.json()["images"][item["attachment_id"]].startswith("data:image/jpeg;base64,")
+        )
+        response = self.client.post(
+            "/internal/media/resolve",
+            headers=headers,
+            json={
+                **request,
+                "user_id": "bob",
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_reasoning_budget_exhaustion_is_distinct_from_provider_outage(self):
+        provider = MiniMaxMedia(self.settings)
+        with patch.object(
+            provider,
+            "call",
+            return_value={
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": "<think>unfinished"}}
+                ],
+            },
+        ):
+            with self.assertRaises(ModelUnavailable) as raised:
+                provider.understand([], "Describe")
+        self.assertEqual(raised.exception.code, "analysis_output_limit")
+
+    def test_failed_analysis_is_terminal_and_idempotent(self):
+        item = self.media.save("alice", "square.png", "image/png", b"synthetic")
+        with patch.object(
+            SyntheticVision,
+            "understand",
+            side_effect=ModelUnavailable("Output budget exhausted", code="analysis_output_limit"),
+        ) as understand:
+            first = self.request(item["attachment_id"])
+            second = self.request(item["attachment_id"])
+        self.assertEqual(first.status_code, 503)
+        self.assertEqual(first.json()["reason"], "analysis_output_limit")
+        self.assertEqual(second.status_code, 503)
+        self.assertEqual(second.json(), first.json())
+        self.assertEqual(understand.call_count, 1)
+        with self.sessions.transaction() as db:
+            status = db.execute("SELECT status FROM media_operations").fetchone()[0]
+        self.assertEqual(status, "failed")

@@ -3,6 +3,7 @@ import tempfile
 import time
 import unittest
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from hymio_backend.compression import summary
@@ -148,7 +149,7 @@ class CompressionTests(unittest.TestCase):
                 {
                     "user_id": "u2",
                     "event_type": "context.compaction",
-                    "occurred_at": "2026-10-24T12:00:00.000000Z",
+                    "occurred_at": datetime.fromtimestamp(now - 2, timezone.utc).isoformat(),
                     "payload": {
                         "compression_id": "remote",
                         "status": "started",
@@ -160,7 +161,7 @@ class CompressionTests(unittest.TestCase):
                 {
                     "user_id": "u2",
                     "event_type": "context.compaction",
-                    "occurred_at": "2026-10-24T12:00:01.000000Z",
+                    "occurred_at": datetime.fromtimestamp(now - 1, timezone.utc).isoformat(),
                     "payload": {
                         "compression_id": "remote",
                         "status": "ready",

@@ -147,6 +147,10 @@ immediately sends a clicked phrase as an ordinary visible user message.
 
 ## Attachments and images
 
+When native image parts are present, inspect them directly; do not invoke a second vision
+model just to describe the same image. A reference alone or an explicit image-omission notice
+is not visual evidence: use `multimodal_understand` once when inspection is still needed.
+
 User attachments include an attachment_id in their Markdown URL (`/attachments/ID`). Device
 screenshots return `screenshot.media_id` (also `screenshot.attachment_id`). Pass either ID
 directly in `multimodal_understand.attachment_ids`; do not pass a URL, page_id or device_id,

@@ -153,6 +153,17 @@ async def relay_agent(websocket, settings, sessions, devices, media=None):
                                     if selected in settings.model_options
                                     else settings.model_options[0]
                                 )
+                                payload.pop("image_refs", None)
+                                if payload["model"] in getattr(settings, "native_image_models", ()):
+                                    images = []
+                                    for identifier in ids:
+                                        attachment = await asyncio.to_thread(
+                                            media.read, channel.user_id, identifier
+                                        )
+                                        if attachment["mime"].startswith("image/"):
+                                            images.append(identifier)
+                                    if images:
+                                        payload["image_refs"] = images
                                 payload["context_window"] = await asyncio.to_thread(
                                     media.context_window, channel.user_id
                                 )

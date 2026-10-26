@@ -102,6 +102,14 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
     # Serialize the existing config once; do not append duplicate TOML tables.
     data = tomllib.loads(source)
     data["agent"]["model_context_windows"] = capacities
+    native = config.get("native_image_models", [
+        "MiniMax-M3", "deepseek-flash", "Qwen/Qwen3.8-27B", "Qwen/Qwen3-VL-32B-Instruct",
+    ])
+    providers = data["agent"].setdefault("model_providers", {})
+    for choice in choices:
+        if choice in native:
+            entry = providers.setdefault(choice, {**data["agent"]["provider"], "model": choice})
+            entry["supports_images"] = True
     source = toml(data)
     generated = oath_config.with_name("hymio-runtime.local.toml")
     fd = os.open(generated, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -454,6 +462,8 @@ def main():
                 ).resolve(),
                 "--context-provider",
                 "http://host.docker.internal:8080/internal/agent/context",
+                "--image-resolver",
+                "http://host.docker.internal:8080/internal/media/resolve",
                 "--context-provider-token-file",
                 (
                     config_path.parent / Path(config["service_token_file"]).expanduser()

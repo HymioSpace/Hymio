@@ -132,10 +132,10 @@ class MediaStore:
             )
         return None
 
-    def finish(self, user, invocation, result):
+    def finish(self, user, invocation, result, status="done"):
         with self.sessions.transaction() as db:
             db.execute(
                 "UPDATE media_operations SET status=?, result=? "
                 "WHERE user_id=? AND invocation_id=?",
-                ("done", json.dumps(result), user, invocation),
+                (status, json.dumps(result), user, invocation),
             )
