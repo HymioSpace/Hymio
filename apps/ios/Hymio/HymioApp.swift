@@ -13,7 +13,9 @@ import SwiftUI
     WindowGroup {
       Group {
         #if DEBUG
-          if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
+          if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
+            StreamingPerformancePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
             KitAppPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioKitEditorPreview") {
             KitEditorPreviewScreen()

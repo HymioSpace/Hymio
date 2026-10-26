@@ -44,3 +44,15 @@ Web Trace 路由为 #/trace，聊天视图保持挂载但隐藏，返回不会�
 原生滚动使用系统内容尺寸锚点跟随缓冲文本增长，不在布局高度回调中反复 scrollTo；往上阅读时暂停跟随。历史/账号切换与重试通过消息/attempt 身份分隔缓冲，减少动态效果和后台恢复直接对齐文本。
 
 原生正文使用独立展示对象管理时钟，只发布可见帧；不把内部计时字段放进 SwiftUI 的 State。稳定 Markdown 段落保留原渲染器，尚未完成的段落使用轻量原生行内文本，终态恢复完整 Markdown。复制菜单仅放在正文，不能包裹生成表单控件。
+
+## iOS streaming presentation
+
+iOS accepts and persists every event in order, while coalescing conversation publication into
+50 ms batches. Rebuilding from a snapshot replaces pending presentation work; suspension flushes
+it. ACK still follows persistence, independently of visual playback. Turn grouping is computed
+once per published batch, and unchanged rows retain their view identity.
+
+A streaming answer occupies the same final-answer slot before and after completion. Text playback
+retains its paragraph structure when the stream ends, instead of replacing the whole message with
+a new Markdown tree. Stable Markdown is skipped when unchanged; only the active tail updates.
+Auto-follow is throttled and stops during manual scrolling.
