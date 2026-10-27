@@ -42,6 +42,8 @@
 	</array>
 	<key>NSHealthShareUsageDescription</key>
 	<string>经你同意后读取每日步数和活动能量，上传至你的 Hymio 服务，供个人助手使用。</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Hymio 不会修改你的健康数据。此说明用于 HealthKit 连接权限声明；App 仅读取你授权的每日步数和活动能量。</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>读取你选择的日历安排，经确认后同步至 Hymio；不会修改日程。</string>
 </dict>

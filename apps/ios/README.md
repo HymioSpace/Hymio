@@ -15,7 +15,10 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
   account-scoped `HymioKit.call` bridge.
 - Per-application coding conversations with published version summaries.
 
-The Memory tab (记忆) has understanding and original footprints, text search, direct text saving and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md). Automated context collectors and health connectors are not included.
+The Memory tab (记忆) has understanding and original footprints, text search, direct text saving
+and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md).
+iPhone connection settings include explicitly consented Calendar and HealthKit sources; HealthKit
+changes can schedule background refreshes through system-controlled observer events.
 
 ## Run locally
 
@@ -156,4 +159,7 @@ Application previews use `-HymioKitAppPreview` for the WebView shell and
 
 ## Connections
 
-Calendar and HealthKit consent, signing and provider setup: [Connections](../../docs/connectors.md). Debug preview: `-HymioConnectorsPreview`. Native sync is manual/foreground in this release.
+Calendar and HealthKit consent, HealthKit Background Delivery signing and provider setup:
+[Connections](../../docs/connectors.md). Debug preview: `-HymioConnectorsPreview`. Calendar sync
+is manual/foreground. Health sync also runs when HealthKit delivers a change event; iOS controls
+the timing and does not guarantee real-time background execution.

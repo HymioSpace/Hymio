@@ -41,6 +41,7 @@ PROVIDERS = {
         "platforms": ["ios"],
         "permissions": [
             "最近 7 天的每日步数与活动能量",
+            "健康数据变化后由 iOS 系统调度后台同步",
             "确认后上传至 Hymio，供个人助手和配置的 AI 模型使用",
         ],
     },

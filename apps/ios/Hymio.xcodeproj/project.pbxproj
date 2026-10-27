@@ -37,6 +37,7 @@
 		BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31404 /* KitsScreen.swift */; };
 		C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */; };
 		C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C037C0000000000000000002; };
+		C0A3E7A11F4B427AB8D11209 /* HealthEventSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -83,6 +84,7 @@
 		BDA902D5620B4EAE99A31404 /* KitsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KitsScreen.swift; path = Views/KitsScreen.swift; sourceTree = "<group>"; };
 		C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContextScreen.swift; path = Views/ContextScreen.swift; sourceTree = "<group>"; };
 		C037C0000000000000000002 /* ConnectorsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ConnectorsScreen.swift; sourceTree = "<group>"; };
+		C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/HealthEventSync.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -158,6 +160,7 @@
 				18D3FAA0D7647724918AD510 /* NetworkSession.swift */,
 				69CFA0574482053C3DD45B96 /* AccountScreen.swift */,
 				C037C0000000000000000002 /* ConnectorsScreen.swift */,
+				C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */,
 				A08D683071705B687119808D /* ChatScreen.swift */,
                 B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
 				BDA902D5620B4EAE99A31402 /* ProductShell.swift */,
@@ -245,6 +248,11 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
+                TargetAttributes = {
+                    F5C5372FB20A22E4D466501F = {
+                        SystemCapabilities = { com.apple.HealthKit = { enabled = 1; }; };
+                    };
+                };
 			};
 			buildConfigurationList = EA841F4E14AE55649F056595 /* Build configuration list for PBXProject "Hymio" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -315,6 +323,7 @@
 				03200C2275DCBB80B943D092 /* NetworkSession.swift in Sources */,
 				208550A64016FE008FF214B4 /* AccountScreen.swift in Sources */,
 				C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */,
+				C0A3E7A11F4B427AB8D11209 /* HealthEventSync.swift in Sources */,
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
                 B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
 				BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */,

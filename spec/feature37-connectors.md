@@ -46,8 +46,12 @@ Gmail starts with a bounded recent inbox and follows history pages. Expired hist
 bounded window, rather than downloading an entire mailbox. Dida polls bounded project/task pages;
 absence in a partial response never means deletion. Calendar snapshots carry an explicit time
 window and calendar selection; only complete window snapshots can reconcile removed occurrences.
-Health records are daily aggregates, not raw clinical data. Native uploads are explicit foreground
-sync in the first release; background delivery is a separate extension, not a real-time promise.
+Health records are daily aggregates, not raw clinical data. Apple Health registers observer
+queries for step and active-energy changes and enables system-scheduled background delivery.
+Events set a durable pending marker before uploading an idempotent seven-day aggregate snapshot;
+failed delivery retries on the next event, app activation, or manual sync. Native calendar uploads
+remain explicit foreground operations. HealthKit delivery is not real-time and may stop after a
+force-quit until the app is opened again.
 
 ## Product surfaces
 
@@ -69,8 +73,10 @@ and connectors remain distinct capabilities.
 
 ## Deployment and validation boundaries
 
-One optional private provider-registration file configures Gmail/Dida OAuth clients. The backend
-creates its encryption key in the persistent data volume; back up this key with the database.
+One optional private provider-registration file or complete provider credential pair in environment
+variables configures Gmail/Dida OAuth clients. Environment values take precedence; partial pairs
+are rejected. The backend creates its encryption key in the persistent data volume; back up this key
+with the database.
 External apps require developer registration and user consent. Gmail restricted-scope verification
 and Apple device HealthKit entitlement/permission cannot be replaced by mocked tests. Real provider
 verification is reported separately from adapter tests and simulator UI validation.

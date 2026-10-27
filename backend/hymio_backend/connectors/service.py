@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import math
+import os
 import secrets
 import time
 from pathlib import Path
@@ -18,6 +19,22 @@ from .store import ConnectorStore, encode
 
 _log = logging.getLogger(__name__)
 
+_REGISTRATION_ENVIRONMENT = {
+    "gmail": ("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"),
+    "dida": ("DIDA_CLIENT_ID", "DIDA_CLIENT_SECRET"),
+}
+
+
+def _valid_registration(value):
+    if not isinstance(value, dict):
+        return None
+    if not all(
+        isinstance(value.get(key), str) and value[key].strip()
+        for key in ("client_id", "client_secret")
+    ):
+        return None
+    return value
+
 
 class ConnectorService:
     def __init__(self, settings, sessions, *, client=None, context=None):
@@ -27,17 +44,19 @@ class ConnectorService:
         self.context = context or NostalgiaClient(settings)
 
     def registration(self, provider):
+        environment = _REGISTRATION_ENVIRONMENT.get(provider)
+        if environment:
+            client_id = os.environ.get(environment[0])
+            client_secret = os.environ.get(environment[1])
+            if client_id or client_secret:
+                return _valid_registration(
+                    {"client_id": client_id, "client_secret": client_secret}
+                )
         path = getattr(self.settings, "connectors_config_file", None)
         if not path:
             return None
         try:
-            value = json.loads(Path(path).read_text()).get(provider, {})
-            if not all(
-                isinstance(value.get(k), str) and value[k].strip()
-                for k in ("client_id", "client_secret")
-            ):
-                return None
-            return value
+            return _valid_registration(json.loads(Path(path).read_text()).get(provider))
         except (OSError, ValueError, AttributeError):
             return None
 
