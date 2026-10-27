@@ -216,10 +216,16 @@ struct ProtectedImage: View {
         Button {
           retry += 1
         } label: {
-          Label("图片未能加载，重试", systemImage: "arrow.clockwise").font(.caption)
-        }
+          VStack(spacing: 4) {
+            Image(systemName: "arrow.clockwise")
+            Text("重新加载").font(.caption)
+          }
+          .frame(width: thumbnail ? 80 : nil, height: 80)
+          .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
+        }.accessibilityLabel("图片未能加载，重新加载")
       } else {
         ProgressView().frame(width: thumbnail ? 80 : nil, height: 80)
+          .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
       }
     }
     .task(id: source + "\(retry)") {

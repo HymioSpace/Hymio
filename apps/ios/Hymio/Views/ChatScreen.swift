@@ -95,7 +95,7 @@ struct ChatScreen: View {
                 .foregroundStyle(.secondary)
             }
             if !client.model.pauseNotice.isEmpty {
-              HStack(alignment: .center, spacing: 12) {
+              VStack(alignment: .leading, spacing: 8) {
                 Label(client.model.pauseNotice, systemImage: "pause.circle")
                   .font(.footnote).foregroundStyle(.secondary)
                 Button(sendBusy ? "正在继续…" : "继续处理") {
@@ -108,6 +108,7 @@ struct ChatScreen: View {
                     }
                   }
                 }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+                  .fixedSize(horizontal: false, vertical: true)
                   .disabled(sendBusy || uploading || !client.connected)
                   .accessibilityIdentifier("chat.continue")
               }

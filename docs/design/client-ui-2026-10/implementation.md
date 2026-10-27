@@ -24,3 +24,10 @@ Native keyboard, Dynamic Type, VoiceOver and physical-device interaction remain 
 ## Rollout
 
 Only the Web edge image is deployed to mono-dev. Backend, Oath, persistent data and configuration remain pinned. iOS is delivered as source in the PR; it is not distributed through this cloud rollout. Keep the PR open for review.
+
+## Follow-up acceptance (2026-10-28)
+
+- Thumbnail loading/failure states now retain an 80×80 slot on both clients; Web retry targets measure 44×44. Seven failed fixtures in a 280px container form aligned 3/3/1 rows.
+- Pause notices and Continue no longer compete for one line: Web wraps and native iOS stacks the action beneath the reason.
+- Native memory rows suppress summaries identical to the title; source/date metadata uses a vertical fallback rather than truncation. Verified in the actual iPhone 17 Simulator application, dark appearance and accessibility3 text size, using synthetic preview data.
+- Web build, format and 45 shared-client tests pass; iOS application build passes. This does not replace physical-device/VoiceOver acceptance.

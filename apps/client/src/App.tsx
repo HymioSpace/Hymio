@@ -827,8 +827,8 @@ export default function App() {
                 </div>
               )}
               {model.pauseNotice && (
-                <p role="status" className="tool-history-summary">
-                  {model.pauseNotice}
+                <div className="pause-notice">
+                  <p role="status">{model.pauseNotice}</p>
                   <button
                     className="pause-continue"
                     disabled={sending || uploading || !connected}
@@ -836,7 +836,7 @@ export default function App() {
                   >
                     {sending ? '正在继续…' : '继续处理'}
                   </button>
-                </p>
+                </div>
               )}
               {latestFailure?.error && failureKey !== dismissedFailure && (
                 <div className="task-error">

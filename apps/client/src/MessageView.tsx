@@ -37,7 +37,13 @@ function UserMessageContent({ content, login }: { content: string; login: LoginS
       {images.length > 0 && (
         <div className="sent-attachment-tray">
           {images.map((source, index) => (
-            <MessageImage key={source + index} src={source} alt="已发送的图片" login={login} />
+            <MessageImage
+              key={source + index}
+              src={source}
+              alt="已发送的图片"
+              login={login}
+              thumbnail
+            />
           ))}
         </div>
       )}

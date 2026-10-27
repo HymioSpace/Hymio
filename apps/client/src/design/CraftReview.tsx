@@ -8,6 +8,7 @@ import tokenSource from '../../../../packages/ui/src/tokens.css?raw';
 import { Disclosure } from '../Disclosure';
 import { ProgressiveContent, MotionText } from '../ProgressiveContent';
 import { MessageView } from '../MessageView';
+import { MessageImage } from '../MessageImage';
 import type { LoginState } from '../useLogin';
 
 function Review() {
@@ -40,6 +41,24 @@ function Review() {
       >
         <h1 style={{ fontSize: 24 }}>展示层验证</h1>
         <p>合成内容 · 使用实际消息、折叠与流式组件</p>
+        <section aria-label="窄屏附件与暂停验证" style={{ maxWidth: 280 }}>
+          <div className="sent-attachment-tray">
+            {Array.from({ length: 7 }, (_, index) => (
+              <MessageImage
+                key={index}
+                src={`unsupported:fixture-${index}`}
+                thumbnail
+                login={{ backend: 'http://127.0.0.1' } as LoginState}
+              />
+            ))}
+          </div>
+          <div className="pause-notice">
+            <p role="status">本轮自动处理额度已用完，进展已保留。</p>
+            <button className="pause-continue" disabled>
+              继续处理
+            </button>
+          </div>
+        </section>
         <div className="composer">
           <textarea aria-label="聚焦示例" placeholder="点击后检查双环阴影" />
         </div>

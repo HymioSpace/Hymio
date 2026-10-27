@@ -660,7 +660,10 @@ private struct ContextCard: View {
   let entry: ContextEntry
   @Environment(\.dynamicTypeSize) private var typeSize
   private var copy: (title: String, summary: String) {
-    if !entry.title.isEmpty { return (entry.title, entry.preview) }
+    if !entry.title.isEmpty {
+      let summary = entry.preview.trimmingCharacters(in: .whitespacesAndNewlines)
+      return (entry.title, summary == entry.title.trimmingCharacters(in: .whitespacesAndNewlines) ? "" : summary)
+    }
     guard let end = entry.preview.firstIndex(where: { "。！？!?\n".contains($0) })
     else {
       return (String(entry.preview.prefix(48)), entry.preview.count > 48 ? entry.preview : "")
@@ -691,11 +694,18 @@ private struct ContextCard: View {
           Text(copy.summary).font(.subheadline).foregroundStyle(Brand.muted)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
         }
-        HStack {
-          Text(entry.isInsight ? entry.topics.first ?? "记忆" : entry.sourceTitle)
-          Spacer()
-          Text(entry.dateLabel)
-        }.font(.caption).foregroundStyle(Brand.muted).lineLimit(1)
+        ViewThatFits(in: .horizontal) {
+          HStack {
+            Text(entry.isInsight ? entry.topics.first ?? "记忆" : entry.sourceTitle)
+            Spacer(minLength: 8)
+            Text(entry.dateLabel)
+          }.fixedSize(horizontal: true, vertical: false)
+          VStack(alignment: .leading, spacing: 3) {
+            Text(entry.isInsight ? entry.topics.first ?? "记忆" : entry.sourceTitle)
+            Text(entry.dateLabel)
+          }
+        }.font(.caption).foregroundStyle(Brand.muted)
+          .fixedSize(horizontal: false, vertical: true)
       }.frame(maxWidth: .infinity, alignment: .leading)
       Spacer().frame(width: 24)
     }.frame(minHeight: 44)
