@@ -5,6 +5,7 @@ import UIKit
 struct AccountScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
+  @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
   @State private var loggingOut = false
   @State private var diagnostics = false
@@ -197,6 +198,9 @@ struct AccountScreen: View {
           Text("Mac 和 Android 经 HymioDevice 接入。iPhone 用于对话、记忆和应用。")
         }
         Section {
+          NavigationLink { NotificationSettingsScreen(account: account) } label: {
+            Label("通知与实时活动", systemImage: "bell.badge")
+          }
           NavigationLink {
             TraceScreen(account: account, client: client)
           } label: {
@@ -257,7 +261,10 @@ struct AccountScreen: View {
       ) {
         Button("退出登录", role: .destructive) {
           client.reset()
-          Task { await account.logout() }
+          Task {
+            await notifications.detach()
+            await account.logout()
+          }
         }.accessibilityIdentifier("account.confirmLogout")
       }
       .navigationDestination(isPresented: $diagnostics) {

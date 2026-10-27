@@ -85,6 +85,7 @@ class CloudEntryTests(unittest.TestCase):
                 )
                 self.assertIn("/devices/*", caddy)
                 self.assertIn("/connectors/*", caddy.split("handle @backend")[0])
+                self.assertIn("/notifications", caddy.split("handle @backend")[0])
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
                 self.assertIn("/kits/*", caddy.split("handle @backend")[0])
                 self.assertIn("kit-host", compose["services"])

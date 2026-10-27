@@ -38,6 +38,22 @@ Wider iPhone: same hierarchy with extra line length; no dashboard or second colu
 - Account: system zoom transition starts at the profile control; swipe dismissal remains native.
 - Reduce Motion: static companion, no custom insertion spring or profile zoom. No feature depends on animation.
 
+## Notifications and Live Activities
+
+Notifications are quiet doorbells, not a second inbox. Lock-screen text defaults to a neutral
+summary; task titles are opt-in. The app never repeats a foreground event as a banner. Permission
+is requested only after the user schedules or starts work that outlives the current screen.
+
+The Live Activity uses one recognizable signature: a small blue-scarf wave mark beside a continuous
+time readout. Its background is a deep navy-to-blue field with three discrete stage segments, never
+a fabricated percentage. Waiting uses an amber raised-hand glyph, failure uses a red exclamation
+glyph, and completion uses a mint checkmark; every state also has a text label for VoiceOver.
+
+Compact presentations keep only the wave or status glyph and elapsed time. The limited-width
+Dynamic Island uses a single 28-point-safe glyph. Expanded and Lock Screen presentations add the
+current human phase and a short action line. System text styles, 14-point Lock Screen margins and
+semantic foreground colors preserve Dynamic Type and reduced-luminance legibility.
+
 ## References and interpretation
 
 - [Meet Liquid Glass](https://developer.apple.com/videos/play/wwdc2025/219/): material distinguishes floating controls from readable content. Use it on the input and native navigation, not message cards.

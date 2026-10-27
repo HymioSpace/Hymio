@@ -37,7 +37,16 @@ bash apps/ios/scripts/run-simulator.sh
 Or open `apps/ios/Hymio.xcodeproj`, select **Hymio** and an iPhone Simulator, and run.
 Debug uses `http://127.0.0.1:8080` (the Mac's backend from Simulator). Sign up in the app or use your existing Hymio account. This client currently supports deployments with `login_method = "account"`; browser OIDC login is not yet implemented on iOS.
 
-Each installation has its own delivery cursor. Backgrounding the app disconnects the socket without cancelling cloud work. Returning to the foreground refreshes credentials, restores the cache and synchronizes progress. This does not provide background execution or push delivery.
+Each installation has its own delivery cursor. Backgrounding the app disconnects the socket without
+cancelling cloud work. Returning to the foreground refreshes credentials, restores the cache and
+synchronizes progress. APNs notifications reconnect the user when work starts, needs attention or
+completes; one aggregate Live Activity shows active work on the Lock Screen and Dynamic Island.
+The model can request a notification through the `notify_user` tool, but Hymio Backend applies
+preferences, foreground suppression and deduplication before delivery.
+
+APNs requires a Push Notifications capability, a development or production provisioning profile,
+and matching Backend `apns_*` settings. Simulator builds can exercise permission and Live Activity
+UI, but remote device pushes require a signed build on a physical device.
 
 ## Real iPhone / TestFlight
 
@@ -156,6 +165,10 @@ synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http:/
 
 Application previews use `-HymioKitAppPreview` for the WebView shell and
 `-HymioKitEditorPreview` for the coding conversation and published version history.
+
+Use `-HymioLiveActivityPreview` to start a synthetic aggregate Live Activity without signing in.
+Return to the Home Screen to inspect the Dynamic Island, then lock the Simulator to inspect the
+Lock Screen presentation.
 
 ## Connections
 

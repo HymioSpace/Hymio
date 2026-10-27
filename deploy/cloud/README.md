@@ -74,6 +74,13 @@ e2b_template = "hymio-desktop"
 background event indexer, never by clients. Keep it mode 600 and owned by the Backend
 runtime UID.
 
+For iOS push notifications and Live Activities, create an APNs `.p8` key in Apple Developer,
+store it under the private Backend config directory, and configure `apns_key_file`,
+`apns_key_id`, `apns_team_id`, `apns_bundle_id` and `apns_environment` in `hymio.toml`.
+Use `sandbox` for development/TestFlight builds signed with a development profile and
+`production` for App Store distribution. APNs is optional; without these settings the rest of
+Hymio remains available and the notification API reports `configured=false`.
+
 Build the E2B template using the [computer guide](../computer/README.md#e2b-desktop).
 The launcher supplies the private Prometheus URL when Backend config omits `prometheus_url`.
 An explicit Backend value takes precedence. On the shared Docker network, use the service name;

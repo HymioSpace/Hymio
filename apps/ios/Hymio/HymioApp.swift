@@ -1,9 +1,11 @@
 import SwiftUI
 
 @main struct HymioApp: App {
+  @UIApplicationDelegateAdaptor(HymioAppDelegate.self) private var appDelegate
   @StateObject private var account: AccountService
   @StateObject private var client: AgentClient
   @StateObject private var healthSync: HealthEventSync
+  @StateObject private var notifications = PushNotificationManager.shared
   @Environment(\.scenePhase) private var scene
   init() {
     let service = AccountService()
@@ -23,6 +25,8 @@ import SwiftUI
             KitAppPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioKitEditorPreview") {
             KitEditorPreviewScreen()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioLiveActivityPreview") {
+            LiveActivityPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
             ContextPreviewScreen(
               account: account.session == nil ? nil : account,
@@ -49,6 +53,7 @@ import SwiftUI
         #endif
       }
       .environmentObject(healthSync)
+      .environmentObject(notifications)
       .tint(Brand.blue)
       .onChange(of: account.session?.user_id) { _, value in
         if value == nil {
@@ -57,20 +62,25 @@ import SwiftUI
         } else {
           client.activate()
           Task { await healthSync.activate() }
+          Task { await notifications.bind(account) }
         }
       }
       .onChange(of: scene) { _, phase in
         if phase == .active {
           client.activate()
           Task { await healthSync.activate() }
+          Task { await notifications.updatePresence(account, active: true) }
         } else if phase == .background {
           client.suspend()
+          Task { await notifications.updatePresence(account, active: false) }
         }
       }
       .task {
         client.activate()
         await healthSync.activate()
+        await notifications.bind(account)
       }
+      .onOpenURL { notifications.open(url: $0) }
     }
   }
 }

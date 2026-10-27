@@ -71,8 +71,11 @@ enum ProductTab: Hashable { case today, chat, tasks, moments, kits }
 struct ProductShell: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
+  @EnvironmentObject private var notifications: PushNotificationManager
   @StateObject private var board = TaskBoard()
+  @StateObject private var liveActivity = LiveActivityController()
   @State private var selected: ProductTab = .today
+  @State private var notificationTask: JSON?
   @State private var showAccount = false
   @Environment(\.scenePhase) private var scene
   var body: some View {
@@ -88,6 +91,11 @@ struct ProductShell: View {
       Tab("任务", systemImage: "checklist", value: ProductTab.tasks) {
         NavigationStack {
           TasksScreen(account: account, board: board, onAccount: { showAccount = true })
+            .navigationDestination(item: $notificationTask) { item in
+              TaskDetailScreen(
+                account: account, taskID: item["id"].text, initial: item
+              )
+            }
         }
       }
       Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
@@ -106,9 +114,48 @@ struct ProductShell: View {
       }
     }
     .onChange(of: selected) { _, _ in Task { await board.refresh(account) } }
+    .onChange(of: notifications.destination) { _, destination in
+      open(destination)
+    }
+    .onAppear { open(notifications.destination) }
+    .onChange(of: board.items) { _, items in
+      Task {
+        await liveActivity.sync(
+          account: account, items: items, chatWorking: client.model.working,
+          chatAwaiting: client.model.awaitingReply)
+      }
+    }
+    .onChange(of: client.model.working) { _, _ in
+      Task {
+        await liveActivity.sync(
+          account: account, items: board.items, chatWorking: client.model.working,
+          chatAwaiting: client.model.awaitingReply)
+      }
+    }
+    .onChange(of: scene) { _, phase in
+      if phase == .background {
+        Task {
+          await liveActivity.sync(
+            account: account, items: board.items, chatWorking: client.model.working,
+            chatAwaiting: client.model.awaitingReply, leavingApp: true)
+        }
+      }
+    }
     .sheet(isPresented: $showAccount) {
       AccountScreen(account: account, client: client)
     }
+  }
+
+  private func open(_ destination: AppDestination?) {
+    guard let destination else { return }
+    switch destination {
+    case .task(let id):
+      selected = .tasks
+      notificationTask = .object(["id": .string(id)])
+    case .chat:
+      selected = .chat
+    }
+    notifications.consume(destination)
   }
 }
 

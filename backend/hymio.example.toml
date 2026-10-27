@@ -56,3 +56,11 @@ vision_model = "MiniMax-M3"
 # vault_secret_id_file = "./private/vault-secret-id"
 # Optional per-user Nostalgia endpoints and credential file references.
 # nostalgia_connections_file = "./private/nostalgia-connections.json"
+
+# Optional APNs. Keep the p8 key outside source control and mount it through the
+# private Backend config directory. Live Activities require the same APNs setup.
+# apns_key_file = "./private/apns-auth-key.p8"
+# apns_key_id = "REPLACE_WITH_APPLE_KEY_ID"
+# apns_team_id = "REPLACE_WITH_APPLE_TEAM_ID"
+# apns_bundle_id = "space.hymio.ios"
+# apns_environment = "sandbox" # sandbox for development, production for distribution
