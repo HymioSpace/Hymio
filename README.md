@@ -147,3 +147,7 @@ results. Recording current work does not schedule it a second time. You can also
 or a daily/weekly routine. The agent can work directly or delegate a bounded independent expert;
 Web/Desktop and iOS show the same records, within one continuing conversation.
 [Tasks and delegation](spec/feature23-tasks-and-delegation.md) describes the execution boundaries.
+
+## Connections
+
+Gmail, Dida and iPhone calendar/health sources: [setup and architecture](docs/connectors.md). OAuth registrations are deployment-specific; native sources require a new iOS build.

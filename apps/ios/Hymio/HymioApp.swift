@@ -13,7 +13,9 @@ import SwiftUI
     WindowGroup {
       Group {
         #if DEBUG
-          if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
+          if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
+            NavigationStack { ConnectorsScreen(account: account, preview: true) }
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
             StreamingPerformancePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
             KitAppPreviewScreen()

@@ -8,7 +8,9 @@ from core.protocol.datatype import ToolResult
 from core.protocol.error import ToolExecutionError
 
 
-def request_context(invocation, arguments):
+def request_context(invocation, arguments, *, path="/internal/context/call"):
+    if path not in {"/internal/context/call", "/internal/connectors/call"}:
+        raise ValueError("Unsupported internal context endpoint")
     try:
         config = json.loads(Path(__file__).with_name("_connection.local").read_text())
         timeout = min(20, invocation.deadline - time.monotonic()) if invocation.deadline else 20
@@ -16,7 +18,7 @@ def request_context(invocation, arguments):
             raise ToolExecutionError("Context request deadline expired")
         payload = {**arguments, "user_id": invocation.user.user_id}
         request = Request(
-            config["url"].rstrip("/") + "/internal/context/call",
+            config["url"].rstrip("/") + path,
             data=json.dumps(payload, allow_nan=False).encode(),
             headers={
                 "Authorization": "Bearer " + config["token"],

@@ -153,3 +153,7 @@ synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http:/
 
 Application previews use `-HymioKitAppPreview` for the WebView shell and
 `-HymioKitEditorPreview` for the coding conversation and published version history.
+
+## Connections
+
+Calendar and HealthKit consent, signing and provider setup: [Connections](../../docs/connectors.md). Debug preview: `-HymioConnectorsPreview`. Native sync is manual/foreground in this release.

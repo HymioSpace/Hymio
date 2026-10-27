@@ -84,6 +84,7 @@ class CloudEntryTests(unittest.TestCase):
                     "http://prometheus:9090",
                 )
                 self.assertIn("/devices/*", caddy)
+                self.assertIn("/connectors/*", caddy.split("handle @backend")[0])
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
                 self.assertIn("/kits/*", caddy.split("handle @backend")[0])
                 self.assertIn("kit-host", compose["services"])

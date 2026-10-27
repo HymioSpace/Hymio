@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { ConnectionsPanel } from './ConnectionsPanel';
 import { ModelSettings } from './ModelSettings';
 import { displayName } from './HomePanel';
 import { Activity, X } from 'lucide-react';
@@ -13,6 +15,16 @@ export function Settings({
   onClose: () => void;
   onTrace: () => void;
 }) {
+  const [connections, setConnections] = useState(false);
+  if (connections)
+    return (
+      <Sheet className="settings-dialog" labelledBy="connections-title" onClose={onClose}>
+        <h2 id="connections-title" className="sr-only">
+          连接来源
+        </h2>
+        <ConnectionsPanel login={login} onBack={() => setConnections(false)} />
+      </Sheet>
+    );
   return (
     <Sheet className="settings-dialog" labelledBy="settings-title" onClose={onClose}>
       <div className="dialog-head">
@@ -24,6 +36,9 @@ export function Settings({
       <h2 id="settings-title">账号与偏好</h2>
       <p className="dialog-intro">{displayName(login.session?.name)}</p>
       <p className="dialog-note">在不同设备上，继续同一段对话。</p>
+      <button className="settings-trace" onClick={() => setConnections(true)}>
+        连接来源 · 邮件、清单与日常
+      </button>
       <ModelSettings login={login} />
       <DeviceManager login={login} />
       {login.error && (

@@ -3,6 +3,7 @@
 Run with --with-editable ../../Oath --with-editable ../../Nostalgia from backend.
 """
 
+import asyncio
 import json
 import shutil
 import socket
@@ -456,3 +457,38 @@ def test_browse_classification_and_cursor(stack):
         "/context/browse", json={"target": "records", "category": "uncategorized"}
     ).json()
     assert [v["id"] for v in unclassified["items"]] == [legacy["id"]]
+
+
+def test_connector_versions_reach_real_nostalgia(stack):
+    from hymio_backend.connectors.service import ConnectorService
+
+    stack.settings.connectors_config_file = None
+    service = ConnectorService(stack.settings, stack.sessions)
+    uid = stack.user.user_id
+    connection = service.store.create(uid, "apple_health", "synthetic-phone")
+    for steps in (1, 2, 1):
+        service.ingest(
+            uid,
+            connection["id"],
+            {
+                "device_id": "synthetic-phone",
+                "consent": True,
+                "captured_at": time.time(),
+                "items": [
+                    {
+                        "external_id": "daily:2026-01-01",
+                        "day": "2026-01-01",
+                        "kind": "health_daily",
+                        "steps": steps,
+                        "title": "Synthetic steps",
+                    }
+                ],
+            },
+        )
+        assert service.project()
+    with service.store.transaction() as db:
+        rows = db.execute("SELECT delivered,record_id FROM connector_changes").fetchall()
+    assert len(rows) == 3
+    assert all(row["delivered"] and row["record_id"] for row in rows)
+    assert len({row["record_id"] for row in rows}) == 3
+    asyncio.run(service.http.aclose())

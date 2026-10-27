@@ -1,6 +1,24 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testConnectorCatalogAndHealthConsent() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioConnectorsPreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["connector.gmail"].waitForExistence(timeout: 10))
+    let catalog = XCTAttachment(screenshot: app.screenshot())
+    catalog.name = "connectors-ios-catalog"
+    catalog.lifetime = .keepAlways
+    add(catalog)
+    app.buttons["connector.apple_health"].tap()
+    XCTAssertTrue(app.switches["connector.consent"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.switches["connector.consent"].value as? String, "0")
+    let detail = XCTAttachment(screenshot: app.screenshot())
+    detail.name = "connectors-ios-health-consent"
+    detail.lifetime = .keepAlways
+    add(detail)
+  }
+
   @MainActor func testSyntheticStreamingCompletion() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioStreamingPreview"]
