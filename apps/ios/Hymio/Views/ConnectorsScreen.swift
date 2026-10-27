@@ -94,15 +94,20 @@ private struct SourceMark: View {
       error = ""
     } catch { self.error = "暂时无法读取连接，请稍后重试。" }
   }
-  func perform(_ operation: () async throws -> Void) async {
-    guard !busy, !preview else { return }
+  @discardableResult
+  func perform(_ operation: () async throws -> Void) async -> Bool {
+    guard !busy, !preview else { return false }
     busy = true
     error = ""
     defer { busy = false }
     do {
       try await operation()
       await load()
-    } catch { self.error = error.localizedDescription }
+      return true
+    } catch {
+      self.error = error.localizedDescription
+      return false
+    }
   }
 }
 
@@ -485,14 +490,18 @@ private struct ConnectorDetail: View {
   }
   private func action(_ connection: JSON, _ action: String) {
     Task {
-      await model.perform {
+      var revocationUnconfirmed = false
+      let succeeded = await model.perform {
         let result = try await model.account.request(
           "connectors/" + connection["id"].text, body: .object(["action": .string(action)]))
         if result["revocation"].text == "not_confirmed" {
-          model.error = "已停止同步；服务端撤权未确认，可在服务账号设置中移除授权。"
+          revocationUnconfirmed = true
         }
       }
-      if id == "apple_health" {
+      if revocationUnconfirmed {
+        model.error = "已停止同步；服务端撤权未确认，可在服务账号设置中移除授权。"
+      }
+      if succeeded && id == "apple_health" {
         if action == "resume" {
           await healthSync.activate()
         } else {

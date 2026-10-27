@@ -31,6 +31,7 @@ final class HealthEventSync: ObservableObject {
   private var activeUserID = ""
   private var activationInFlight = false
   private var generation = UUID()
+  private var manualGeneration: UUID?
   private var syncTask: Task<Void, Never>?
   private var backgroundTask = UIBackgroundTaskIdentifier.invalid
 
@@ -109,6 +110,9 @@ final class HealthEventSync: ObservableObject {
     let epoch = generation
     if let syncTask { await syncTask.value }
     guard epoch == generation else { throw CancellationError() }
+    guard manualGeneration == nil else { throw ServiceError.message("正在同步健康数据，请稍候。") }
+    manualGeneration = epoch
+    defer { if manualGeneration == epoch { manualGeneration = nil } }
     guard account.session != nil else { throw ServiceError.unauthorized }
     self.connectionID = connectionID
     markPending()
@@ -119,7 +123,10 @@ final class HealthEventSync: ObservableObject {
       clearPending(through: startedAt)
       if monitoring { message = "" }
       if pendingAt > startedAt {
-        scheduleSync(background: UIApplication.shared.applicationState != .active)
+        Task {
+          guard generation == epoch else { return }
+          scheduleSync(background: UIApplication.shared.applicationState != .active)
+        }
       }
     } catch {
       guard epoch == generation else { throw CancellationError() }
@@ -130,6 +137,7 @@ final class HealthEventSync: ObservableObject {
 
   func stop(clearPending: Bool) {
     generation = UUID()
+    manualGeneration = nil
     syncTask?.cancel()
     syncTask = nil
     for query in observers { healthStore.stop(query) }
@@ -226,7 +234,7 @@ final class HealthEventSync: ObservableObject {
   }
 
   private func scheduleSync(background: Bool) {
-    guard syncTask == nil, connectionID != nil, account.session != nil else { return }
+    guard syncTask == nil, manualGeneration == nil, connectionID != nil, account.session != nil else { return }
     if background {
       backgroundTask = UIApplication.shared.beginBackgroundTask(
         withName: "Hymio Health Event Sync"
@@ -326,7 +334,7 @@ private enum HealthSnapshot {
         quantitySamplePredicate: HKQuery.predicateForSamples(withStart: start, end: end),
         options: .cumulativeSum
       ) { _, result, error in
-        if let error {
+        if let error, (error as? HKError)?.code != .errorNoData {
           continuation.resume(throwing: error)
         } else {
           continuation.resume(returning: result?.sumQuantity()?.doubleValue(for: unit))
