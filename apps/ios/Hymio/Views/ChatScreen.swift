@@ -63,7 +63,9 @@ struct ChatScreen: View {
                 }.accessibilityHint("点击标记为已读")
               }
               TraceRow(
-                turn: turn, tools: client.model.terminals, approvals: client.model.approvals,
+                turn: turn, tools: Dictionary(uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
+                  client.model.terminals[id].map { (id, $0) }
+                }), approvals: client.model.approvals,
                 onAction: {
                   try await client.message($0)
                 }, onRetry: { client.retryDelivery($0) },

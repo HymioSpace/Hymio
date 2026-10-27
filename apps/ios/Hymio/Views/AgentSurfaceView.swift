@@ -23,8 +23,9 @@ private final class ProsePresenter: ObservableObject {
     frame = Frame(text: buffer.value, pending: buffer.pending)
     startTicker()
   }
-  func receive(_ source: String, immediate: Bool) {
+  func receive(_ source: String, immediate: Bool, complete: Bool = false) {
     buffer.set(source, now: ProcessInfo.processInfo.systemUptime, immediate: immediate)
+    if complete { buffer.complete(now: ProcessInfo.processInfo.systemUptime) }
     publish()
     if immediate {
       task?.cancel()
@@ -111,7 +112,11 @@ struct BufferedProse: View {
       }
     }
     .onChange(of: source, initial: true) { _, value in
-      presentation.receive(value, immediate: reduceMotion || (!streaming && frame.text == value))
+      presentation.receive(value, immediate: reduceMotion || (!streaming && frame.text == value),
+                           complete: !streaming)
+    }
+    .onChange(of: streaming) { _, value in
+      presentation.receive(source, immediate: reduceMotion, complete: !value)
     }
     .onDisappear { presentation.receive(source, immediate: true) }
     .onChange(of: scene) { _, phase in

@@ -180,3 +180,49 @@ public struct ConversationState: Codable, Sendable {
   }
 }
 public enum ProtocolFailure: Error { case invalidSnapshot, identity, gap }
+
+/// Decode off the main actor. Internal events keep their cursor and identity,
+/// without materializing private execution-state payloads that the UI never uses.
+public struct IncomingFrame: Sendable {
+  public let frame: JSON
+  public let event: Event?
+  public let snapshot: [Event]?
+
+  public static func decode(_ data: Data) throws -> IncomingFrame {
+    struct Header: Decodable {
+      let v: Int
+      let type: String
+      let user_id: String?
+      let event_seq: Int?
+      let event_type: String?
+      let occur_dt: String?
+    }
+    let decoder = JSONDecoder()
+    let header = try decoder.decode(Header.self, from: data)
+    var envelope: [String: JSON] = ["v": .number(Double(header.v)), "type": .string(header.type)]
+    if header.type == "event" {
+      guard let user = header.user_id, let seq = header.event_seq, let kind = header.event_type else {
+        throw ProtocolFailure.identity
+      }
+      let minimal = Event(user_id: user, event_seq: seq, event_type: kind,
+                          payload: .null, occur_dt: header.occur_dt ?? "")
+      let event = ConversationState.isDisplayEvent(minimal)
+        ? try decoder.decode(Event.self, from: data) : minimal
+      return IncomingFrame(frame: .object(envelope), event: event, snapshot: nil)
+    }
+    if header.type == "conversation.snapshot" {
+      struct Snapshot: Decodable {
+        let events: [Event]
+        let checkpoint: Int
+        let before_cursor: Int?
+        let has_more: Bool
+      }
+      let value = try decoder.decode(Snapshot.self, from: data)
+      envelope["checkpoint"] = .number(Double(value.checkpoint))
+      envelope["before_cursor"] = value.before_cursor.map { .number(Double($0)) } ?? .null
+      envelope["has_more"] = .bool(value.has_more)
+      return IncomingFrame(frame: .object(envelope), event: nil, snapshot: value.events)
+    }
+    return IncomingFrame(frame: try JSON.decode(data), event: nil, snapshot: nil)
+  }
+}
