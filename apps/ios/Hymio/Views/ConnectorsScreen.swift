@@ -270,6 +270,7 @@ private struct ConnectorOAuth: Identifiable {
 private struct ConnectorDetail: View {
   let provider: JSON
   @ObservedObject var model: ConnectionsModel
+  @EnvironmentObject private var healthSync: HealthEventSync
   @StateObject private var device = DeviceSourceCollector()
   @State private var consent = false
   @State private var browser: ConnectorOAuth?
@@ -352,6 +353,13 @@ private struct ConnectorDetail: View {
               Text("本次未读取到健康汇总，可能没有数据或读取范围受限。这不表示活动量为零。").font(.caption).foregroundStyle(
                 Brand.muted)
             }
+            if id == "apple_health", healthSync.monitoring {
+              Label("健康变化事件同步已开启", systemImage: "bolt.heart")
+                .font(.caption).foregroundStyle(Brand.muted)
+            }
+            if id == "apple_health", !healthSync.message.isEmpty {
+              Text(healthSync.message).font(.caption).foregroundStyle(Brand.muted)
+            }
             if connection["pending_count"].int > 0 {
               Text("来源已接收，正在写入记忆；暂不可用时会保留进度重试。").font(.caption).foregroundStyle(Brand.muted)
             }
@@ -413,8 +421,11 @@ private struct ConnectorDetail: View {
         }
         if !model.error.isEmpty { Text(model.error).font(.footnote).foregroundStyle(.secondary) }
         Text(
-          provider["transport"].text == "device"
-            ? "仅在你主动同步时读取。可随时暂停或断开，已导入记录会保留。" : "可随时暂停或断开。断开后移除授权凭据，已导入记录会保留。"
+          id == "apple_health"
+            ? "健康数据变化后，由 iOS 调度后台同步；系统会控制频率，不保证实时。可随时暂停或断开，已导入记录会保留。"
+            : provider["transport"].text == "device"
+              ? "仅在你主动同步时读取。可随时暂停或断开，已导入记录会保留。"
+              : "可随时暂停或断开。断开后移除授权凭据，已导入记录会保留。"
         ).font(.caption).foregroundStyle(
           Brand.muted
         ).lineSpacing(4)
@@ -481,6 +492,13 @@ private struct ConnectorDetail: View {
           model.error = "已停止同步；服务端撤权未确认，可在服务账号设置中移除授权。"
         }
       }
+      if id == "apple_health" {
+        if action == "resume" {
+          await healthSync.activate()
+        } else {
+          healthSync.stop(clearPending: true)
+        }
+      }
     }
   }
   private func existing() -> JSON? {
@@ -509,7 +527,7 @@ private struct ConnectorDetail: View {
       await model.perform {
         try await device.healthPermission()
         let row = try await create()
-        try await upload(row, try await device.health())
+        try await healthSync.enable(connectionID: row["id"].text)
       }
     } else {
       await model.perform {
@@ -528,6 +546,10 @@ private struct ConnectorDetail: View {
       action(connection, "sync")
     } else if connection["device_id"].text != device.installation {
       model.error = "此来源由另一台 iPhone 同步。请在那台手机上操作。"
+    } else if id == "apple_health" {
+      await model.perform {
+        try await healthSync.syncNow(connectionID: connection["id"].text)
+      }
     } else {
       await connect()
     }
@@ -551,13 +573,7 @@ private struct ConnectorDetail: View {
   private let eventStore = EKEventStore()
   private let healthStore = HKHealthStore()
   @Published var calendars: [EKCalendar] = []
-  var installation: String {
-    let key = "hymio.connector.installation"
-    if let value = UserDefaults.standard.string(forKey: key) { return value }
-    let value = UUID().uuidString
-    UserDefaults.standard.set(value, forKey: key)
-    return value
-  }
+  var installation: String { DeviceInstallation.id }
   func calendarPermission() async throws {
     guard try await eventStore.requestFullAccessToEvents() else {
       throw ServiceError.message("日历权限未开启，可到系统设置中更改。")
@@ -609,51 +625,6 @@ private struct ConnectorDetail: View {
     ]
     try await healthStore.requestAuthorization(toShare: [], read: types)
     // HealthKit intentionally does not reveal whether read permission was granted.
-  }
-  private func sum(_ type: HKQuantityType, _ unit: HKUnit, start: Date, end: Date) async throws
-    -> Double?
-  {
-    try await withCheckedThrowingContinuation { continuation in
-      let query = HKStatisticsQuery(
-        quantityType: type,
-        quantitySamplePredicate: HKQuery.predicateForSamples(withStart: start, end: end),
-        options: .cumulativeSum
-      ) { _, result, error in
-        if let error {
-          continuation.resume(throwing: error)
-        } else {
-          continuation.resume(returning: result?.sumQuantity()?.doubleValue(for: unit))
-        }
-      }
-      healthStore.execute(query)
-    }
-  }
-  func health() async throws -> [String: JSON] {
-    let capturedAt = Date()
-    var items: [JSON] = []
-    let calendar = Calendar.current
-    let today = calendar.startOfDay(for: Date())
-    let formatter = DateFormatter()
-    formatter.calendar = calendar
-    formatter.dateFormat = "yyyy-MM-dd"
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    for offset in -6...0 {
-      let start = calendar.date(byAdding: .day, value: offset, to: today)!
-      let end = calendar.date(byAdding: .day, value: 1, to: start)!
-      let steps = try await sum(HKQuantityType(.stepCount), .count(), start: start, end: end)
-      let energy = try await sum(
-        HKQuantityType(.activeEnergyBurned), .kilocalorie(), start: start, end: end)
-      if steps == nil && energy == nil { continue }
-      let day = formatter.string(from: start)
-      items.append(
-        .object([
-          "external_id": .string("daily:" + day), "kind": .string("health_daily"),
-          "day": .string(day), "title": .string(day + " 每日活动"),
-          "steps": steps.map(JSON.number) ?? .null,
-          "active_kcal": energy.map { .number(($0 * 10).rounded() / 10) } ?? .null,
-        ]))
-    }
-    return ["items": .array(items), "captured_at": .number(capturedAt.timeIntervalSince1970)]
   }
 }
 

@@ -11,19 +11,39 @@ read-only: it cannot send email, complete external tasks, edit calendars or writ
 | Gmail | Authorize, inspect, pause, disconnect | Same | Recent inbox, then incremental history |
 | 滴答清单 / Dida | Authorize, inspect, pause, disconnect | Same | Project tasks and recent completed tasks |
 | Apple Calendar | Inspect phone sync status | Select calendars and sync | Past 7 through next 30 days |
-| Apple Health | Inspect phone sync status | Consent and sync | Last 7 days of daily steps and active energy |
+| Apple Health | Inspect phone sync status | Consent and sync | Last 7 days of daily steps and active energy; HealthKit changes schedule background refreshes |
 
 Cloud sources normally poll every 15 minutes; bounded bootstrap pages continue sooner. Sync now
-requests a run; it does not keep the HTTP request open for collection. Native sources currently
-sync explicitly while the app is in the foreground. They do not promise background monitoring.
-The UI shows synchronization receipts and pending context delivery separately. Imported content
-is source material, never an instruction to the agent.
+requests a run; it does not keep the HTTP request open for collection. Calendar sync remains
+explicit while the app is in the foreground. Apple Health registers HealthKit observer queries
+for step and active-energy changes; iOS decides when a background update is delivered, normally
+no more than hourly. A persisted pending marker makes a failed upload retry on the next observer
+event or app activation. Pending markers and cached connection IDs are account-scoped;
+account changes invalidate old callbacks and in-flight upload work. This is not real-time delivery and does not survive a force-quit as a
+background promise. The UI shows synchronization receipts and pending context delivery separately.
+Imported content is source material, never an instruction to the agent.
 
 ## Private deployment configuration
 
 Without OAuth registrations, Gmail and Dida show **deployment configuration required**. Register
 your own applications; no shared client credentials are shipped. Google login configuration and
 Gmail API authorization are separate.
+
+Either set a complete credential pair in the Backend process environment or provide a private
+JSON file. Environment values take precedence. Partial environment pairs are not used, so a
+missing secret cannot silently combine with another credential source.
+
+```sh
+export DIDA_CLIENT_ID="..."
+export DIDA_CLIENT_SECRET="..."
+# Optional when Gmail becomes available:
+export GMAIL_CLIENT_ID="..."
+export GMAIL_CLIENT_SECRET="..."
+```
+
+The generated cloud Compose configuration forwards these named variables without embedding their
+values in the generated YAML. Export them in the deployment environment, or place them in a
+private Compose `.env` file, before starting the stack.
 
 1. Create a private JSON file outside the checkout, for example
    `/etc/hymio/private/connectors.json`, readable only by the backend account (`chmod 600`).
@@ -72,9 +92,10 @@ assumed deleted: the last observed snapshot and its sync time remain visible.
 ### Apple / TestFlight
 
 Build a new iOS binary; a backend deployment cannot add native permissions to an installed app.
-Enable HealthKit for the app's Apple Developer identifier and regenerate provisioning as needed.
-The project includes HealthKit entitlements and read-purpose strings. This release requests only
-steps and active energy; there is no health-write entitlement or write API.
+Enable both HealthKit and **HealthKit Background Delivery** for the app's Apple Developer
+identifier and regenerate provisioning as needed. The project includes both entitlements and
+read-purpose strings. This release requests only steps and active energy; there is no health-write
+entitlement or write API. It does not request Clinical Health Records.
 
 Before the system permission sheet, the user explicitly agrees to upload selected data to their
 Hymio server, personal context and configured AI models. Calendar reading requires Apple's full
@@ -84,7 +105,8 @@ notes, attendees and locations are excluded. Revoking OS permissions happens in 
 HealthKit deliberately does not disclose read authorization status. No readable samples means
 **no data available**, not zero activity and not proof of refusal. Simulator UI tests do not verify
 real HealthKit samples, signing, provisioning or background delivery. Verify these on a physical
-phone before distributing the build. Publishing also requires an accurate privacy policy and App
+phone before distributing the build, including a change-triggered background upload and a failed
+network retry after reopening the app. Publishing also requires an accurate privacy policy and App
 Store privacy disclosures for your deployment's data handling.
 
 ## Architecture and recovery

@@ -3,11 +3,13 @@ import SwiftUI
 @main struct HymioApp: App {
   @StateObject private var account: AccountService
   @StateObject private var client: AgentClient
+  @StateObject private var healthSync: HealthEventSync
   @Environment(\.scenePhase) private var scene
   init() {
     let service = AccountService()
     _account = StateObject(wrappedValue: service)
     _client = StateObject(wrappedValue: AgentClient(account: service))
+    _healthSync = StateObject(wrappedValue: HealthEventSync(account: service))
   }
   var body: some Scene {
     WindowGroup {
@@ -46,14 +48,29 @@ import SwiftUI
           }
         #endif
       }
+      .environmentObject(healthSync)
       .tint(Brand.blue)
       .onChange(of: account.session?.user_id) { _, value in
-        if value == nil { client.reset() } else { client.activate() }
+        if value == nil {
+          client.reset()
+          healthSync.stop(clearPending: true)
+        } else {
+          client.activate()
+          Task { await healthSync.activate() }
+        }
       }
       .onChange(of: scene) { _, phase in
-        if phase == .active { client.activate() } else if phase == .background { client.suspend() }
+        if phase == .active {
+          client.activate()
+          Task { await healthSync.activate() }
+        } else if phase == .background {
+          client.suspend()
+        }
       }
-      .task { client.activate() }
+      .task {
+        client.activate()
+        await healthSync.activate()
+      }
     }
   }
 }

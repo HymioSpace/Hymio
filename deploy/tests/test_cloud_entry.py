@@ -93,6 +93,14 @@ class CloudEntryTests(unittest.TestCase):
                     compose["services"]["backend"]["environment"]["HYMIO_KITS_URL"],
                     "http://kit-host:8090",
                 )
+                self.assertEqual(
+                    compose["services"]["backend"]["environment"]["DIDA_CLIENT_ID"],
+                    "${DIDA_CLIENT_ID:-}",
+                )
+                self.assertEqual(
+                    compose["services"]["backend"]["environment"]["DIDA_CLIENT_SECRET"],
+                    "${DIDA_CLIENT_SECRET:-}",
+                )
                 self.assertIn("handle /admin/api/*", caddy)
                 self.assertIn("handle_path /admin/*", caddy)
                 self.assertIn("root * /srv/admin", caddy)

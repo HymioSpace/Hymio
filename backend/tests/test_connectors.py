@@ -19,7 +19,9 @@ from hymio_backend.session_store import SessionStore
 
 
 @pytest.fixture
-def setup(tmp_path):
+def setup(tmp_path, monkeypatch):
+    for name in ("GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "DIDA_CLIENT_ID", "DIDA_CLIENT_SECRET"):
+        monkeypatch.delenv(name, raising=False)
     secret = tmp_path / "secret"
     secret.write_text("synthetic-internal-service")
     registration = tmp_path / "registrations.json"
@@ -113,6 +115,27 @@ def test_owner_consent_and_missing_registration(setup):
         == "provider_not_configured"
     )
     assert "credentials" not in json.dumps(service.store.list(a["user_id"]))
+
+
+def test_environment_registration_takes_precedence(setup, monkeypatch):
+    service, _, a, _, _ = setup
+    monkeypatch.setenv("DIDA_CLIENT_ID", "synthetic-environment-client")
+    monkeypatch.setenv("DIDA_CLIENT_SECRET", "synthetic-environment-secret")
+    assert service.registration("dida") == {
+        "client_id": "synthetic-environment-client",
+        "client_secret": "synthetic-environment-secret",
+    }
+    cid = service.store.create(a["user_id"], "dida")["id"]
+    params = parse_qs(urlsplit(service.authorize(a["user_id"], cid)["url"]).query)
+    assert params["client_id"] == ["synthetic-environment-client"]
+    assert params["scope"] == ["tasks:read"]
+
+
+def test_incomplete_environment_registration_is_not_used(setup, monkeypatch):
+    service, _, _, _, _ = setup
+    monkeypatch.setenv("DIDA_CLIENT_ID", "synthetic-environment-client")
+    monkeypatch.delenv("DIDA_CLIENT_SECRET", raising=False)
+    assert service.registration("dida") is None
 
 
 def test_revision_cycles_and_projection_retry(setup):

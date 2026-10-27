@@ -197,6 +197,10 @@ def generate(path):
             else "http://host.docker.internal:19090"
         ),
         "HYMIO_KITS_URL": "http://kit-host:8090",
+        "GMAIL_CLIENT_ID": "${GMAIL_CLIENT_ID:-}",
+        "GMAIL_CLIENT_SECRET": "${GMAIL_CLIENT_SECRET:-}",
+        "DIDA_CLIENT_ID": "${DIDA_CLIENT_ID:-}",
+        "DIDA_CLIENT_SECRET": "${DIDA_CLIENT_SECRET:-}",
     }
     if runtime_network:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", runtime_network):
