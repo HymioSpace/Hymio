@@ -21,9 +21,20 @@ public struct Turn: Identifiable, Equatable {
   public var settled: Bool
 
   public var foldable: Bool { settled && !activity.isEmpty }
+  public var invocationIDs: [String] {
+    (activity + trailing + [final].compactMap { $0 }).flatMap { message in
+      let step = String(message.id.dropFirst("assistant:".count))
+      return message.calls.indices.map { step + "-\($0)" }
+    }
+  }
 }
 
 enum TurnClock {
+  private static let dates: NSCache<NSString, NSDate> = {
+    let cache = NSCache<NSString, NSDate>()
+    cache.countLimit = 4096
+    return cache
+  }()
   static let fractional: ISO8601DateFormatter = {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -37,8 +48,11 @@ enum TurnClock {
   /// occur_dt 是 RFC 3339 UTC，微秒以下精度。截到毫秒再解析，稳过任何 formatter。
   static func date(_ value: String) -> Date? {
     guard !value.isEmpty else { return nil }
-    if let parsed = fractional.date(from: value) { return parsed }
-    if let parsed = plain.date(from: value) { return parsed }
+    if let cached = dates.object(forKey: value as NSString) { return cached as Date }
+    if let parsed = fractional.date(from: value) ?? plain.date(from: value) {
+      dates.setObject(parsed as NSDate, forKey: value as NSString)
+      return parsed
+    }
     guard let dot = value.firstIndex(of: ".") else { return nil }
     let head = String(value[value.startIndex..<dot])
     let tail = value[value.index(after: dot)...].prefix(3)

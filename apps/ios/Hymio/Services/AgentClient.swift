@@ -37,7 +37,7 @@ import UIKit
   private func flushPresentation() {
     guard !presentationEvents.isEmpty else { return }
     var next = model
-    for event in presentationEvents { next.apply(event) }
+    next.apply(presentationEvents)
     model = next
   }
   private var cache: ConversationCache?
@@ -197,8 +197,11 @@ import UIKit
           case .data(let bytes): data = bytes
           @unknown default: continue
           }
-          let frame = try JSON.decode(data)
-          try await consume(frame, raw: data, socket: ws)
+          let frame = try await Task.detached(priority: .userInitiated) {
+            try IncomingFrame.decode(data)
+          }.value
+          guard token == generation else { return }
+          try await consume(frame, socket: ws)
           if ready { attempts = 0 }
         }
       } catch is CancellationError {
@@ -265,7 +268,8 @@ import UIKit
     ])
     try await socket.send(.string(String(decoding: JSONEncoder().encode(frame), as: UTF8.self)))
   }
-  private func consume(_ f: JSON, raw: Data, socket ws: URLSessionWebSocketTask) async throws {
+  private func consume(_ incoming: IncomingFrame, socket ws: URLSessionWebSocketTask) async throws {
+    let f = incoming.frame
     guard f["v"].int == 2 else { throw ServiceError.message("聊天协议版本不匹配") }
     switch f["type"].text {
     case "ack":
@@ -289,7 +293,7 @@ import UIKit
       }
       try commit(next)
     case "conversation.snapshot":
-      let events = try JSONDecoder().decode([Event].self, from: JSONEncoder().encode(f["events"]))
+      guard let events = incoming.snapshot else { throw ProtocolFailure.invalidSnapshot }
       var next = state
       try next.snapshot(
         events, checkpoint: f["checkpoint"].int,
@@ -298,15 +302,17 @@ import UIKit
       try commit(next)
       try await ack(ws)
     case "event":
-      let event = try JSONDecoder().decode(Event.self, from: raw)
+      guard let event = incoming.event else { throw ProtocolFailure.identity }
       do {
         var next = state
         let previous = next.cursor
         try next.append(event, user: user)
         if event.event_seq > previous {
           state = next
-          present(event)
-          observeTelemetry(event)
+          if ConversationState.isDisplayEvent(event) {
+            present(event)
+            observeTelemetry(event)
+          }
         }
         schedulePersistence(ws)
       } catch ProtocolFailure.gap {

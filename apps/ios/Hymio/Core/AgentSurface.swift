@@ -8,6 +8,9 @@ public struct SurfacePart: Identifiable {
 }
 public enum AgentSurface {
   public static func proseAndQuickReplies(_ source: String) -> (content: String, suggestions: [String]) {
+    if !source.contains("```hymio-quick") {
+      return (source.trimmingCharacters(in: .whitespacesAndNewlines), [])
+    }
     var output: [String] = []
     var block: [String]?
     var suggestions: [String] = []
@@ -240,24 +243,40 @@ public struct PresentationBuffer {
   private var source = "", characters: [Character] = []
   private var shown = 0
   private var start: Double = 0, previous: Double = 0, credit: Double = 0
+  private var finishBy: Double?
+  public private(set) var value = ""
   public init() {}
   public mutating func set(_ text: String, now: Double, immediate: Bool = false) {
-    if !text.hasPrefix(source) {
-      shown = 0
-      start = now
-      previous = now
-      credit = 0
+    if text != source {
+      let next = Array(text)
+      let extendedGrapheme = !characters.isEmpty && next.count >= characters.count
+        && characters[characters.count - 1] != next[characters.count - 1]
+      if !text.hasPrefix(source) || shown > next.count || extendedGrapheme {
+        let shared = zip(characters, next).prefix { $0 == $1 }.count
+        shown = min(shown, shared)
+        value = String(next.prefix(shown))
+        start = now
+        previous = now
+        credit = 0
+      }
+      if source.isEmpty && !text.isEmpty {
+        start = now
+        previous = now
+      }
+      source = text
+      characters = next
+      finishBy = nil
     }
-    if source.isEmpty && !text.isEmpty {
-      start = now
-      previous = now
-    }
-    source = text
-    characters = Array(text)
     if immediate {
       shown = characters.count
+      value = source
       credit = 0
+      finishBy = nil
     }
+  }
+  /// Server completion drains a backlog promptly, without replaying its visible prefix.
+  public mutating func complete(now: Double) {
+    if pending && finishBy == nil { finishBy = now + 0.45 }
   }
   public mutating func tick(_ now: Double) {
     let elapsed = min(0.1, max(0, now - previous))
@@ -268,12 +287,22 @@ public struct PresentationBuffer {
       return
     }
     let backlog = characters.count - shown
-    let rate = min(150, max(54, Double(backlog) * 6))
+    var rate = min(150, max(54, Double(backlog) * 6))
+    if let finishBy {
+      if now >= finishBy {
+        value = source
+        shown = characters.count
+        credit = 0
+        return
+      }
+      rate = max(rate, Double(backlog) / max(0.025, finishBy - now))
+    }
     credit += elapsed * rate
     let amount = Int(credit)
-    shown = min(characters.count, shown + amount)
+    let next = min(characters.count, shown + amount)
+    if next > shown { value.append(contentsOf: String(characters[shown..<next])) }
+    shown = next
     credit -= Double(amount)
   }
-  public var value: String { String(characters.prefix(shown)) }
   public var pending: Bool { shown < characters.count }
 }

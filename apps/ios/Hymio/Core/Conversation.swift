@@ -70,6 +70,40 @@ public struct Conversation {
     messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty
       && pauseNotice.isEmpty
   }
+  /// Coalesce only adjacent deltas. A terminal, retry or side event preserves ordering.
+  public mutating func apply(_ events: [Event]) {
+    var delta: Event?
+    var text: [String] = []
+    func matching(_ a: Event, _ b: Event) -> Bool {
+      a.event_type == "assistant.delta" && b.event_type == a.event_type
+        && a.payload["step_id"] == b.payload["step_id"]
+        && a.payload["channel"] == b.payload["channel"]
+        && a.payload["attempt"] == b.payload["attempt"]
+    }
+    for event in events {
+      if let old = delta, matching(old, event) {
+        text.append(event.payload["text"].text)
+        continue
+      }
+      if var old = delta, case .object(var payload) = old.payload {
+        payload["text"] = .string(text.joined())
+        old.payload = .object(payload)
+        apply(old)
+      }
+      delta = nil
+      text = []
+      if event.event_type == "assistant.delta" {
+        delta = event
+        text = [event.payload["text"].text]
+      } else { apply(event) }
+    }
+    if var old = delta, case .object(var payload) = old.payload {
+      payload["text"] = .string(text.joined())
+      old.payload = .object(payload)
+      apply(old)
+    }
+  }
+
   public mutating func apply(_ e: Event) {
     let p = e.payload
     let step = p["step_id"].text

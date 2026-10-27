@@ -71,3 +71,5 @@ Native image input: [feature36](feature36-native-images.md).
 - [Tasks and delegation](feature23-tasks-and-delegation.md): conversational intentions, milestones, optional schedules, bounded experts and Web/iOS task panels.
 
 - [Connections](feature37-connectors.md): read-only cloud and device-source foundation.
+
+- [Streaming responsiveness](feature38-streaming-latency.md): background frame decoding, ordered batching and bounded presentation catch-up.
