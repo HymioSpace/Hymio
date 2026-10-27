@@ -7,7 +7,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from . import client_telemetry, compression
+from . import client_telemetry, compression, tool_monitoring
 from .investigation import trace_triggers
 from .observability import observe_turn
 from .session_store import Unauthorized
@@ -149,6 +149,11 @@ async def _instant(settings, upstream, query: str):
     return result.get("data", {}).get("result", [])
 
 
+async def _targets(settings, upstream):
+    result = await _prometheus_get(settings, upstream, "/api/v1/targets", {})
+    return result.get("data", {})
+
+
 async def _alerts(settings, upstream) -> dict[str, Any]:
     result = await _prometheus_get(settings, upstream, "/api/v1/rules", {"type": "alert"})
     alerts = []
@@ -208,6 +213,13 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
             if not _admin(settings, sessions, bearer, request):
                 raise Unauthorized()
             path = request.url.path
+            if path == "/admin/api/monitoring/tools":
+                hours = min(168, max(1, int(request.query_params.get("hours", 24))))
+                return JSONResponse(
+                    await tool_monitoring.report(
+                        settings, upstream, hours, _instant, _targets
+                    )
+                )
             if path == "/admin/api/monitoring/overview":
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
                 channel = request.query_params.get("channel", "")
@@ -265,6 +277,9 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
                         "compaction": compaction,
                         "prometheus": prometheus,
                         "grafana_url": settings.grafana_url,
+                        "http_collection": await tool_monitoring.collection_health(
+                            settings, upstream, "hymio", _targets
+                        ),
                     }
                 )
             if path == "/admin/api/monitoring/series":
@@ -429,6 +444,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
 
     return [
         Route("/admin/api/monitoring/overview", endpoint),
+        Route("/admin/api/monitoring/tools", endpoint),
         Route("/admin/api/monitoring/series", endpoint),
         Route("/admin/api/monitoring/search", endpoint),
         Route("/admin/api/monitoring/trace", endpoint),
