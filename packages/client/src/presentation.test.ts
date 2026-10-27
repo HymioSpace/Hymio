@@ -106,3 +106,32 @@ test('closed surface completes independently of the following message stream', (
   const part = contentParts('```hymio-ui\n' + stream + '```', true).find((p) => p.kind === 'ui');
   assert.equal(part?.complete, true);
 });
+
+test('completion drains a long backlog within 450ms without losing the visible prefix', () => {
+  const b = new TextBuffer();
+  const source = '你好👨‍👩‍👧‍👦é'.repeat(5000);
+  b.set(source, 0);
+  const prefix = b.tick(150);
+  b.complete(150);
+  assert.ok(b.tick(250).startsWith(prefix));
+  assert.equal(b.tick(600), source);
+  assert.equal(b.pending, false);
+});
+test('append deltas can extend the last visible Unicode cluster', () => {
+  for (const parts of [
+    ['e', '́', '文'],
+    ['👨', '‍👩', '‍👧‍👦', '好'],
+    ['🇨', '🇳', '🇺', '🇸'],
+  ]) {
+    const b = new TextBuffer();
+    let source = '';
+    for (const part of parts) {
+      source += part;
+      b.set(source, 0, true);
+      assert.equal(b.value, source);
+    }
+    b.set(source + '末尾', 10);
+    b.complete(10);
+    assert.equal(b.tick(500), source + '末尾');
+  }
+});

@@ -14,16 +14,21 @@ import type { LoginState } from '../useLogin';
 function Review() {
   const [target, setTarget] = useState('');
   const [start, setStart] = useState(0);
-  const text = '小海獭正在核对订单。时间、地点和价格会逐项保留。Streaming words stay together.';
+  const [text, setText] = useState(
+    '小海獭正在核对订单。时间、地点和价格会逐项保留。Streaming words stay together.',
+  );
   useEffect(() => {
     if (!start) return;
     setTarget('');
     let index = 0;
-    const timer = setInterval(() => {
-      index += 2;
-      setTarget(text.slice(0, index));
-      if (index >= text.length) clearInterval(timer);
-    }, 90);
+    const timer = setInterval(
+      () => {
+        index += text.length > 1000 ? 256 : 2;
+        setTarget(text.slice(0, index));
+        if (index >= text.length) clearInterval(timer);
+      },
+      text.length > 1000 ? 32 : 90,
+    );
     return () => clearInterval(timer);
   }, [start]);
   const previewDark = new URLSearchParams(location.search).get('theme') === 'dark';
@@ -81,16 +86,41 @@ function Review() {
         >
           开始流式显示
         </button>
-        <ProgressiveContent
-          content={target}
-          streaming={target.length < text.length}
-          onAction={async () => {}}
-          render={(value) => (
-            <p>
-              <MotionText>{value}</MotionText>
-            </p>
-          )}
-        />
+        <button
+          type="button"
+          onClick={() => {
+            setText('你好é👨‍👩‍👧‍👦 Streaming words stay together.\n'.repeat(1500));
+            setStart((value) => value + 1);
+          }}
+          style={{ padding: 12 }}
+        >
+          长输出压力验证
+        </button>
+        {text.length > 1000 ? (
+          <MessageView
+            message={{
+              id: 'synthetic-long-stream',
+              role: 'assistant',
+              content: target,
+              streaming: target.length < text.length,
+              time: '2026-10-28T00:00:00Z',
+            }}
+            tools={[]}
+            login={{ backend: 'http://127.0.0.1' } as LoginState}
+            onAction={async () => {}}
+          />
+        ) : (
+          <ProgressiveContent
+            content={target}
+            streaming={target.length < text.length}
+            onAction={async () => {}}
+            render={(value) => (
+              <p>
+                <MotionText>{value}</MotionText>
+              </p>
+            )}
+          />
+        )}
         <MessageView
           message={{
             id: 'synthetic-copy',
