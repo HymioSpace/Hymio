@@ -1646,6 +1646,35 @@ body {
   box-shadow: 0 10px 28px rgb(22 32 54 / 4%);
 }
 
+.api-collection-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 13px 15px;
+  border: 1px solid #f0dfc7;
+  border-radius: 10px;
+  background: #fffaf2;
+  color: #996d34;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.api-collection-warning svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.api-collection-warning div {
+  display: grid;
+  gap: 3px;
+}
+
+.api-collection-warning strong {
+  color: #744f25;
+  font-size: 12px;
+}
+
 .api-health-head,
 .api-health-row {
   display: grid;

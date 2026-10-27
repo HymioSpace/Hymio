@@ -1183,10 +1183,31 @@ function RecentTraffic({ turns }: { turns: ClientTurn[] }) {
 
 function HttpApiHealth({ data }: { data?: MonitoringOverview }) {
   const rows = httpMetrics(data);
-  const unavailable =
+  const collectionStatus = data?.http_collection?.status;
+  const queryUnavailable = Boolean(
     data &&
-    (!data.prometheus.available ||
-      data.prometheus.errors?.some((name) => name.startsWith("http_")));
+      (!data.prometheus.available ||
+        data.prometheus.errors?.some((name) => name.startsWith("http_"))),
+  );
+  const collectionFailed =
+    collectionStatus === "unavailable" ||
+    collectionStatus === "missing" ||
+    collectionStatus === "down";
+  const unavailable = queryUnavailable || collectionFailed;
+  const failedTargets =
+    data?.http_collection?.targets
+      .filter((target) => !target.up)
+      .map((target) =>
+        target.last_error
+          ? `${target.instance}（${target.last_error}）`
+          : target.instance,
+      ) || [];
+  const targetText =
+    failedTargets.length > 0
+      ? failedTargets.join("、")
+      : data?.http_collection?.targets
+          .map((target) => target.instance)
+          .join("、");
   const [showAll, setShowAll] = useState(false);
   const maximumP90 = Math.max(0.001, ...rows.map((row) => row.p90 || 0));
   const visible = showAll ? rows : rows.slice(0, 8);
@@ -1208,6 +1229,25 @@ function HttpApiHealth({ data }: { data?: MonitoringOverview }) {
           Prometheus · 5 分钟滚动窗口 · 单位 ms
         </span>
       </header>
+      {data && collectionFailed && (
+        <div className="api-collection-warning" role="status">
+          <AlertTriangle size={16} />
+          <div>
+            <strong>
+              {collectionStatus === "unavailable"
+                ? "Prometheus 无法连接"
+                : collectionStatus === "missing"
+                  ? "没有找到 Hymio 采集目标"
+                  : "Hymio 采集目标离线"}
+            </strong>
+            <span>
+              {targetText
+                ? `目标：${targetText}。确认 Prometheus 的 hymio-targets.json 指向 Backend 容器。`
+                : "确认 Prometheus 已加载 Hymio 的动态采集目标。"}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="api-health-panel">
         <div className="api-health-head">
           <span>接口</span>
@@ -1259,12 +1299,18 @@ function HttpApiHealth({ data }: { data?: MonitoringOverview }) {
           <div className="api-health-empty">
             <Activity size={21} />
             <strong>
-              {unavailable ? "HTTP 指标数据源不可用" : "暂无 HTTP 指标样本"}
+              {collectionFailed
+                ? "HTTP 采集目标未连接"
+                : queryUnavailable
+                  ? "HTTP 指标查询失败"
+                  : "采集正常，暂无请求样本"}
             </strong>
             <span>
-              {unavailable
-                ? "检查 Backend 的 Prometheus 地址、容器网络与采集目标。数据源恢复后自动重试。"
-                : "采集正常；当前 5 分钟窗口没有足够请求，等待下一次采样。"}
+              {collectionFailed
+                ? "这里表示采集失败，不代表接口没有流量。检查 Prometheus 的 Hymio 目标地址和 Backend 网络。"
+                : queryUnavailable
+                  ? "Prometheus 可连接，但 HTTP 查询失败；展开上方错误查看具体指标。"
+                  : "当前 5 分钟窗口没有 HTTP 请求；有请求后会自动出现。"}
             </span>
           </div>
         )}

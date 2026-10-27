@@ -79,11 +79,18 @@ The launcher supplies the private Prometheus URL when Backend config omits `prom
 An explicit Backend value takes precedence. On the shared Docker network, use the service name;
 `127.0.0.1` inside Backend refers to Backend itself. `/telemetry/*` routes to Backend.
 An unauthenticated telemetry POST must return JSON 401, never the static Web app's HTML.
-`prepare` also generates `hymio-metrics-targets.json`. Set Oath Compose's
-`OATH_HYMIO_METRICS_TARGETS` to that file's absolute path before recreating Prometheus.
-This makes Prometheus scrape `backend:8080` on the private shared network. Keep that environment
-setting in the host's private Oath Compose environment for subsequent deployments.
-The default Oath target is the host's port 8080, appropriate for a locally running Backend.
+`prepare` also generates `hymio-metrics-targets.json`. Pass that file's absolute path when
+starting Oath:
+
+```sh
+oath start --hymio-metrics-target \
+  /opt/hymio/repos/Hymio/deploy/cloud/generated/hymio-metrics-targets.json
+```
+
+Oath persists the path in its deployment record and `oath restart` reuses it. This makes
+Prometheus scrape `backend:8080` on the private shared network without relying on a shell
+environment variable that may disappear on the next restart. The default Oath target remains
+the host's port 8080, appropriate for a locally running Backend.
 Set `signup_enabled = false` to close registration entirely. If registration is enabled
 without `invitation_codes_file`, registration remains open for backward compatibility.
 

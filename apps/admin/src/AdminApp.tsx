@@ -17,6 +17,7 @@ import {
   Smartphone,
   UserRound,
   Users,
+  Wrench,
   Workflow,
 } from "lucide-react";
 import {
@@ -29,6 +30,7 @@ import {
   type Session,
 } from "./api";
 import { Monitoring } from "./Monitoring";
+import { ToolsPanel } from "./ToolsPanel";
 
 const states: Record<string, string> = {
   allocated: "已分配",
@@ -259,9 +261,11 @@ export function AdminApp() {
       ? "traces"
       : hash.startsWith("#/monitoring/logs")
         ? "logs"
-        : hash.startsWith("#/monitoring/runbook")
-          ? "runbook"
-          : "overview";
+        : hash.startsWith("#/monitoring/tools")
+          ? "tools"
+          : hash.startsWith("#/monitoring/runbook")
+            ? "runbook"
+            : "overview";
 
   return (
     <div className="shell">
@@ -312,6 +316,19 @@ export function AdminApp() {
             Trace 排查
           </a>
           <a
+            className={`nav ${view === "monitoring" && monitoringPage === "tools" ? "active" : ""}`}
+            href="#/monitoring/tools"
+            onClick={() => setView("monitoring")}
+            aria-current={
+              view === "monitoring" && monitoringPage === "tools"
+                ? "page"
+                : undefined
+            }
+          >
+            <Wrench size={17} />
+            工具执行
+          </a>
+          <a
             className={`nav ${view === "monitoring" && monitoringPage === "logs" ? "active" : ""}`}
             href="#/monitoring/logs"
             onClick={() => setView("monitoring")}
@@ -352,7 +369,9 @@ export function AdminApp() {
         </div>
       </aside>
 
-      {view === "monitoring" ? (
+      {view === "monitoring" && monitoringPage === "tools" ? (
+        <ToolsPanel session={session} />
+      ) : view === "monitoring" ? (
         <Monitoring session={session} />
       ) : (
         <main className="workspace">
@@ -446,7 +465,9 @@ export function AdminApp() {
                 <h2>
                   <Users size={18} /> 用户权限
                 </h2>
-                <p>停用访问会立即阻止使用，但不会暂停、删除或释放已有环境；释放请到下方云主机区域。</p>
+                <p>
+                  停用访问会立即阻止使用，但不会暂停、删除或释放已有环境；释放请到下方云主机区域。
+                </p>
               </div>
               <label className="search">
                 <Search size={15} />
@@ -479,7 +500,11 @@ export function AdminApp() {
                       <small title={user.user_id}>{user.user_id}</small>
                     </div>
                     <span className={`access ${enabled ? "enabled" : ""}`}>
-                      {enabled ? "已授权" : holdsDevice ? "未授权 · 环境保留" : "未开通"}
+                      {enabled
+                        ? "已授权"
+                        : holdsDevice
+                          ? "未授权 · 环境保留"
+                          : "未开通"}
                     </span>
                     <select
                       value={chosen}
@@ -521,7 +546,9 @@ export function AdminApp() {
                             provider: chosen,
                             enabled: !unchanged,
                           },
-                          unchanged ? "已停用云电脑访问，环境仍保留。" : "权限已更新。",
+                          unchanged
+                            ? "已停用云电脑访问，环境仍保留。"
+                            : "权限已更新。",
                         );
                       }}
                     >

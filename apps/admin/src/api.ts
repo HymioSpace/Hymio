@@ -175,7 +175,18 @@ export type MonitoringOverview = {
       { labels: Record<string, string>; value: string }[]
     >;
   };
+  http_collection: CollectionHealth;
   grafana_url: string;
+};
+
+export type CollectionHealth = {
+  status: "ready" | "down" | "missing" | "unavailable";
+  targets: {
+    instance: string;
+    up: boolean;
+    scrape_url?: string;
+    last_error?: string;
+  }[];
 };
 
 export type PromSeries = {

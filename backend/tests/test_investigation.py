@@ -41,6 +41,52 @@ class InvestigationTests(unittest.TestCase):
         self.assertEqual(data["prometheus"]["errors"], ["http_avg"])
         self.assertEqual(data["prometheus"]["metrics"]["services_up"][0]["value"], "1")
 
+    def test_tools_route_returns_current_target_health_and_aggregates(self):
+        async def instant(settings, upstream, query):
+            if "terminals_total" in query:
+                return [
+                    {
+                        "metric": {"tool": "search", "outcome": "succeeded"},
+                        "value": [0, "4"],
+                    },
+                    {
+                        "metric": {"tool": "search", "outcome": "failed"},
+                        "value": [0, "1"],
+                    },
+                ]
+            if "duration_seconds_sum" in query:
+                return [{"metric": {"tool": "search"}, "value": [0, "0.3"]}]
+            if "duration_seconds_count" in query:
+                return [{"metric": {"tool": "search"}, "value": [0, "5"]}]
+            return []
+
+        async def targets(settings, upstream):
+            return {
+                "activeTargets": [
+                    {
+                        "labels": {"job": "oath", "instance": "tools:8773"},
+                        "health": "up",
+                        "scrapeUrl": "http://tools:8773/metrics",
+                    }
+                ]
+            }
+
+        settings = SimpleNamespace(admin_user_ids=("u",), grafana_url="")
+        sessions = SimpleNamespace(verify=lambda token: {"user_id": "u"})
+        app = Starlette(
+            routes=monitoring_routes(settings, sessions, None, lambda request: "test", None)
+        )
+        with (
+            patch("hymio_backend.monitoring._instant", side_effect=instant),
+            patch("hymio_backend.monitoring._targets", side_effect=targets),
+        ):
+            data = TestClient(app).get("/admin/api/monitoring/tools?hours=24").json()
+
+        self.assertEqual(data["collection"]["status"], "ready")
+        self.assertEqual(data["tools"][0]["total"], 5)
+        self.assertEqual(data["tools"][0]["success_rate"], 0.8)
+        self.assertAlmostEqual(data["tools"][0]["average"], 0.3)
+
     def test_trigger_reads_input_not_model_request(self):
         body = {
             "kind": "system",
