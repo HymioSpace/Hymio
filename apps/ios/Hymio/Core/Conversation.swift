@@ -65,7 +65,7 @@ public struct Conversation {
     rebuildIndices()
   }
   /// 一次工作为单位的消息序列，界面按它来折叠过程。
-  public var turns: [Turn] { buildTurns(messages) }
+  public var turns: [Turn] { buildTurns(messages, paused: !pauseNotice.isEmpty) }
   public var awaitingReply: Bool {
     messages.last?.role == "user" && messages.last?.delivery != "failed" && failure.isEmpty
       && pauseNotice.isEmpty
@@ -190,7 +190,7 @@ public struct Conversation {
       }
     case "agent.paused" where p["reason"].text == "tool_only_budget":
       working = false
-      pauseNotice = "已暂停自动续行，工具结果已保留。发送消息后继续。"
+      pauseNotice = "本轮自动处理额度已用完，进展已保留。"
     case "agent.resumed":
       pauseNotice = ""
     case "step.status":

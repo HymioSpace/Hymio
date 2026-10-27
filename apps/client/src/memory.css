@@ -62,7 +62,7 @@
   font-size: 30px;
   letter-spacing: -1px;
   margin: 4px 0 0;
-  font-weight: 650;
+  font-weight: calc(650 - var(--weight-adjust, 0));
 }
 .memory-eyebrow {
   margin: 0;
@@ -122,7 +122,7 @@
   background: var(--surface);
   color: var(--blue);
   box-shadow: 0 2px 6px #19244c0b;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
 }
 .memory-graph-button {
   color: var(--blue) !important;
@@ -149,7 +149,7 @@
   gap: 7px;
   color: var(--blue);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: calc(550 - var(--weight-adjust, 0));
 }
 .memory-card-meta > svg:last-child {
   margin-left: auto;
@@ -157,7 +157,7 @@
 .memory-card-copy {
   font-size: 17px;
   line-height: 1.7;
-  font-weight: 550;
+  font-weight: calc(550 - var(--weight-adjust, 0));
   display: -webkit-box;
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
@@ -191,7 +191,7 @@
 }
 .memory-footprint .memory-card-copy {
   font-size: 15px;
-  font-weight: 400;
+  font-weight: calc(400 - var(--weight-adjust, 0));
   -webkit-line-clamp: 3;
 }
 .memory-page-end {
@@ -378,7 +378,7 @@
 .memory-evidence time {
   margin-left: auto;
   color: var(--muted);
-  font-weight: 400;
+  font-weight: calc(400 - var(--weight-adjust, 0));
 }
 .memory-evidence-copy {
   line-height: 1.8;
@@ -476,7 +476,7 @@
 }
 .memory-star-center > span {
   font-size: 15px;
-  font-weight: 550;
+  font-weight: calc(550 - var(--weight-adjust, 0));
   line-height: 1.7;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -606,7 +606,7 @@
 .memory-card-copy {
   -webkit-line-clamp: 3;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
   letter-spacing: -0.2px;
 }
 .memory-card-summary {
@@ -648,7 +648,7 @@
 }
 .memory-footprint .memory-card-copy {
   font-size: 15px;
-  font-weight: 400;
+  font-weight: calc(400 - var(--weight-adjust, 0));
   line-height: 1.85;
   letter-spacing: 0;
 }
@@ -732,7 +732,7 @@
 .memory-categories button[aria-pressed='true'] {
   color: var(--on-accent);
   background: var(--blue);
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
 }
 .memory-viewbar {
   margin-bottom: 10px;
@@ -770,7 +770,7 @@
   justify-content: center;
 }
 .memory-card-copy {
-  font-weight: 650;
+  font-weight: calc(650 - var(--weight-adjust, 0));
   line-height: 1.5;
 }
 .memory-card-bottom {
@@ -790,7 +790,7 @@
 }
 .memory-footprint .memory-card-copy {
   font-size: 17px;
-  font-weight: 650;
+  font-weight: calc(650 - var(--weight-adjust, 0));
 }
 
 .memory-page .memory-add {
@@ -1149,7 +1149,7 @@
 }
 .memory-card-copy {
   font-size: 15px;
-  font-weight: 550;
+  font-weight: calc(550 - var(--weight-adjust, 0));
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -1179,7 +1179,7 @@
 }
 .memory-overview > summary {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: calc(500 - var(--weight-adjust, 0));
   cursor: pointer;
   list-style: none;
   display: flex;
@@ -1236,7 +1236,7 @@
 .memory-page .memory-card-copy {
   font-size: 15px;
   line-height: 1.5;
-  font-weight: 550;
+  font-weight: calc(550 - var(--weight-adjust, 0));
 }
 .memory-page .memory-card {
   gap: 4px 14px;

@@ -31,7 +31,7 @@ header b {
 header b span {
   font-size: 12px;
   letter-spacing: 0;
-  font-weight: 400;
+  font-weight: calc(400 - var(--weight-adjust, 0));
   margin-left: 20px;
   color: var(--muted);
 }
@@ -79,7 +79,7 @@ h1 {
 }
 h2 {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: calc(500 - var(--weight-adjust, 0));
   color: var(--muted);
   margin-bottom: 24px;
 }
@@ -100,7 +100,7 @@ h2 {
 }
 .moods strong {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: calc(500 - var(--weight-adjust, 0));
 }
 .moods small {
   font-size: 11px;

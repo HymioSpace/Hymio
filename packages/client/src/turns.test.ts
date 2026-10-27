@@ -177,3 +177,14 @@ for (const trace of ['new', 't1', '']) {
     assert.deepEqual(turns[1].activity, []);
   });
 }
+
+test('budget pause folds a tool-only turn without inventing a final answer', () => {
+  const messages = [user('u'), assistant('a', { traceId: 't', calls: [{ name: 'bash' }] })];
+  assert.equal(buildTurns(messages)[0].settled, false);
+  const paused = buildTurns(messages, true)[0];
+  assert.equal(paused.settled, true);
+  assert.equal(paused.final, null);
+  assert.equal(paused.activity.length, 1);
+  assert.notEqual(paused.endedAt, null);
+  assert.equal(buildTurns(messages, false)[0].settled, false);
+});

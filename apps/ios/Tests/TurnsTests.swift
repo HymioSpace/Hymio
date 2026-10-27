@@ -36,6 +36,22 @@ final class TurnsTests: XCTestCase {
       at: at)
   }
 
+  func testBudgetPauseFoldsToolOnlyTurn() {
+    var model = Conversation(events: [
+      event(1, "user.message", ["content": .string("继续任务")]),
+      step(2, "s1", "prepared", "t1"),
+      call(3, "s1", "", [.object(["name": .string("bash")])]),
+      step(4, "s1", "completed", "t1"),
+    ])
+    XCTAssertFalse(model.turns[0].settled)
+    model.apply(event(5, "agent.paused", ["reason": .string("tool_only_budget")]))
+    XCTAssertTrue(model.turns[0].foldable)
+    XCTAssertNil(model.turns[0].final)
+    XCTAssertEqual(model.turns[0].activity.count, 1)
+    model.apply(event(6, "agent.resumed", [:]))
+    XCTAssertFalse(model.turns[0].settled)
+  }
+
   func testTraceCollapsesEverythingBeforeItsFinalMessage() {
     let model = Conversation(events: [
       event(1, "user.message", ["content": .string("跑个命令")], at: stamp(0)),

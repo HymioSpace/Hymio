@@ -1,0 +1,232 @@
+/* User-defined interaction finish. Four adjacent OKLCH lightness steps, not black frames. */
+:root {
+  --layer-0: oklch(96% 0.003 250);
+  --layer-1: oklch(97.5% 0.003 250);
+  --layer-2: oklch(99% 0.003 250);
+  --layer-3: oklch(100% 0 0);
+  --weight-adjust: 0;
+  --focus-inner: color-mix(in srgb, var(--blue) 16%, transparent);
+  --focus-outer: color-mix(in srgb, var(--blue) 9%, transparent);
+  --spring-drag-stiffness: 1200;
+  --spring-drag-damping: 80;
+  --spring-like-stiffness: 380;
+  --spring-like-damping: 18;
+  --surface: var(--layer-2);
+  --subtle: var(--layer-1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --layer-0: oklch(18% 0.008 250);
+    --layer-1: oklch(20% 0.008 250);
+    --layer-2: oklch(22% 0.008 250);
+    --layer-3: oklch(24% 0.008 250);
+    --weight-adjust: 40;
+  }
+}
+body {
+  font-weight: calc(400 - var(--weight-adjust));
+  font-variant-numeric: tabular-nums;
+}
+.app {
+  background: var(--layer-0);
+}
+.product-rail {
+  background: var(--layer-1);
+  border-color: transparent;
+}
+.main,
+.conversation-scroll {
+  background: var(--layer-2);
+}
+.composer,
+dialog,
+.sheet {
+  background: var(--layer-3);
+}
+p,
+li,
+.message-bubble,
+.memory-fulltext {
+  text-wrap: pretty;
+}
+button > svg,
+summary > svg,
+.disclosure-toggle > svg,
+a > svg,
+label > svg {
+  position: relative;
+  top: 0.125em;
+}
+/* Keep keyboard focus visible without changing input borders or outline. */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+.account-form input:focus {
+  outline: none !important;
+  border-color: transparent !important;
+  box-shadow:
+    0 0 0 2px var(--focus-inner),
+    0 0 0 6px var(--focus-outer) !important;
+}
+.composer {
+  border: 1px solid transparent;
+}
+.composer:focus-within {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--focus-inner),
+    0 0 0 6px var(--focus-outer);
+}
+.composer textarea:focus {
+  box-shadow: none !important;
+}
+.disclosure-toggle {
+  text-align: left;
+  font: inherit;
+}
+.disclosure-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 180ms ease;
+}
+.disclosure[data-expanded='true'] > .disclosure-grid {
+  grid-template-rows: 1fr;
+}
+.disclosure-content {
+  min-height: 0;
+  overflow: hidden;
+}
+.disclosure:not([data-expanded='true']) > .disclosure-grid {
+  visibility: hidden;
+  transition:
+    grid-template-rows 180ms ease,
+    visibility 0s 180ms;
+}
+.disclosure[data-expanded='true'] > .disclosure-grid {
+  visibility: visible;
+}
+.disclosure-toggle .trace-fold-chevron {
+  transition: transform 180ms ease;
+}
+.trace-fold[data-expanded='true'] > .disclosure-toggle .trace-fold-chevron {
+  transform: rotate(90deg);
+}
+.motion-word {
+  white-space: nowrap;
+}
+.text-resolve {
+  animation-duration: 120ms;
+  will-change: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .disclosure-grid,
+  .disclosure-toggle svg {
+    transition: none !important;
+  }
+  .text-resolve {
+    animation: none !important;
+    filter: none !important;
+  }
+}
+@media (prefers-contrast: more) {
+  :root {
+    --focus-inner: var(--blue);
+    --focus-outer: color-mix(in srgb, var(--blue) 30%, transparent);
+  }
+}
+
+b,
+strong {
+  font-weight: calc(700 - var(--weight-adjust));
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: calc(700 - var(--weight-adjust));
+}
+
+/* Product implementation of the reviewed attachment/message hierarchy. */
+.message-user .message-bubble {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.user-message-text {
+  max-width: 100%;
+  padding: 12px 16px;
+  background: var(--layer-1);
+  border-radius: 18px;
+  text-align: left;
+}
+.user-message-text > p:last-child {
+  margin-bottom: 0;
+}
+.message-user .sent-attachment-tray {
+  margin-bottom: 8px;
+}
+.message-assistant > .message-body {
+  background: transparent;
+  box-shadow: none;
+}
+.home-heading > .companion {
+  width: 32px;
+  height: 32px;
+}
+.home-heading h1 {
+  font-size: clamp(24px, 2.5vw, 30px);
+}
+.home-work-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.home-work,
+.home-work.attention {
+  border: 0;
+  border-bottom: 1px solid var(--layer-1);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px 0;
+}
+.home-work:hover {
+  background: var(--layer-1);
+  box-shadow: none;
+}
+.home-section-symbol {
+  width: 20px;
+  height: 20px;
+  background: none;
+}
+.memory-page .memory-card {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+  padding-left: 2px;
+}
+.memory-page .memory-card-meta {
+  display: none;
+}
+.memory-page .memory-card-writing,
+.memory-page .memory-card-bottom {
+  grid-column: 1;
+}
+.memory-page .memory-card-copy {
+  white-space: normal;
+}
+.memory-card-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+  margin-top: 4px;
+}

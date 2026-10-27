@@ -122,19 +122,6 @@ final class ContextStore: ObservableObject {
   }
   var isEmpty: Bool { insights.isEmpty && records.isEmpty }
 
-  func graph(seed: JSON = .null, changes: Bool = false, offset: Int = 0, snapshot: String = "")
-    async throws -> JSON
-  {
-    guard let account else { throw ServiceError.message("暂时无法读取关系。") }
-    return try await account.request(
-      "context/graph",
-      body: .object([
-        "seed": seed, "changes_only": .bool(changes), "limit": .number(12),
-        "depth": .number(1), "offset": .number(Double(offset)),
-        "snapshot": snapshot.isEmpty ? .null : .string(snapshot),
-      ]))
-  }
-
   private func search(_ target: String, cursor: String = "") async throws -> JSON {
     guard let account else { throw ServiceError.message("暂时读不到记忆。") }
     return try await account.request(
@@ -414,7 +401,6 @@ private struct ContextPage: View {
   @State private var insights = false
   @State private var searchText = ""
   @State private var showCollect = false
-  @State private var showGraph = false
   @State private var selectedEntry: ContextEntry?
   @State private var lastOpenedID = ""
   @Environment(\.dynamicTypeSize) private var typeSize
@@ -449,7 +435,6 @@ private struct ContextPage: View {
         }
         HStack {
           categoryPicker
-          if insights { graphButton }
         }
         if !store.feedback.isEmpty {
           HStack(spacing: 10) {
@@ -476,9 +461,7 @@ private struct ContextPage: View {
                 selectedEntry = entry
               } label: {
                 ContextCard(entry: entry)
-                  .overlay(
-                    RoundedRectangle(cornerRadius: 18).stroke(
-                      lastOpenedID == entry.compositeID ? Brand.blue : Color.clear, lineWidth: 1))
+                  .background(lastOpenedID == entry.compositeID ? Brand.base : Color.clear)
               }.buttonStyle(GentlePress())
               Menu {
                 Button("查看内容") { selectedEntry = entry }
@@ -557,14 +540,7 @@ private struct ContextPage: View {
           }
       }.presentationDetents([.large]).presentationDragIndicator(.visible)
     }
-    .sheet(isPresented: $showGraph) {
-      NavigationStack {
-        ContextGraphScreen(store: store, initial: store.insights.first)
-          .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { Button("完成") { showGraph = false } }
-          }
-      }
-    }
+
   }
   private var understandingLabels: [(key: String, label: String)] {
     let labels = Set(store.insights.flatMap { $0.value["labels"].items.map(\.text) })
@@ -621,25 +597,6 @@ private struct ContextPage: View {
       Text("足迹").tag(false)
       Text("记忆").tag(true)
     }.pickerStyle(.segmented).frame(maxWidth: .infinity).accessibilityIdentifier("context.tabs")
-  }
-  private var graphButton: some View {
-    Button {
-      showGraph = true
-    } label: {
-      HStack(spacing: 6) {
-        Image(systemName: "sparkle")
-          .foregroundStyle(
-            LinearGradient(
-              colors: [.blue, .purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing))
-        Text("星图")
-      }.font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
-        .padding(.horizontal, 12).frame(minHeight: typeSize.isAccessibilitySize ? 44 : 32)
-        .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 10))
-        .frame(minHeight: 44)
-    }.buttonStyle(.plain)
-      .disabled(store.loading || (!store.error.isEmpty && store.insights.isEmpty))
-      .accessibilityIdentifier("context.graph")
-      .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
   }
   private var searchField: some View {
     HStack(spacing: 10) {
@@ -702,7 +659,6 @@ private struct ContextPage: View {
 private struct ContextCard: View {
   let entry: ContextEntry
   @Environment(\.dynamicTypeSize) private var typeSize
-  @ScaledMetric(relativeTo: .subheadline) private var symbolSize: CGFloat = 30
   private var copy: (title: String, summary: String) {
     if !entry.title.isEmpty { return (entry.title, entry.preview) }
     guard let end = entry.preview.firstIndex(where: { "。！？!?\n".contains($0) })
@@ -715,26 +671,26 @@ private struct ContextCard: View {
       String(entry.preview[next...]).trimmingCharacters(in: .whitespacesAndNewlines)
     )
   }
-  private var sourceTint: Color { entry.sourceKind == "user" ? Brand.attention : Brand.blue }
   var body: some View {
     Group {
       if entry.isInsight { understanding } else { footprint }
     }
-    .padding(.horizontal, 14).padding(.vertical, 10)
-    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 18))
-    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Brand.line, lineWidth: 1))
-    .contentShape(RoundedRectangle(cornerRadius: 18))
+    .padding(.horizontal, 2).padding(.vertical, 14)
+    .overlay(alignment: .bottom) { Rectangle().fill(Brand.base).frame(height: 1) }
+    .contentShape(Rectangle())
   }
   private var understanding: some View { cardContent }
   private var footprint: some View { cardContent }
   private var cardContent: some View {
     HStack(spacing: 12) {
-      Image(systemName: entry.isInsight ? "book" : entry.sourceSymbol)
-        .font(.body).foregroundStyle(Brand.blue).frame(width: 28)
       VStack(alignment: .leading, spacing: 5) {
         Text(copy.title.isEmpty ? "查看内容" : copy.title)
           .font(.body.weight(.medium)).foregroundStyle(Brand.ink)
-          .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+        if !copy.summary.isEmpty {
+          Text(copy.summary).font(.subheadline).foregroundStyle(Brand.muted)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
+        }
         HStack {
           Text(entry.isInsight ? entry.topics.first ?? "记忆" : entry.sourceTitle)
           Spacer()
@@ -856,12 +812,7 @@ private struct ContextDetailScreen: View {
             HStack {
               Text("原始依据（\(evidenceTotal)）").font(.headline)
               Spacer()
-              NavigationLink {
-                ContextGraphScreen(store: store, initial: entry)
-              } label: {
-                Label("查看关联", systemImage: "point.3.connected.trianglepath.dotted")
-                  .font(.subheadline).frame(minHeight: 44)
-              }
+
             }
             ContextEvidenceList(store: store, evidence: evidence)
             if evidenceTotal > evidenceLimit {
@@ -947,275 +898,6 @@ private let relationNames = [
   "supports": "支撑", "supplements": "补充", "related": "相关", "contradicts": "矛盾", "supersedes": "取代",
   "navigates": "关联",
 ]
-
-private struct ContextGraphScreen: View {
-  @ObservedObject var store: ContextStore
-  let initial: ContextEntry?
-  @State private var data: JSON = .null
-  @State private var seed: JSON = .null
-  @State private var selected = ""
-  @State private var selectedEdge = ""
-  @State private var changes = false
-  @State private var list = false
-  @State private var loading = false
-  @State private var error = ""
-  @State private var reading = false
-  @State private var expandedInspector = false
-  @State private var generation = UUID()
-  private var nodes: [JSON] { data["nodes"].items }
-  private var edges: [JSON] { data["edges"].items }
-  private var node: JSON { nodes.first { $0["key"].text == selected } ?? .null }
-  private var edge: JSON { edges.first { $0["id"].text == selectedEdge } ?? .null }
-  private var related: [JSON] { edges.filter { endpoints($0).contains(selected) } }
-  private func endpoints(_ edge: JSON) -> [String] {
-    ["source", "target"].map { "\(edge[$0]["kind"].text):\(edge[$0]["id"].text)" }
-  }
-  private func title(_ node: JSON) -> String {
-    node["role"].text == "overview"
-      ? "我眼中的你"
-      : node["kind"].text == "record"
-        ? "“" + String(node["preview"].text.prefix(18)) + "”" : node["title"].text
-  }
-  var body: some View {
-    VStack(spacing: 0) {
-      HStack {
-        Button(changes ? "全部内容" : "最近变化") {
-          changes.toggle()
-          seed = .null
-          Task { await load() }
-        }
-        Spacer()
-        if seed != .null {
-          Button("全景") {
-            seed = .null
-            Task { await load() }
-          }
-        }
-        Button {
-          list.toggle()
-        } label: {
-          Image(systemName: list ? "point.3.connected.trianglepath.dotted" : "list.bullet")
-        }
-        .accessibilityLabel(list ? "图浏览" : "列表浏览").frame(width: 44, height: 44)
-      }.font(.subheadline).padding(.horizontal, 18)
-      if !error.isEmpty {
-        HStack {
-          Text(error)
-          Button("重试") { Task { await load() } }
-        }.font(.footnote).padding(12)
-      }
-      if loading && nodes.isEmpty {
-        ProgressView("正在读取关联…").frame(maxWidth: .infinity, maxHeight: .infinity)
-      } else if nodes.isEmpty && error.isEmpty {
-        ContentUnavailableView(
-          "还没有可展示的卡片", systemImage: "point.3.connected.trianglepath.dotted",
-          description: Text("保留的资料与真实关联会在这里呈现。"))
-      } else if reading && node != .null {
-        HStack {
-          Button("回到关联") { reading = false }
-          Spacer()
-        }.padding(.horizontal, 18)
-        ContextDetailScreen(store: store, entry: ContextEntry(node))
-      } else {
-        Text("当前展示 \(nodes.count) 张\(data["truncated"] == .bool(true) ? " · 部分内容未展开" : "")")
-          .font(.caption).foregroundStyle(Brand.muted).frame(
-            maxWidth: .infinity, alignment: .leading
-          ).padding(.horizontal, 18).padding(.bottom, 8)
-        GeometryReader { geometry in
-          ScrollView {
-            if list {
-              LazyVStack(spacing: 10) {
-                ForEach(nodes, id: \.self) { item in
-                  Button {
-                    select(item)
-                  } label: {
-                    HStack {
-                      Text(title(item))
-                      Spacer()
-                      Text("\(item["degree"].int) 项关联").font(.caption)
-                    }
-                    .padding(16).background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
-                  }.buttonStyle(.plain)
-                }
-              }.padding(16)
-            } else {
-              canvas(width: geometry.size.width)
-            }
-            if data["next_offset"] != .null {
-              Button("继续浏览") { Task { await load(more: true) } }.disabled(loading).padding(12)
-            }
-          }.background(Brand.mist)
-        }.frame(minHeight: 210)
-        if node != .null { inspector.frame(maxHeight: expandedInspector ? 280 : 72) }
-      }
-    }.background(Brand.surface).navigationTitle("星图").navigationBarTitleDisplayMode(.inline)
-      .task { await load() }
-  }
-  private func select(_ item: JSON) {
-    selected = item["key"].text
-    selectedEdge = ""
-  }
-  private func point(_ key: String, width: CGFloat) -> CGPoint {
-    let i = nodes.firstIndex { $0["key"].text == key } ?? 0
-    let columns = 3
-    return CGPoint(
-      x: width * (CGFloat(i % columns) + 0.5) / CGFloat(columns),
-      y: CGFloat(i / columns) * 100 + 48 + (i % columns == 1 ? 20 : 0))
-  }
-
-  private func canvas(width: CGFloat) -> some View {
-    ZStack(alignment: .topLeading) {
-      ForEach(edges, id: \.self) { item in
-        let keys = endpoints(item)
-        let a = point(keys[0], width: width)
-        let end = point(keys[1], width: width)
-        let distance = max(1, hypot(end.x - a.x, end.y - a.y))
-        let b = CGPoint(
-          x: end.x - (end.x - a.x) / distance * 18, y: end.y - (end.y - a.y) / distance * 18)
-        let active = keys.contains(selected)
-        if active {
-          Path { p in
-            p.move(to: a)
-            p.addQuadCurve(to: b, control: CGPoint(x: (a.x + b.x) / 2 + 24, y: (a.y + b.y) / 2))
-          }
-          .stroke(
-            active ? Brand.blue.opacity(0.65) : Brand.muted.opacity(0.2),
-            style: StrokeStyle(
-              lineWidth: active ? 1.8 : 1, dash: item["status"].text == "disputed" ? [5, 5] : [])
-          )
-          .accessibilityHidden(true)
-          if !["related", "contradicts", "supplements"].contains(item["type"].text) {
-            Path { p in
-              let angle = atan2(b.y - a.y, b.x - a.x)
-              p.move(to: CGPoint(x: b.x - 7 * cos(angle - 0.45), y: b.y - 7 * sin(angle - 0.45)))
-              p.addLine(to: b)
-              p.addLine(to: CGPoint(x: b.x - 7 * cos(angle + 0.45), y: b.y - 7 * sin(angle + 0.45)))
-            }.stroke(Brand.blue.opacity(0.65), lineWidth: 1.4).accessibilityHidden(true)
-          }
-          if selectedEdge == item["id"].text {
-            Button {
-              selectedEdge = item["id"].text
-            } label: {
-              Text(relationNames[item["type"].text] ?? "关联").font(.caption2)
-                .foregroundStyle(Brand.blue).padding(.horizontal, 5).padding(.vertical, 3)
-                .background(
-                  Brand.surface, in: Capsule())
-            }.buttonStyle(.plain).frame(minWidth: 44, minHeight: 44).position(
-              x: (a.x + b.x) / 2 + 18, y: (a.y + b.y) / 2)
-          }
-        }
-      }
-      ForEach(nodes, id: \.self) { item in
-        Button {
-          select(item)
-        } label: {
-          VStack(spacing: 5) {
-            Image(
-              systemName: item["role"].text == "overview"
-                ? "sparkle" : item["kind"].text == "record" ? "doc.text" : "book"
-            )
-            .font(.system(size: 14, weight: .medium))
-            .foregroundStyle(
-              item["role"].text == "overview"
-                ? Color.purple : item["kind"].text == "record" ? Color.orange : Brand.blue
-            )
-            .frame(
-              width: selected == item["key"].text ? 32 : 24,
-              height: selected == item["key"].text ? 32 : 24
-            )
-            .background(Brand.surface, in: Circle())
-            .overlay(Circle().stroke(selected == item["key"].text ? Brand.blue : Brand.line))
-            Text(title(item)).font(.caption).lineLimit(1).foregroundStyle(Brand.ink)
-          }.frame(width: max(70, width / 3 - 12), height: 64).contentShape(Rectangle())
-        }.buttonStyle(.plain).opacity(
-          item["key"].text == selected
-            || related.contains(where: { endpoints($0).contains(item["key"].text) }) ? 1 : 0.28
-        ).position(point(item["key"].text, width: width))
-      }
-    }.frame(height: CGFloat((nodes.count + 2) / 3) * 100 + 40)
-  }
-  private var inspector: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          Text(title(node)).font(.headline).foregroundStyle(Brand.ink)
-          Button {
-            expandedInspector.toggle()
-          } label: {
-            Image(systemName: expandedInspector ? "chevron.down" : "chevron.up").frame(
-              width: 44, height: 44)
-          }.accessibilityLabel("展开或收起内容")
-          Spacer()
-          Menu {
-            Button("查看完整内容", systemImage: "doc.text") { reading = true }
-            Button("展开周围关联", systemImage: "point.3.connected.trianglepath.dotted") {
-              seed = .object(["kind": node["kind"], "id": node["id"]])
-              Task { await load() }
-            }
-          } label: {
-            Image(systemName: "ellipsis").frame(width: 44, height: 44)
-          }.accessibilityLabel("卡片操作")
-        }
-        if expandedInspector {
-          if edge != .null {
-            Text(relationNames[edge["type"].text] ?? "关联").font(.subheadline.weight(.semibold))
-              .foregroundStyle(Brand.blue)
-            Text(edge["rationale"].text).font(.subheadline).lineSpacing(4)
-            Text(
-              "\(edge["origin"].text == "model" ? "模型建立" : "已有关系")\(edge["status"].text == "disputed" ? " · 待核对" : "")"
-            ).font(.caption).foregroundStyle(Brand.muted)
-            Button("所有关联") { selectedEdge = "" }.font(.subheadline)
-          } else {
-            Text(node["preview"].text).font(.subheadline).lineLimit(3).lineSpacing(4)
-            ForEach(related, id: \.self) { item in
-              let key = endpoints(item).first { $0 != selected } ?? ""
-              let other = nodes.first { $0["key"].text == key } ?? .null
-              HStack {
-                Button(relationNames[item["type"].text] ?? "关联") { selectedEdge = item["id"].text }
-                  .font(.caption).frame(minHeight: 44)
-                Button {
-                  select(other)
-                } label: {
-                  HStack {
-                    Text(title(other)).lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.caption2)
-                  }
-                }
-                .font(.subheadline).foregroundStyle(Brand.ink)
-              }
-            }
-            if related.isEmpty { Text("当前范围尚无关联").font(.caption).foregroundStyle(Brand.muted) }
-            if node["hidden_neighbors"].int > 0 {
-              Button("展开其余 \(node["hidden_neighbors"].int) 项关联") {
-                seed = .object(["kind": node["kind"], "id": node["id"]])
-                Task { await load() }
-              }
-            }
-          }
-        }
-      }.padding(.horizontal, 18).padding(.bottom, 8)
-    }.background(Brand.surface).overlay(alignment: .top) { Divider() }
-  }
-  private func load(more: Bool = false) async {
-    let turn = UUID()
-    generation = turn
-    loading = true
-    error = ""
-    reading = false
-    do {
-      let result = try await store.graph(
-        seed: seed, changes: changes, offset: more ? data["next_offset"].int : 0,
-        snapshot: more ? data["snapshot"].text : "")
-      guard generation == turn, !Task.isCancelled else { return }
-      data = result
-      selectedEdge = ""
-      selected =
-        seed == .null ? nodes.first?["key"].text ?? "" : "\(seed["kind"].text):\(seed["id"].text)"
-    } catch { if generation == turn { self.error = "暂时无法读取关系，请重新读取。" } }
-    if generation == turn { loading = false }
-  }
-}
 
 @MainActor private func contextEvidence(store: ContextStore, value: JSON, limit: Int) async
   -> [ContextEvidence]

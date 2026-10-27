@@ -64,7 +64,7 @@
 .product-rail .rail-button.active {
   color: var(--blue);
   background: var(--pale);
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
 }
 .product-rail .rail-bottom {
   align-items: stretch;
@@ -101,7 +101,7 @@
   letter-spacing: -1.3px;
   line-height: 1.25;
   margin: 14px 0 12px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
 }
 .home-heading p {
   font-size: 15px;
@@ -135,7 +135,7 @@
 }
 .home-section h2 {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
   margin: 0;
 }
 .home-section > header > span {
@@ -175,7 +175,7 @@
 }
 .home-work strong {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
   padding-right: 18px;
 }
 .home-work p,
@@ -213,7 +213,7 @@
   min-height: 48px;
   padding: 0 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
 }
 .home-task-link {
   margin-top: 12px;
@@ -236,7 +236,7 @@
 .home-quiet h2 {
   margin: 20px 0 12px;
   font-size: 24px;
-  font-weight: 500;
+  font-weight: calc(500 - var(--weight-adjust, 0));
   letter-spacing: -0.6px;
 }
 .home-quiet p {
@@ -263,7 +263,7 @@
   flex: none;
 }
 .trace-fold-label {
-  font-weight: 400;
+  font-weight: calc(400 - var(--weight-adjust, 0));
 }
 .message-user .message-body {
   width: fit-content;
@@ -437,7 +437,7 @@
 }
 .home-quiet h2 {
   font-size: 22px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
   margin: 20px 0 14px;
 }
 .home-quiet p {

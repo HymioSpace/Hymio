@@ -160,7 +160,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
       });
     }
     if (event.event_type === 'agent.paused' && p.reason === 'tool_only_budget')
-      pauseNotice = '已暂停自动续行，工具结果已保留。发送消息后继续。';
+      pauseNotice = '本轮自动处理额度已用完，进展已保留。';
     if (event.event_type === 'agent.resumed') pauseNotice = '';
     if (event.event_type === 'step.status') {
       const existing = assistants.get(step);

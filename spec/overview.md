@@ -103,7 +103,7 @@ Daytona、兼容 E2B 与运维托管 Linux API 的设备 Provider 见
 
 iOS 使用此刻、对话、任务、记忆、应用五个原生页签，账号从左上角伴侣头像进入；Web 使用有文字标签的侧栏，当前不支持 Kit，也不请求 Kit API。此刻页聚合需要确认的事项、真实任务变化与一个正在推进的事项。本地按服务和账号保存已见基线，首次访问只展示最近进展；细节见 [feature25](feature25-personal-home.md)。
 
-记忆空间的理解/足迹与按需星图见 [feature31](feature31-memory-space.md)；稳定精华与动态事件基础协议见 [feature30](feature30-context-foundation.md)。
+记忆空间的理解/足迹见 [feature31](feature31-memory-space.md)；稳定精华与动态事件基础协议见 [feature30](feature30-context-foundation.md)。
 
 事件上下文与模型窗口设置见 [feature33](feature33-context-events-window.md)。
 
@@ -111,3 +111,5 @@ iOS 用户在“应用”中安装或生成真实应用。独立 Kit Host 持有
 Backend 只做鉴权代理。Agent 通过统一 `kit_call` 使用应用，当前用户已安装的 operation schema
 由 Hymio context provider 动态注入模型请求。创建和编辑由应用专属 Oath coding context
 完成，见 [feature03](feature03-kits.md) 与 [feature34](feature34-application-runtime.md)。
+
+星图客户端展示已撤下，附件布局与暂停恢复体验见 [feature40](feature40-client-ui-refinement.md)。

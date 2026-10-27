@@ -14,6 +14,7 @@ import remarkGfm from 'remark-gfm';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { ToolCalls } from './ToolActivityGroup';
 import { IconButton } from '@hymio/ui';
+import { Disclosure } from './Disclosure';
 import { MessageImage } from './MessageImage';
 import { ProgressiveContent, useBufferedText, MotionText } from './ProgressiveContent';
 import type { LoginState } from './useLogin';
@@ -41,9 +42,11 @@ function UserMessageContent({ content, login }: { content: string; login: LoginS
         </div>
       )}
       {text && (
-        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {text}
-        </Markdown>
+        <div className="user-message-text">
+          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {text}
+          </Markdown>
+        </div>
       )}
     </ImageLogin.Provider>
   );
@@ -104,7 +107,7 @@ function useCopy(text: string) {
     } catch {
       setState('复制失败，请选择文字复制');
     }
-    timer.current = setTimeout(() => setState(''), 2200);
+    timer.current = setTimeout(() => setState(''), 2500);
   }
   return { state, copy };
 }
@@ -203,14 +206,18 @@ export function MessageView({
     >
       <div className="message-body">
         {message.reasoning && (
-          <details className="reasoning-panel">
-            <summary>
-              <BrainCircuit size={13} />
-              <span>{message.thinking ? '正在思考…' : '思考过程'}</span>
-              <ChevronRight size={12} className="reasoning-chevron" />
-            </summary>
+          <Disclosure
+            className="reasoning-panel"
+            summary={
+              <>
+                <BrainCircuit size={13} />
+                <span>{message.thinking ? '正在思考…' : '思考过程'}</span>
+                <ChevronRight size={12} className="reasoning-chevron" />
+              </>
+            }
+          >
             <div>{reasoning.text}</div>
-          </details>
+          </Disclosure>
         )}
         <div className={`message-bubble ${message.streaming ? 'streaming' : ''}`}>
           {message.role === 'user' ? (

@@ -18,12 +18,15 @@ export function useBufferedText(target: string, streaming: boolean) {
     buffer.current.set(target, performance.now(), !streaming || reduced);
   }
   const [visible, setVisible] = useState(buffer.current.value);
+  const [instant, setInstant] = useState(!streaming || reduced);
   useEffect(() => {
     const b = buffer.current!;
+    setInstant(reduced || document.hidden);
     const next = b.set(target, performance.now(), reduced || document.hidden);
     setVisible((current) => (current === next ? current : next));
     const resume = () => {
       if (!document.hidden) {
+        setInstant(true);
         const next = b.set(target, performance.now(), true);
         setVisible((current) => (current === next ? current : next));
       }
@@ -42,35 +45,63 @@ export function useBufferedText(target: string, streaming: boolean) {
     }, 32);
     return () => clearInterval(timer);
   }, []);
-  return { text: visible, pending: visible !== target };
+  return { text: visible, pending: visible !== target, instant };
 }
 const TextMotion = createContext(false);
 export function MotionText({ children }: { children: ReactNode }) {
   const animate = useContext(TextMotion);
-  if (!animate) return <>{children}</>;
+  const revealed = useRef(new Map<string, { text: string; delay: number }>());
+  const previousText = useRef(new Map<number, string>());
+  if (!animate) {
+    Children.forEach(children, (child, index) => {
+      if (typeof child === 'string') previousText.current.set(index, child);
+    });
+    revealed.current.clear();
+    return <>{children}</>;
+  }
+  let arrival = 0;
   return (
     <>
-      {Children.map(children, (child, index) =>
-        typeof child === 'string'
-          ? Array.from(
-              new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(child),
-              (s) => s.segment,
-            )
-              .reduce<string[]>((out, g, i) => {
-                if (i % 4 === 0) out.push(g);
-                else out[out.length - 1] += g;
-                return out;
-              }, [])
-              .map((text, i) => (
-                <span className="text-resolve" key={`${index}-${i}`}>
-                  {text}
-                </span>
-              ))
-          : child,
-      )}
+      {Children.map(children, (child, index) => {
+        if (typeof child !== 'string') return child;
+        const previous = previousText.current.get(index) || '';
+        const baseline = child.startsWith(previous) ? previous.length : 0;
+        previousText.current.set(index, child);
+        let offset = 0;
+        return Array.from(
+          new Intl.Segmenter(undefined, { granularity: 'word' }).segment(child),
+          (word) => (
+            <span className="motion-word" key={`${index}-word-${word.index}`}>
+              {Array.from(
+                new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(word.segment),
+                (item) => {
+                  const key = `${index}-${offset++}`;
+                  let entry = revealed.current.get(key);
+                  // A visibility flush is already readable. Animate only subsequent arrivals.
+                  if (!entry && word.index + item.index < baseline) return item.segment;
+                  if (!entry || entry.text !== item.segment) {
+                    entry = { text: item.segment, delay: arrival++ * 30 };
+                    revealed.current.set(key, entry);
+                  }
+                  return (
+                    <span
+                      className="text-resolve"
+                      key={key}
+                      style={{ animationDelay: `${entry.delay}ms` }}
+                    >
+                      {item.segment}
+                    </span>
+                  );
+                },
+              )}
+            </span>
+          ),
+        );
+      })}
     </>
   );
 }
+
 function Prose({
   source,
   streaming,
@@ -82,7 +113,7 @@ function Prose({
 }) {
   const display = useBufferedText(source, streaming);
   return (
-    <TextMotion.Provider value={display.pending || streaming}>
+    <TextMotion.Provider value={!display.instant && (display.pending || streaming)}>
       <div className={display.pending ? 'prose-release' : 'prose-settled'}>
         {render(display.text)}
       </div>

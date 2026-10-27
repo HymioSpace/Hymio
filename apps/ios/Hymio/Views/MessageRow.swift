@@ -22,8 +22,6 @@ struct MessageRow: View {
         Spacer(minLength: 45)
         VStack(alignment: .trailing, spacing: 5) {
           UserMessageContent(content: message.content, account: account)
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 20))
             .overlay(alignment: .bottomLeading) {
               if showsTime, !dynamicTypeSize.isAccessibilitySize,
                 let emoji = message.reactions["assistant"]
@@ -135,12 +133,7 @@ struct MessageRow: View {
         }.frame(maxWidth: .infinity, alignment: .leading)
       }
       .environment(\.workProcessText, compact)
-      .padding(compact || reasoningOnly ? 0 : 14)
-      .background {
-        if !compact && !message.content.isEmpty {
-          RoundedRectangle(cornerRadius: 18).fill(Brand.mist.opacity(0.7))
-        }
-      }
+      .padding(.vertical, compact || reasoningOnly ? 0 : 4)
       .accessibilityElement(children: .contain).accessibilityIdentifier("message.assistant")
     }
   }
@@ -297,17 +290,20 @@ private struct UserMessageContent: View {
     let parts = extracted
     VStack(alignment: .leading, spacing: 10) {
       if !parts.images.isEmpty {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 8) {
-            ForEach(Array(parts.images.enumerated()), id: \.offset) { _, source in
-              ProtectedImage(source: source, thumbnail: true, account: account)
-            }
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 80, maximum: 80), spacing: 8)], alignment: .leading,
+          spacing: 8
+        ) {
+          ForEach(Array(parts.images.enumerated()), id: \.offset) { _, source in
+            ProtectedImage(source: source, thumbnail: true, account: account)
           }
-        }.frame(width: CGFloat(min(parts.images.count, 3)) * 88, height: 80)
+        }.frame(maxWidth: 256, alignment: .leading)
       }
       if !parts.text.isEmpty {
         MessageContent(content: parts.text, account: account, expands: false)
           .multilineTextAlignment(.leading)
+          .padding(.horizontal, 14).padding(.vertical, 12)
+          .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 18))
       }
     }
   }

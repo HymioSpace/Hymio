@@ -50,6 +50,7 @@ import SwiftUI
       }
       .environmentObject(healthSync)
       .tint(Brand.blue)
+      .monospacedDigit()
       .onChange(of: account.session?.user_id) { _, value in
         if value == nil {
           client.reset()

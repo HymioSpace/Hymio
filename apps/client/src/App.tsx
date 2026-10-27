@@ -713,7 +713,7 @@ export default function App() {
                     : `已同步 ${state.replay.received} 条服务端事件`}
                 </div>
               )}
-              {buildTurns(model.messages).map((turn) => (
+              {buildTurns(model.messages, !!model.pauseNotice).map((turn) => (
                 <div key={turn.id}>
                   {unreadMessages[0] && turn.final?.id === unreadMessages[0].id && (
                     <div className="unread-divider">
@@ -829,6 +829,13 @@ export default function App() {
               {model.pauseNotice && (
                 <p role="status" className="tool-history-summary">
                   {model.pauseNotice}
+                  <button
+                    className="pause-continue"
+                    disabled={sending || uploading || !connected}
+                    onClick={() => void sendQuick('继续处理')}
+                  >
+                    {sending ? '正在继续…' : '继续处理'}
+                  </button>
                 </p>
               )}
               {latestFailure?.error && failureKey !== dismissedFailure && (

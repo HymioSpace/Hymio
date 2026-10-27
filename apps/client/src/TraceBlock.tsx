@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { formatDuration, traceElapsed, type Turn } from '@hymio/client';
 import type { Approval, ToolActivity } from '@hymio/client';
+import { Disclosure } from './Disclosure';
 import { ActivityStream } from './ActivityStream';
 import { MessageView } from './MessageView';
 import type { LoginState } from './useLogin';
@@ -51,15 +52,21 @@ export function TraceBlock({
         />
       )}
       {foldable ? (
-        <details className="trace-fold" data-testid="trace-fold">
-          <summary>
-            <ChevronRight size={13} className="trace-fold-chevron" />
-            <span className="trace-fold-label">{elapsed ? `已工作 ${elapsed}` : '已工作'}</span>
-          </summary>
+        <Disclosure
+          className="trace-fold"
+          data-testid="trace-fold"
+          resetKey={turn.settled}
+          summary={
+            <>
+              <ChevronRight size={13} className="trace-fold-chevron" />
+              <span className="trace-fold-label">{elapsed ? `已工作 ${elapsed}` : '已工作'}</span>
+            </>
+          }
+        >
           <div className="trace-fold-body">
             <ActivityStream {...stream} />
           </div>
-        </details>
+        </Disclosure>
       ) : (
         <>
           {turn.activity.length > 0 && (

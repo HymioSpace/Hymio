@@ -42,7 +42,7 @@ function isFinal(message: Message): boolean {
  * 按 trace 切分消息。缺trace_id 的老消息退回「用户消息即分界」，
  * 免得整段历史塌成一条。
  */
-export function buildTurns(messages: Message[]): Turn[] {
+export function buildTurns(messages: Message[], paused = false): Turn[] {
   const drafts: Draft[] = [];
   const byTrace = new Map<string, Draft>();
   let open: Draft | undefined;
@@ -87,7 +87,8 @@ export function buildTurns(messages: Message[]): Turn[] {
     const last = items.at(-1);
     // 没有最终回复的trace，只有在它后面又开了新 trace、且自己不再流式时才算结束。
     const settled =
-      finalAt >= 0 ? finalAt === items.length - 1 : index < drafts.length - 1 && !streaming;
+      (paused && index === drafts.length - 1 && !streaming) ||
+      (finalAt >= 0 ? finalAt === items.length - 1 : index < drafts.length - 1 && !streaming);
     let final = finalAt >= 0 ? items[finalAt] : null;
     const activity = items
       .slice(0, finalAt < 0 ? undefined : finalAt)
