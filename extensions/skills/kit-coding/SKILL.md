@@ -31,12 +31,12 @@ user, not to a source revision.
 The context already provides the file tree, display metadata, API contract and current
 `source_revision`.
 
-1. Read only the files needed for the task. `kit_dev(action="read")` returns one bounded chunk;
+1. Read only the files needed for the task. `oath-cli kit_dev --action read` returns one bounded chunk;
    follow `next_offset` until `complete` when the entire file matters.
-2. Make focused `kit_dev(action="patch")` calls with the current `expected_revision`. Prefer exact
+2. Make focused `oath-cli kit_dev --action patch` calls with the current `expected_revision`. Prefer exact
    `old`/`new` patches. Use full file `content` only when the file is genuinely being replaced.
-3. Run `kit_dev(action="check")`. Treat syntax, TypeScript/JSX and Python errors as blockers.
-4. Publish with `kit_dev(action="publish")` only after check succeeds and the page matches the
+3. Run `oath-cli kit_dev --action check`. Treat syntax, TypeScript/JSX and Python errors as blockers.
+4. Publish with `oath-cli kit_dev --action publish` only after check succeeds and the page matches the
    request. Include a short product-facing change summary.
 
 If a patch fails because the source changed, read the file again. Never reuse an old revision.
@@ -78,5 +78,5 @@ The backend is a pure bounded handler layer. `server/main.py` may import only `c
 
 End with a compact summary of what changed and any real limitation. Do not enumerate every file.
 
-Invoke application capabilities with `oath-cli kit_build`, `oath-cli kit_call` or the child-only
-`oath-cli kit_dev`, using `--json` for structured arguments. Inspect schemas with `oath-cli help NAME`.
+Read the current argument schema with `oath-cli help kit_dev`. Use `--json` for structured arguments.
+Inspect execution state with `oath-cli status INVOCATION_ID`.

@@ -1,3 +1,8 @@
-# Tools
+# CLI capability handlers
 
-Add Python tool modules using Oath's tool interface. Startup discovery currently requires zero-argument construction. Prefer CLI-backed business operations when shell composition is useful; add a tool when a dedicated tool interface is warranted.
+Implement atomic operations as Python handlers using Oath's Tool interface. Discovery requires
+zero-argument construction. Their schemas form the oath-cli catalog; no second registry is needed.
+
+Hymio exposes only `bash`, `cli` and `skill` directly to the model. Product handlers remain in
+ToolSystem for admission, authorization, durable status and traces. Add workflow guidance under
+`extensions/skills`; use `oath-cli status INVOCATION_ID` for execution queries.
