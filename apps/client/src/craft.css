@@ -273,3 +273,10 @@ h6 {
   margin: 0;
   border-color: transparent;
 }
+
+/* Replies read as a conversation; process controls and timestamps stay outside. */
+.message-assistant:not(.message-activity):not(.message-reasoning-only) .message-bubble {
+  padding: 14px 18px;
+  background: light-dark(#f0f3f8, #222a35);
+  border-radius: 20px 20px 20px 6px;
+}

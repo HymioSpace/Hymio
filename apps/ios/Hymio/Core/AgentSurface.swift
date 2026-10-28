@@ -248,23 +248,35 @@ public struct PresentationBuffer {
   public init() {}
   public mutating func set(_ text: String, now: Double, immediate: Bool = false) {
     if text != source {
-      let next = Array(text)
-      let extendedGrapheme = !characters.isEmpty && next.count >= characters.count
-        && characters[characters.count - 1] != next[characters.count - 1]
-      if !text.hasPrefix(source) || shown > next.count || extendedGrapheme {
-        let shared = zip(characters, next).prefix { $0 == $1 }.count
-        shown = min(shown, shared)
-        value = String(next.prefix(shown))
-        start = now
-        previous = now
-        credit = 0
-      }
       if source.isEmpty && !text.isEmpty {
         start = now
         previous = now
       }
+      if !text.utf8.starts(with: source.utf8) {
+        // A final correction preserves the already visible common prefix.
+        let next = Array(text)
+        let shared = zip(characters, next).prefix { $0 == $1 }.count
+        shown = min(shown, shared)
+        value = String(next.prefix(shown))
+        characters = next
+        start = now
+        previous = now
+        credit = 0
+      } else {
+        // A delta may extend the final grapheme (combining mark, flag or ZWJ).
+        let last = characters.popLast().map(String.init) ?? ""
+        let offset = source.utf8.count - last.utf8.count
+        let utf8Index = text.utf8.index(text.utf8.startIndex, offsetBy: offset)
+        let cut = String.Index(utf8Index, within: text) ?? text.startIndex
+        let prefix = characters.count
+        let tail = Array(text[cut...])
+        characters.append(contentsOf: tail)
+        if shown > prefix {
+          shown = prefix + min(1, tail.count)
+          value = String(text[..<cut]) + (tail.first.map(String.init) ?? "")
+        }
+      }
       source = text
-      characters = next
       finishBy = nil
     }
     if immediate {
@@ -287,7 +299,7 @@ public struct PresentationBuffer {
       return
     }
     let backlog = characters.count - shown
-    var rate = min(150, max(54, Double(backlog) * 6))
+    var rate = max(54, Double(backlog) * 6)
     if let finishBy {
       if now >= finishBy {
         value = source

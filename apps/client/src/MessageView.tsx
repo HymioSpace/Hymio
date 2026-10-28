@@ -207,7 +207,7 @@ export function MessageView({
     !message.calls?.length;
   return (
     <article
-      className={`message message-${message.role}${reasoningOnly ? ' message-reasoning-only' : ''}`}
+      className={`message message-${message.role}${reasoningOnly ? ' message-reasoning-only' : ''}${activity ? ' message-activity' : ''}`}
       data-testid={`message-${message.role}`}
     >
       <div className="message-body">

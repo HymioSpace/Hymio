@@ -1,5 +1,7 @@
 # Hymio 设计
 
+- [对话气泡与原生渐显](feature42-chat-bubbles-native-streaming.md)：附件右对齐、助手气泡与原生 TextRenderer。
+
 - [展示层精修参数](feature41-interaction-finish.md)：十条Web细节规则、原生适配范围与验证。
 
 - [Client UI refinement](feature40-client-ui-refinement.md)：附件换行、预算暂停恢复入口、撤下星图和跨端UI规划。

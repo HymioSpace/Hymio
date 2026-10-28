@@ -43,6 +43,25 @@ final class AgentSurfaceTests: XCTestCase {
     b.tick(100.002)
     XCTAssertEqual(b.value, "a")
   }
+  func testAppendedUnicodeClustersAndLongStreamDrain() {
+    for parts in [["e", "́", "好"], ["👨", "‍👩", "‍👧‍👦"], ["🇨", "🇳", "🇺", "🇸"]] {
+      var buffer = PresentationBuffer()
+      var text = ""
+      for part in parts {
+        text += part
+        buffer.set(text, now: 0, immediate: true)
+        XCTAssertEqual(buffer.value, text)
+      }
+      let final = text + String(repeating: "中文🦦", count: 10000)
+      buffer.set(final, now: 1)
+      buffer.tick(1.1)
+      XCTAssertTrue(buffer.value.hasPrefix(text))
+      buffer.complete(now: 1.1)
+      buffer.tick(1.6)
+      XCTAssertEqual(buffer.value, final)
+      XCTAssertFalse(buffer.pending)
+    }
+  }
   func testPartialPatchKeepsLastFrame() {
     let source = """
       {"op":"add","path":"/root","value":"card"}
