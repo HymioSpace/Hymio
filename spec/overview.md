@@ -14,13 +14,17 @@ Hymio 是统一应用层 monorepo：承载各端体验、共享 UI、产品后�
 会话首屏加载最近十轮快照，旧历史按轮次分页；快照 checkpoint 之后接实时事件，见 [feature13](feature13-conversation-history.md)。
 
 设备绑定与投递 client_id 分开：每个窗口独立 ACK，不能用其他端的进度跳过消息。
-Hymio 管设备归属、在线状态与执行命令；Oath 扩展显式指定 device_id。
-云电脑统一 Bash / Chromium / 桌面操作，见 [feature10](feature10-multi-device.md)。
+Hymio 管设备归属、在线状态与执行命令；Bash 默认选择在线个人 Mac，显式 device_id
+保持目标不变。云电脑作为明确返回的 fallback，见 [feature10](feature10-multi-device.md)。
+iOS / Web / Desktop 的能力调用统一经 `oath-cli` 进入 Oath ToolSystem，见
+[feature43](feature43-cli-first-capabilities.md)。
+工具能力与具体行动分开授权；技术边界、自动执行/询问/禁止和客户端审批状态见
+[Tool authorization and approvals](feature44-tool-authorization.md)。
 iOS 原生客户端位于 apps/ios，接入同一账号与单一会话，见 [feature14](feature14-ios-mvp.md)。
 
 Context 的入口只有导入与同步：文字、语音、照片、文件和历史快照都属于一次性导入；绑定来源后持续获取变化属于同步。采集、连接器和媒体处理归 Hymio，Context 的规范与检索归 Nostalgia。
 
-现有 MVP 提供原始写入、检索和内部周期 dreaming API。Nostalgia 自己调度草稿、调用可配置的 proposal provider 并原子发布；Hymio 只配置 provider、代理用户请求并向 Agent 提供 `remember` / `recall`。Oath 不包含 context 业务工具或 dreaming 语义。
+现有 MVP 提供原始写入、检索和内部周期 dreaming API。Nostalgia 自己调度草稿、调用可配置的 proposal provider 并原子发布；Hymio 只配置 provider、代理用户请求并向 Agent 提供 `remember` / `recall` CLI。Oath 不包含 context 业务工具或 dreaming 语义。
 
 Kit 是独立业务服务，提供真实应用页面、可选 business operation 和用户数据。新生成应用由
 React 前端、bounded Python API、不可变 revision 和一个 Oath coding context 组成；主 Agent
@@ -58,7 +62,7 @@ flowchart LR
     Apps --> Runtime[Oath WS / Biz]
     Backend --> Runtime
     Backend --> Context[Nostalgia API]
-    Runtime --> Ext[Hymio extensions]
+    Runtime --> Ext[Hymio tools / CLI / skills]
     Ext --> Backend
     Backend --> Kit[Kit Host / operations / application HTML]
     Kit -->|projection| Context
@@ -108,8 +112,8 @@ iOS 使用此刻、对话、任务、记忆、应用五个原生页签，账号�
 事件上下文与模型窗口设置见 [feature33](feature33-context-events-window.md)。
 
 iOS 用户在“应用”中安装或生成真实应用。独立 Kit Host 持有应用页面、业务数据和 operation；
-Backend 只做鉴权代理。Agent 通过统一 `kit_call` 使用应用，当前用户已安装的 operation schema
-由 Hymio context provider 动态注入模型请求。创建和编辑由应用专属 Oath coding context
-完成，见 [feature03](feature03-kits.md) 与 [feature34](feature34-application-runtime.md)。
+Backend 只做鉴权代理。Agent 通过 `oath-cli` 使用当前用户已安装的应用能力。创建和编辑由
+应用专属 Oath coding context 完成，见 [feature03](feature03-kits.md) 与
+[feature34](feature34-application-runtime.md)。
 
 星图客户端展示已撤下，附件布局与暂停恢复体验见 [feature40](feature40-client-ui-refinement.md)。

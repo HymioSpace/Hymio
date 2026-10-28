@@ -2,10 +2,29 @@ import { ConnectionsPanel } from '../ConnectionsPanel';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Companion, IconButton, Sheet, StatusBadge, type Mood } from '@hymio/ui';
+import type { Approval } from '@hymio/client';
+import { ApprovalCard } from '../ApprovalCard';
+import '../styles.css';
 import './gallery.css';
 import { ToolActivityGroup } from '../ToolActivityGroup';
 function Gallery() {
   const [sheet, setSheet] = useState(false);
+  const approval: Approval = {
+    id: 'design-approval',
+    tool: 'bash',
+    status: 'pending',
+    expiresAt: Math.ceil(Date.now() / 1000) + 300,
+    title: '安装测试依赖',
+    summary: '为当前项目添加此开发依赖。',
+    risk: 'medium',
+    tier: 'write',
+    effects: ['execute', 'local_access'],
+    target: { kind: 'device', id: 'mac-mini', label: 'Mac mini' },
+    scopeOptions: ['once', 'run', 'exact_rule'],
+    actionDigest: '0'.repeat(64),
+    arguments: { command: 'pnpm add -D vitest', description: '安装测试依赖' },
+    grantKey: 'synthetic-grant',
+  };
   return (
     <main className="studio">
       <header>
@@ -162,6 +181,15 @@ function Gallery() {
                         arguments: {},
                         status: 'pending',
                         expiresAt: 4102444800,
+                        title: '允许操作浏览器页面？',
+                        summary: 'Hymio 将填写并提交当前页面。',
+                        risk: 'high',
+                        tier: 'write',
+                        effects: ['browser_control'],
+                        target: { kind: 'origin', id: 'example.com', label: 'example.com' },
+                        scopeOptions: ['once', 'run'],
+                        actionDigest: '0'.repeat(64),
+                        grantKey: 'synthetic-grant',
                       },
                     ]
                   : []
@@ -169,6 +197,16 @@ function Gallery() {
             />
           ))}
         </div>
+        <article className="approval-sample">
+          <p>我已检查项目结构，准备运行测试。</p>
+          <ApprovalCard
+            approval={approval}
+            connected
+            pending={false}
+            clock={Date.now()}
+            onDecide={async () => {}}
+          />
+        </article>
       </section>
       <footer>布局草图与组件预览 · 内容为合成示例 · 不连接 Agent 或账号服务</footer>
       {sheet && (

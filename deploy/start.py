@@ -75,6 +75,16 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
             file,
         )
     source = oath_config.read_text()
+    for field in ("exposed_tools", "cli_public_url", "permission_policy_url"):
+        source = re.sub(r"^" + field + r"\s*=.*$", "", source, flags=re.MULTILINE)
+    public_url = config.get("public_url", "http://127.0.0.1:8080").rstrip("/") + "/agent"
+    agent_defaults = (
+        '[agent]\nexposed_tools = ["bash", "cli", "skill"]\ncli_public_url = '
+        + json.dumps(public_url)
+        + "\npermission_policy_url = "
+        + json.dumps("http://host.docker.internal:8080/internal/tool-authorization/check")
+    )
+    source = source.replace("[agent]", agent_defaults, 1)
     choices = config.get("model_options", ["MiniMax-M2.7", "MiniMax-M3"])
     capacities = config.get("model_context_windows", {})
     source = re.sub(r"^selectable_models\s*=.*$", "", source, flags=re.MULTILINE)

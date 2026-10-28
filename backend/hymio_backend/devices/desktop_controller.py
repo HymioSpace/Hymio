@@ -27,7 +27,7 @@ def image_result(image, kind, **metadata):
     }
 
 
-def shell(command, cwd, timeout):
+def shell(command, cwd, timeout, environment=None):
     started = time.monotonic()
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         process = subprocess.Popen(
@@ -36,6 +36,7 @@ def shell(command, cwd, timeout):
             stdout=out,
             stderr=err,
             start_new_session=True,
+            env={**os.environ, **(environment or {})},
         )
         timed_out = False
         try:
@@ -223,7 +224,12 @@ def execute(request):
     timeout = max(0.1, min(float(request["timeout"]), 120))
     args = request["arguments"]
     if request["capability"] == "bash":
-        return shell(args["command"], args.get("cwd") or os.path.expanduser("~/workspace"), timeout)
+        return shell(
+            args["command"],
+            args.get("cwd") or os.path.expanduser("~/workspace"),
+            timeout,
+            request.get("execution_environment"),
+        )
     if request["capability"] == "browser":
         return browser(args, timeout)
     if request["capability"] == "computer":

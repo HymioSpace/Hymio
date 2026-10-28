@@ -149,7 +149,11 @@ class NotificationTests(unittest.TestCase):
     def test_notification_routes_require_account_or_internal_credentials(self):
         token_file = Path(self.folder.name) / "token"
         token_file.write_text("s" * 40)
+        admin_file = Path(self.folder.name) / "admin-token"
+        admin_file.write_text("a" * 40)
         self.service.settings.service_token_file = token_file
+        self.service.settings.oath_admin_token_file = admin_file
+
         def verify(token):
             if token != "account-token":
                 raise Unauthorized()
@@ -183,3 +187,15 @@ class NotificationTests(unittest.TestCase):
             headers={"Authorization": "Bearer wrong"},
         )
         self.assertEqual(rejected.status_code, 401)
+        accepted = client.post(
+            "/internal/notifications",
+            json={
+                "user_id": "owner",
+                "kind": "attention",
+                "summary": "Approval needed",
+                "request_id": "approval:test",
+            },
+            headers={"Authorization": "Bearer " + "a" * 40},
+        )
+        self.assertEqual(accepted.status_code, 200)
+        self.assertEqual(accepted.json()["status"], "queued")

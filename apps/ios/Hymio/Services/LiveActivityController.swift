@@ -22,7 +22,7 @@ final class LiveActivityController: ObservableObject {
 
   func sync(
     account: AccountService, items: [JSON], chatWorking: Bool, chatAwaiting: Bool,
-    leavingApp: Bool = false
+    chatApproval: String? = nil, expiredApproval: Bool = false, leavingApp: Bool = false
   ) async {
     if let activity, activity.activityState != .active {
       tokenTask?.cancel()
@@ -43,27 +43,31 @@ final class LiveActivityController: ObservableObject {
       ["running", "ready", "delivering"].contains($0.1["status"].text)
     }
     let waiting = runs.filter { $0.1["status"].text == "blocked" }
+    let waitingForApproval = chatApproval != nil || !waiting.isEmpty
     let working = chatWorking || chatAwaiting || !active.isEmpty
-    guard working || !waiting.isEmpty || activity != nil else { return }
+    guard working || waitingForApproval || activity != nil else { return }
     if activity == nil {
-      guard leavingApp, working || !waiting.isEmpty else { return }
+      guard leavingApp, working || waitingForApproval else { return }
       let now = Int(Date().timeIntervalSince1970)
       let first = active.first ?? waiting.first
       let title =
-        showDetails && !(first?.0["title"].text.isEmpty ?? true)
+        showDetails && chatApproval != nil ? chatApproval!
+        : showDetails && !(first?.0["title"].text.isEmpty ?? true)
         ? first!.0["title"].text : "Hymio"
       let phase =
-        !waiting.isEmpty ? "等待你确认"
+        waitingForApproval ? "等待你确认"
         : chatWorking || chatAwaiting ? "正在整理和推进"
         : active.first?.1["phase"].text.nonEmpty ?? "正在处理"
       let state = HymioActivityAttributes.ContentState(
         title: title,
         phase: String(phase.prefix(72)),
-        status: !waiting.isEmpty ? "waiting" : "working",
-        activeCount: max(active.count, chatWorking || chatAwaiting ? 1 : 0),
+        status: waitingForApproval ? "waiting" : "working",
+        activeCount: max(
+          active.count, chatWorking || chatAwaiting || chatApproval != nil ? 1 : 0),
         startedAt: now,
         updatedAt: now,
-        taskID: active.first?.0["id"].text ?? waiting.first?.0["id"].text ?? ""
+        taskID: chatApproval != nil
+          ? "" : active.first?.0["id"].text ?? waiting.first?.0["id"].text ?? ""
       )
       do {
         let next = try Activity.request(
@@ -83,23 +87,26 @@ final class LiveActivityController: ObservableObject {
     finishing = nil
     let now = Int(Date().timeIntervalSince1970)
     let current = activity?.content.state
-    if working || !waiting.isEmpty {
+    if working || waitingForApproval {
       let first = active.first ?? waiting.first
       let title =
-        showDetails && !(first?.0["title"].text.isEmpty ?? true)
+        showDetails && chatApproval != nil ? chatApproval!
+        : showDetails && !(first?.0["title"].text.isEmpty ?? true)
         ? first!.0["title"].text : "Hymio"
       let phase =
-        !waiting.isEmpty ? "等待你确认"
+        waitingForApproval ? "等待你确认"
         : chatWorking || chatAwaiting ? "正在整理和推进"
         : active.first?.1["phase"].text.nonEmpty ?? "正在处理"
       let next = HymioActivityAttributes.ContentState(
         title: title,
         phase: String(phase.prefix(72)),
-        status: !waiting.isEmpty ? "waiting" : "working",
-        activeCount: max(active.count, chatWorking || chatAwaiting ? 1 : 0),
+        status: waitingForApproval ? "waiting" : "working",
+        activeCount: max(
+          active.count, chatWorking || chatAwaiting || chatApproval != nil ? 1 : 0),
         startedAt: current?.startedAt ?? now,
         updatedAt: now,
-        taskID: active.first?.0["id"].text ?? waiting.first?.0["id"].text ?? ""
+        taskID: chatApproval != nil
+          ? "" : active.first?.0["id"].text ?? waiting.first?.0["id"].text ?? ""
       )
       guard next != current else { return }
       await activity?.update(
@@ -110,7 +117,7 @@ final class LiveActivityController: ObservableObject {
         guard !Task.isCancelled else { return }
         let done = HymioActivityAttributes.ContentState(
           title: current.title,
-          phase: "已完成",
+          phase: expiredApproval ? "授权已过期" : "已完成",
           status: "completed",
           activeCount: 0,
           startedAt: current.startedAt,

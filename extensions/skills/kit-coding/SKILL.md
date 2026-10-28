@@ -77,3 +77,6 @@ The backend is a pure bounded handler layer. `server/main.py` may import only `c
 - Publish succeeds before you say the change is available.
 
 End with a compact summary of what changed and any real limitation. Do not enumerate every file.
+
+Invoke application capabilities with `oath-cli kit_build`, `oath-cli kit_call` or the child-only
+`oath-cli kit_dev`, using `--json` for structured arguments. Inspect schemas with `oath-cli help NAME`.

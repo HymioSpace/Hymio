@@ -76,7 +76,7 @@ struct ChatScreen: View {
               ).equatable().id(turn.id)
             }
             ForEach(client.model.approvals.filter { $0.status == "pending" }) { approval in
-              ApprovalCard(approval: approval, client: client)
+              ApprovalCard(approval: approval, client: client, account: account)
             }
             TimelineView(.periodic(from: .now, by: 2)) { timeline in
               if (client.model.working || client.model.awaitingReply)
@@ -156,7 +156,41 @@ struct ChatScreen: View {
           positioned = !client.model.messages.isEmpty
         }
         .overlay(alignment: .bottomTrailing) {
-          if !atBottom && !client.model.messages.isEmpty {
+          if client.model.approvals.contains(where: { $0.status == "pending" }) {
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+              let pending = pendingApprovalCount(at: timeline.date)
+              if !atBottom && !client.model.messages.isEmpty {
+                Button {
+                  following = true
+                  atBottom = true
+                  withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                  }
+                  Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(180))
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                    atBottom = true
+                  }
+                } label: {
+                  if pending > 0 {
+                    Label("\(pending) 个待确认", systemImage: "hand.raised")
+                      .font(.caption.weight(.medium))
+                      .foregroundStyle(.secondary)
+                      .padding(.horizontal, 12)
+                      .padding(.vertical, 10)
+                      .background(.regularMaterial, in: Capsule())
+                      .shadow(color: .black.opacity(0.05), radius: 8)
+                  } else {
+                    Image(systemName: "arrow.down").padding(12)
+                      .background(.regularMaterial, in: Circle())
+                      .shadow(color: .black.opacity(0.05), radius: 8)
+                  }
+                }
+                .padding(18)
+                .accessibilityLabel(pending > 0 ? "\(pending) 个操作等待确认" : "最新消息")
+              }
+            }
+          } else if !atBottom && !client.model.messages.isEmpty {
             Button {
               following = true
               atBottom = true
@@ -420,6 +454,11 @@ struct ChatScreen: View {
       .modifier(ComposerSurface(focused: typing))
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }
+  private func pendingApprovalCount(at date: Date) -> Int {
+    client.model.approvals.filter {
+      $0.status == "pending" && $0.expires > date.timeIntervalSince1970
+    }.count
+  }
   private var canSend: Bool {
     client.connected && !sendBusy && !uploading
       && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
@@ -481,33 +520,369 @@ struct ChatScreen: View {
 struct ApprovalCard: View {
   let approval: Approval
   @ObservedObject var client: AgentClient
+  @ObservedObject var account: AccountService
+  var body: some View {
+    ApprovalCardView(
+      approval: approval,
+      connected: client.connected,
+      pending: client.state.pending.contains {
+        $0.payload["invocation_id"].text == approval.id
+      },
+      onDecision: { approved, scope in
+        try await client.decide(
+          approval.id, approved, scope: scope, actionDigest: approval.actionDigest)
+        if approved && scope == "exact_rule" {
+          do {
+            _ = try await account.request(
+              "settings/tool-authorization/rules",
+              body: .object([
+                "tool": .string(approval.tool),
+                "arguments": approval.arguments,
+              ]))
+            return "已允许，并加入始终允许"
+          } catch {
+            return "已允许；长期规则未保存"
+          }
+        }
+        return approved ? "已允许" : "已拒绝"
+      }
+    )
+  }
+}
+
+struct ApprovalCardView: View {
+  let approval: Approval
+  let connected: Bool
+  let pending: Bool
+  let onDecision: (_ approved: Bool, _ scope: String) async throws -> String
+  @State private var scope = "once"
+  @State private var hidden = false
+  @State private var receipt = ""
+  @State private var detailsExpanded = false
+  @State private var error = ""
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
   var body: some View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
-      let expired = approval.expires <= context.date.timeIntervalSince1970
-      let pending = client.state.pending.contains {
-        $0.payload["invocation_id"].text == approval.id
-      }
-      VStack(alignment: .leading, spacing: 14) {
-        Label(expired ? "这项授权已过期" : "这一步，需要你点头", systemImage: "hand.raised").font(
-          .subheadline.weight(.medium))
-        Text(approval.tool).font(.caption).foregroundStyle(.secondary)
-        DisclosureGroup("操作详情") {
-          Text(approval.arguments.pretty).font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled)
-        }.font(.caption)
-        if !expired {
-          HStack {
-            Button("拒绝") { Task { await client.decide(approval.id, false) } }.buttonStyle(.bordered)
-            Spacer()
-            Button(pending ? "已提交" : "允许这次") { Task { await client.decide(approval.id, true) } }
-              .buttonStyle(.borderedProminent)
-          }.disabled(!client.connected || pending)
+      if hidden {
+        if !receipt.isEmpty {
+          Label(receipt, systemImage: receipt.hasPrefix("已拒绝") ? "xmark" : "checkmark")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            .transition(.opacity)
         }
-      }.padding(18).background(Brand.mist, in: RoundedRectangle(cornerRadius: 20)).padding(
-        .leading, 39)
+      } else if approval.expires > context.date.timeIntervalSince1970 {
+        VStack(alignment: .leading, spacing: 0) {
+          HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Image(systemName: toolSymbol)
+              .font(.caption.weight(.medium))
+              .foregroundStyle(.secondary)
+              .accessibilityHidden(true)
+            Text(displayTitle)
+              .font(.headline)
+              .foregroundStyle(.primary)
+              .lineLimit(2)
+            Spacer(minLength: 8)
+            if let warningLabel {
+              Text(warningLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            }
+          }
+          if !approval.summary.isEmpty {
+            Text(approval.summary)
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+              .padding(.top, 4)
+          }
+
+          if !cardPreview.isEmpty {
+            HStack(alignment: .top, spacing: 6) {
+              Text(approval.tool == "bash" ? "$" : "›").foregroundStyle(.secondary)
+              Text(cardPreview)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+            }
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+              Color(uiColor: .secondarySystemFill),
+              in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
+            .padding(.top, 10)
+          }
+
+          ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+              metadataText(context.date)
+              Spacer(minLength: 8)
+              detailsButton
+            }
+            VStack(alignment: .leading, spacing: 0) {
+              metadataText(context.date)
+              detailsButton
+            }
+          }
+          .padding(.top, 2)
+
+          if detailsExpanded {
+            Text(approval.arguments.pretty)
+              .font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(10)
+              .background(
+                Color(uiColor: .secondarySystemFill),
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+              )
+              .padding(.bottom, 4)
+          }
+
+          if options.count > 1 && scope != "once" {
+            Text(scopeDescription)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .padding(.bottom, 2)
+          }
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+              scopeMenu
+              Spacer(minLength: 8)
+              decisionButtons
+            }
+            VStack(alignment: .leading, spacing: 2) {
+              scopeMenu
+              decisionButtons
+            }
+          }
+          .disabled(!connected || pending)
+          if !error.isEmpty {
+            Text(error).font(.caption).foregroundStyle(.secondary)
+          }
+        }
+        .padding(.horizontal, 15)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+        .background(
+          Brand.raised,
+          in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+          RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .stroke(Color(uiColor: .separator).opacity(0.34), lineWidth: 0.5)
+        )
+      }
+    }
+    .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hidden)
+  }
+
+  private var options: [String] {
+    let value = approval.scopeOptions.filter { ["once", "run", "exact_rule"].contains($0) }
+    return value.isEmpty ? ["once"] : value
+  }
+  private var displayTitle: String {
+    let title = approval.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let description = approval.arguments["description"].text.trimmingCharacters(
+      in: .whitespacesAndNewlines)
+    if !description.isEmpty,
+      title.isEmpty || title == approval.tool || title == "允许运行 \(approval.tool)？"
+        || title == "Allow \(approval.tool)?"
+    {
+      return description
+    }
+    return title.isEmpty ? "允许执行操作？" : title
+  }
+  private var warningLabel: String? {
+    approval.tier == "critical" ? "每次确认" : nil
+  }
+  private var toolSymbol: String {
+    [
+      "browser": "globe",
+      "computer": "desktopcomputer",
+      "kit_call": "square.grid.2x2",
+      "bash": "terminal",
+    ][approval.tool] ?? "terminal"
+  }
+  private var cardPreview: String {
+    let value =
+      approval.tool == "bash"
+      ? approval.arguments["command"].text
+      : approval.tool == "browser"
+        ? [
+          approval.arguments["url"].text, approval.arguments["selector"].text,
+          approval.arguments["action"].text,
+        ].first { !$0.isEmpty } ?? ""
+        : approval.tool == "computer"
+          ? approval.arguments["action"].text
+          : approval.arguments["operation"].text
+    return String(value.prefix(180))
+  }
+  private var scopeDescription: String {
+    switch scope {
+    case "run": return "仅限相同操作，直到本轮任务结束"
+    case "exact_rule": return "仅限相同操作，以后自动允许，可在设置中撤销"
+    default: return ""
+    }
+  }
+  private func metadata(_ now: Date) -> [String] {
+    [
+      approval.target.label,
+      expiryLabel(approval.expires - now.timeIntervalSince1970),
+    ].compactMap { $0 }.filter { !$0.isEmpty }
+  }
+  private func metadataText(_ now: Date) -> some View {
+    Text(metadata(now).joined(separator: " · "))
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+  private var detailsButton: some View {
+    Button {
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+        detailsExpanded.toggle()
+      }
+    } label: {
+      HStack(spacing: 3) {
+        Text("详情")
+        Image(systemName: "chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .rotationEffect(.degrees(detailsExpanded ? 180 : 0))
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .frame(minHeight: 44)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(detailsExpanded ? "收起操作详情" : "展开操作详情")
+  }
+  @ViewBuilder private var scopeMenu: some View {
+    if options.count > 1 {
+      Menu {
+        ForEach(options, id: \.self) { option in
+          Button(scopeLabel(option)) { scope = option }
+        }
+      } label: {
+        HStack(spacing: 4) {
+          Text(scopeLabel(scope)).foregroundStyle(.secondary)
+          Image(systemName: "chevron.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+        }
+        .font(.footnote.weight(.medium))
+        .frame(minHeight: 44)
+      }
+      .tint(.secondary)
+      .disabled(pending)
+    }
+  }
+  private var decisionButtons: some View {
+    HStack(spacing: 8) {
+      Spacer(minLength: 0)
+      Button("拒绝") {
+        submit(false)
+      }
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+      .frame(minHeight: 44)
+      Button {
+        submit(true)
+      } label: {
+        Text(approval.tier == "critical" ? "仅允许一次" : "允许")
+          .foregroundStyle(Brand.surface)
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(Brand.ink)
+      .frame(minHeight: 44)
+    }
+  }
+  private func submit(_ approved: Bool) {
+    guard !hidden else { return }
+    error = ""
+    receipt = approved ? "已允许" : "已拒绝"
+    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+      hidden = true
+    }
+    Task {
+      do {
+        let result = try await onDecision(approved, scope)
+        receipt = result
+        do { try await Task.sleep(for: .seconds(1.8)) } catch { return }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+          receipt = ""
+        }
+      } catch {
+        receipt = ""
+        self.error = error.localizedDescription
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+          hidden = false
+        }
+      }
+    }
+  }
+  private func expiryLabel(_ seconds: TimeInterval) -> String {
+    let value = max(0, Int(ceil(seconds)))
+    return value < 60 ? "\(value) 秒后失效" : "\(Int(ceil(Double(value) / 60))) 分钟后失效"
+  }
+  private func scopeLabel(_ value: String) -> String {
+    ["once": "仅这次", "run": "此任务期间", "exact_rule": "始终允许"][value] ?? value
+  }
+}
+
+#if DEBUG
+struct ApprovalPreviewScreen: View {
+  private let approval = Approval(
+    id: "approval-preview",
+    tool: "bash",
+    arguments: .object([
+      "command": .string("pnpm add -D vitest"),
+      "description": .string("安装测试依赖"),
+    ]),
+    status: "pending",
+    expires: Date().addingTimeInterval(300).timeIntervalSince1970,
+    title: "安装测试依赖",
+    summary: "为当前项目添加此开发依赖。",
+    risk: "high",
+    tier: "write",
+    effects: ["execute", "local_access"],
+    target: ApprovalTarget(kind: "device", id: "mac-mini", label: "Mac mini"),
+    scopeOptions: ["once", "run", "exact_rule"],
+    actionDigest: String(repeating: "0", count: 64),
+    decidedAt: nil,
+    decidedBy: "",
+    decisionChannel: "",
+    reason: ""
+  )
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 14) {
+          Text("我已检查项目结构，准备运行测试。")
+            .font(.body)
+          ApprovalCardView(
+            approval: approval,
+            connected: true,
+            pending: false,
+            onDecision: { approved, _ in
+              approved ? "已允许" : "已拒绝"
+            }
+          )
+        }
+        .padding(20)
+      }
+      .background(Color(uiColor: .systemBackground))
+      .navigationTitle("对话")
+      .navigationBarTitleDisplayMode(.inline)
     }
   }
 }
+#endif
 
 private struct CameraCapture: UIViewControllerRepresentable {
   let completion: (UIImage?) -> Void

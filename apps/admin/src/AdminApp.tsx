@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
+  FileText,
   Boxes,
   Check,
   ChevronLeft,
@@ -30,6 +31,7 @@ import {
   type Session,
 } from "./api";
 import { Monitoring } from "./Monitoring";
+import { PromptPanel } from "./PromptPanel";
 import { ToolsPanel } from "./ToolsPanel";
 
 const states: Record<string, string> = {
@@ -255,9 +257,10 @@ export function AdminApp() {
     data?.providers.find((item) => item.provider === provider)?.name ||
     provider;
   const granted = data?.users.filter((user) => user.enabled).length || 0;
-  const monitoringPage =
-    hash.startsWith("#/monitoring/traces") ||
-    hash.startsWith("#/monitoring/trace/")
+  const monitoringPage = hash.startsWith("#/monitoring/prompt")
+    ? "prompt"
+    : hash.startsWith("#/monitoring/traces") ||
+        hash.startsWith("#/monitoring/trace/")
       ? "traces"
       : hash.startsWith("#/monitoring/logs")
         ? "logs"
@@ -289,6 +292,19 @@ export function AdminApp() {
             <span>{data?.devices.length || 0}</span>
           </a>
           <p>观测</p>
+          <a
+            className={`nav ${view === "monitoring" && monitoringPage === "prompt" ? "active" : ""}`}
+            href="#/monitoring/prompt"
+            onClick={() => setView("monitoring")}
+            aria-current={
+              view === "monitoring" && monitoringPage === "prompt"
+                ? "page"
+                : undefined
+            }
+          >
+            <FileText size={17} />
+            System Prompt
+          </a>
           <a
             className={`nav ${view === "monitoring" && monitoringPage === "overview" ? "active" : ""}`}
             href="#/monitoring"
@@ -372,7 +388,11 @@ export function AdminApp() {
       {view === "monitoring" && monitoringPage === "tools" ? (
         <ToolsPanel session={session} />
       ) : view === "monitoring" ? (
-        <Monitoring session={session} />
+        monitoringPage === "prompt" ? (
+          <PromptPanel session={session} />
+        ) : (
+          <Monitoring session={session} />
+        )
       ) : (
         <main className="workspace">
           <header className="topbar">

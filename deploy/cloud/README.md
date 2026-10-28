@@ -151,6 +151,15 @@ through the host bootstrap; do not propagate it into Agent/Bash environments. Di
 host Bash for cloud users. The Backend internal service token must match the token Oath
 uses for remote authentication and Hymio's device extensions.
 
+Configure Oath's `[agent]` table with the private product policy endpoint:
+
+```toml
+permission_policy_url = "http://backend:8080/internal/tool-authorization/check"
+```
+
+Oath signs checks with `services.internal_token`; Backend validates it against the same
+`private/oath-admin-token`. Keep the endpoint on the private runtime network.
+
 From the Hymio checkout, start Oath first to create its Docker network:
 
 ```sh

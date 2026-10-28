@@ -1,67 +1,25 @@
 ---
 name: tasks
-description: Track actionable work with a deliverable, side effect or follow-up; optionally schedule or delegate it.
+description: Track accepted work, schedules, progress and delegated outcomes.
 ---
 
-# Keep the user's work in view
+# Tasks
 
-A task is a piece of work the user asks Hymio to carry through: a deliverable, a multi-step
-investigation, an external action, or work that continues after this reply. Scheduling is optional.
-Keep one record for the same intent.
+Use `oath-cli tasks` to maintain work with an outcome. Read `oath-cli help tasks` for schemas.
+Capture work already accepted using action=capture; creating a schedule dispatches future work,
+so it is different from recording a task you are already doing. Reuse the returned task_id and
+run_id for progress and completion.
 
-Do not create a task for a personal fact or preference, a greeting, a casual statement, a question
-you can answer immediately, or a tentative idea. Use the context tools for what the agent should
-remember. `remember` is not a task. Do not interpret an idea as permission to act.
-
-## Current conversation
-
-`capture(title, objective, success_criteria, intent_key)` records an already admitted task as running.
-It does not enqueue a reminder, rerun the request or interrupt the conversation. Choose a stable key
-for this specific outcome and reuse it after uncertainty; the returned runs[0].id is the run_id.
-An existing key returns its original task, including a completed one; it never reopens it.
-
-For a small completed answer, capture with status=succeeded and content to save the outcome in one call.
-For ongoing work, use `progress(run_id, content, phase, next_step)`. Record discoveries, decisions,
-partial deliverables and what remains. Use `block` for missing access or a decision, explaining both
-what is missing and how to proceed. Later `progress` resumes the same run. Use `complete` or `fail`
-for the actual terminal result. A chat response alone does not update the task. Do not fabricate stages
-or percentages. Backend restart does not prove the underlying work is still executing.
-
-For work that continues outside the visible conversation, use `notify_user` at the meaningful
-boundaries: once after a scheduled `start` succeeds, once when the user must return to resolve a
-blocker, and once before the final reply. Use the returned task_id and run_id. The Backend applies
-notification preferences and suppresses the alert while the user is actively in the app. Never send
-progress spam or claim a queued notification was delivered.
-
-```json
-{"action":"capture","intent_key":"compare-two-offers-2026-10-21","title":"Compare the two offers","objective":"Compare the attached offers for the user's requirements","success_criteria":"A sourced recommendation with tradeoffs","phase":"Reading the offers","next_step":"Compare costs and exclusions"}
+```sh
+oath-cli tasks --action list
+oath-cli tasks --action get --task-id TASK_ID
 ```
 
-Use list/get to find existing work before creating a continuation. Cancel obsolete work when the
-user changes direction. Separate deliverables can have separate tasks; tool invocations cannot.
+For app.task.due, start the specified run before acting. Record meaningful intermediate progress
+and complete/fail/block it with the outcome. Reminders deliver a message; general work needs an
+explicit result. Scheduling uses an IANA timezone and explicit once/daily/weekly fields.
 
-## Future work
-
-`create(title, objective, success_criteria, schedule)` admits NEW work through the scheduler.
-Do not use it to record work already being executed. For app.task.due call start(run_id) before any
-external action. A rejected start means no work should execute. Then record milestones and finish.
-
-```json
-{"mode":"now","timezone":"UTC"}
-{"mode":"once","at":"2030-03-04T09:00:00+08:00","timezone":"Asia/Shanghai"}
-{"mode":"daily","time":"09:00","timezone":"Asia/Shanghai"}
-{"mode":"weekly","weekday":0,"time":"09:00","timezone":"Asia/Shanghai"}
-```
-
-Timed work requires the user's IANA timezone. Weekday is Monday=0. Late recurrence catches up once,
-then resumes at the next future date. Do not promise precise delivery times.
-
-## Controls and experts
-
-- edit changes a future contract; cancel an active run before changing it.
-- pause stops future scheduling, not work already admitted; resume schedules another attempt if none is live.
-- cancel/delete stop future work and request cancellation of a linked expert.
-- delegate(run_id) attaches a bounded independent expert to a running run. Progress and completion
-  arrive automatically. Do not poll, delegate twice or complete its run yourself.
-- list/get show owner-scoped records, findings and results. A task's schedule state is separate from
-  the run's execution status. A running record means accepted unfinished work, not proof of a live worker.
+Independent work can use `oath-cli subagent_spawn --json` with objective, success_criteria and
+bounds; the returned agent_id identifies its separate context. Use subagent_get/list/cancel to
+manage it and subagent_notify for important intermediate findings from a child. Completion is an
+event. Child agents cannot delegate or manage the owner's tasks.

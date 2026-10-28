@@ -18,8 +18,11 @@ from .store import DeviceConflict
 
 
 class DeviceLink:
-    def __init__(self, store):
+    def __init__(self, store, *, result_grace: float = 5.0):
+        if result_grace < 0:
+            raise ValueError("result_grace must be non-negative")
         self.store = store
+        self.result_grace = result_grace
         self.lock = threading.RLock()
         self.connections = {}
         self.pending = {}
@@ -39,9 +42,11 @@ class DeviceLink:
     def report(frame, kind="personal_mac"):
         caps = frame.get("capabilities", [])
         permissions = frame.get("permissions", {})
-        if not isinstance(caps, list) or any(c not in {"bash", "computer"} for c in caps):
+        if not isinstance(caps, list) or any(
+            c not in {"bash", "computer", "browser"} for c in caps
+        ):
             raise ValueError("invalid_capabilities")
-        if kind == "personal_android" and "bash" in caps:
+        if kind == "personal_android" and any(c in caps for c in ("bash", "browser")):
             raise ValueError("invalid_android_capability")
         if (
             not isinstance(permissions, dict)
@@ -168,6 +173,9 @@ class DeviceLink:
         device_id, invocation = data["device_id"], data["invocation_id"]
         device = self.store.get(user_id, device_id)
         request = {"capability": data["capability"], "arguments": data["arguments"]}
+        parent = data.get("parent_invocation_id")
+        if parent:
+            request["parent_invocation_id"] = parent
         timeout = data.get("timeout", 25)
         _, known = self.store.claim(user_id, device_id, invocation, request, timeout + 5)
         if known is not None:
@@ -200,15 +208,14 @@ class DeviceLink:
                 "invocation_id": invocation,
                 "expires_at": time.time() + timeout,
                 **request,
+                "execution_environment": data.get("execution_environment", {}),
             }
             sent = asyncio.run_coroutine_threadsafe(
                 connection["socket"].send_json(frame), connection["loop"]
             )
         try:
-            sent.result(timeout=min(timeout, 5))
-            return future.result(timeout=timeout)
+            sent.result(timeout=min(timeout + self.result_grace, 5))
         except Exception:
-            # A send timeout does not prove the device did not receive the operation.
             return self.store.finish(
                 user_id,
                 invocation,
@@ -217,6 +224,32 @@ class DeviceLink:
                     "invocation_id": invocation,
                     "status": "outcome_unknown",
                     "error": "Link interrupted; do not repeat the operation. Await saved result.",
+                },
+                release=False,
+            )
+        try:
+            return future.result(timeout=timeout + self.result_grace)
+        except TimeoutError:
+            return self.store.finish(
+                user_id,
+                invocation,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation,
+                    "status": "outcome_unknown",
+                    "error": "No device result before the execution deadline.",
+                },
+                release=False,
+            )
+        except Exception:
+            return self.store.finish(
+                user_id,
+                invocation,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation,
+                    "status": "outcome_unknown",
+                    "error": "Device result could not be confirmed.",
                 },
                 release=False,
             )

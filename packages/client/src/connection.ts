@@ -269,10 +269,20 @@ export class OathClient {
                 }
                 if (e.event_type === 'step.status') {
                   if (typeof p.trace_id === 'string') responseTiming.traceId = p.trace_id;
-                  const response = [...this.state.events].reverse().find(event =>
-                    event.event_type === 'assistant.message' && event.payload.step_id === p.step_id);
-                  const continues = Array.isArray(response?.payload.tool_calls) && response.payload.tool_calls.length > 0;
-                  if (['completed', 'failed', 'cancelled'].includes(str(p.status)) && !(p.status === 'completed' && continues)) {
+                  const response = [...this.state.events]
+                    .reverse()
+                    .find(
+                      (event) =>
+                        event.event_type === 'assistant.message' &&
+                        event.payload.step_id === p.step_id,
+                    );
+                  const continues =
+                    Array.isArray(response?.payload.tool_calls) &&
+                    response.payload.tool_calls.length > 0;
+                  if (
+                    ['completed', 'failed', 'cancelled'].includes(str(p.status)) &&
+                    !(p.status === 'completed' && continues)
+                  ) {
                     responseTiming.completedMs = Math.round(performance.now() - active.start);
                     responseTiming.outcome =
                       p.status === 'cancelled'
@@ -586,8 +596,18 @@ export class OathClient {
       },
     });
   }
-  decide(invocationId: string, status: 'approved' | 'denied') {
-    return this.command('permission.decide', { invocation_id: invocationId, status });
+  decide(
+    invocationId: string,
+    status: 'approved' | 'denied',
+    options: { scope?: 'once' | 'run' | 'exact_rule'; actionDigest?: string; reason?: string } = {},
+  ) {
+    return this.command('permission.decide', {
+      invocation_id: invocationId,
+      status,
+      scope: options.scope || 'once',
+      action_digest: options.actionDigest || '',
+      reason: options.reason || '',
+    });
   }
   status() {
     if (this.ready) {

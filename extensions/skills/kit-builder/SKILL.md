@@ -61,3 +61,6 @@ Do not claim it is ready until the app appears as published or a completion even
 If the coding context reports a build or tool failure after accepting a new app, keep the same
 `kit_id` and call `kit_build(action="edit", ...)` to repair it. Never create a duplicate application
 merely because the asynchronous coding turn failed or timed out.
+
+Invoke application capabilities with `oath-cli kit_build`, `oath-cli kit_call` or the child-only
+`oath-cli kit_dev`, using `--json` for structured arguments. Inspect schemas with `oath-cli help NAME`.

@@ -213,12 +213,27 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
             if not _admin(settings, sessions, bearer, request):
                 raise Unauthorized()
             path = request.url.path
+            if path == "/admin/api/monitoring/prompt":
+                channel = request.query_params.get("channel", "web")
+                if channel not in {"web", "ios", "desk", "chrome", "unknown"}:
+                    raise ValueError("invalid_channel")
+                if settings.oath_admin_token_file is None:
+                    return JSONResponse({"error": "oath_admin_token_not_configured"}, 503)
+                response = await upstream.get(
+                    settings.oath_biz.rstrip("/") + "/admin/system-prompt",
+                    params={"channel": channel},
+                    headers={
+                        "Authorization": "Bearer "
+                        + settings.oath_admin_token_file.read_text().strip()
+                    },
+                    timeout=10,
+                )
+                response.raise_for_status()
+                return JSONResponse(response.json())
             if path == "/admin/api/monitoring/tools":
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
                 return JSONResponse(
-                    await tool_monitoring.report(
-                        settings, upstream, hours, _instant, _targets
-                    )
+                    await tool_monitoring.report(settings, upstream, hours, _instant, _targets)
                 )
             if path == "/admin/api/monitoring/overview":
                 hours = min(168, max(1, int(request.query_params.get("hours", 24))))
@@ -445,6 +460,7 @@ def monitoring_routes(settings, sessions, upstream, bearer, body):
     return [
         Route("/admin/api/monitoring/overview", endpoint),
         Route("/admin/api/monitoring/tools", endpoint),
+        Route("/admin/api/monitoring/prompt", endpoint),
         Route("/admin/api/monitoring/series", endpoint),
         Route("/admin/api/monitoring/search", endpoint),
         Route("/admin/api/monitoring/trace", endpoint),

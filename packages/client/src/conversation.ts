@@ -26,6 +26,19 @@ export interface Approval {
   arguments: Data;
   status: string;
   expiresAt: number;
+  title: string;
+  summary: string;
+  risk: string;
+  tier: 'write' | 'critical';
+  effects: string[];
+  target: { kind: string; id: string; label: string };
+  scopeOptions: Array<'once' | 'run' | 'exact_rule'>;
+  actionDigest: string;
+  grantKey: string;
+  decidedAt?: number;
+  decidedBy?: string;
+  decisionChannel?: string;
+  reason?: string;
 }
 export interface ToolActivity {
   id: string;
@@ -136,17 +149,44 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
     }
     if (event.event_type === 'permission.requested') {
       const id = str(p.invocation_id);
+      const target = obj(p.target);
+      const tool = str(p.tool);
+      const toolArguments = obj(p.arguments);
+      const description = str(toolArguments.description).trim();
       approvals.set(id, {
         id,
-        tool: str(p.tool),
-        arguments: obj(p.arguments),
+        tool,
+        arguments: toolArguments,
         status: 'pending',
         expiresAt: Number(p.expires_at),
+        title: str(p.title) || description || `允许运行 ${tool}？`,
+        summary: str(p.summary),
+        risk: str(p.risk) || 'medium',
+        tier: str(p.tier) === 'critical' ? 'critical' : 'write',
+        effects: list(p.effects).map(str),
+        target: {
+          kind: str(target.kind),
+          id: str(target.id),
+          label: str(target.label),
+        },
+        scopeOptions: list(p.scope_options)
+          .map(str)
+          .filter((value): value is 'once' | 'run' | 'exact_rule' =>
+            ['once', 'run', 'exact_rule'].includes(value),
+          ),
+        actionDigest: str(p.action_digest),
+        grantKey: str(p.grant_key),
       });
     }
     if (event.event_type === 'permission.resolved') {
       const approval = approvals.get(str(p.invocation_id));
-      if (approval) approval.status = str(p.status);
+      if (approval) {
+        approval.status = str(p.status);
+        approval.decidedAt = Number(p.decided_at) || undefined;
+        approval.decidedBy = str(p.client_id);
+        approval.decisionChannel = str(p.channel);
+        approval.reason = str(p.reason);
+      }
     }
     if (event.event_type === 'tool.terminal') {
       const id = str(p.invocation_id),

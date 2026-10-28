@@ -61,7 +61,10 @@ struct CopyFeedbackButton: View {
       generation += 1
     } label: {
       Label(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc")
-        .font(.caption)
+        .labelStyle(.iconOnly)
+        .font(.system(size: 12, weight: .medium))
+        .frame(width: 28, height: 28)
+        .contentShape(Rectangle())
     }
     .accessibilityLabel(copied ? "已复制代码" : "复制代码")
     .task(id: generation) {

@@ -17,25 +17,25 @@ textarea {
   margin: auto;
   padding: 40px;
 }
-header {
+.studio > header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding-bottom: 28px;
   border-bottom: 1px solid var(--line);
 }
-header b {
+.studio > header b {
   font-size: 26px;
   letter-spacing: -1px;
 }
-header b span {
+.studio > header b span {
   font-size: 12px;
   letter-spacing: 0;
   font-weight: calc(400 - var(--weight-adjust, 0));
   margin-left: 20px;
   color: var(--muted);
 }
-header > span {
+.studio > header > span {
   font-size: 13px;
   color: var(--muted);
 }
@@ -357,6 +357,21 @@ footer {
 }
 .tool-samples .spin {
   animation: h-spin 1s linear infinite;
+}
+.approval-sample {
+  max-width: 720px;
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.approval-sample > p {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.approval-sample .approval-card {
+  margin-bottom: 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .tool-samples .spin {

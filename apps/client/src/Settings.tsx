@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ConnectionsPanel } from './ConnectionsPanel';
 import { ModelSettings } from './ModelSettings';
+import { ToolPermissionSettings } from './ToolPermissionSettings';
 import { displayName } from './HomePanel';
 import { Activity, X } from 'lucide-react';
 import type { LoginState } from './useLogin';
@@ -40,6 +41,7 @@ export function Settings({
         连接来源 · 邮件、清单与日常
       </button>
       <ModelSettings login={login} />
+      <ToolPermissionSettings login={login} />
       <DeviceManager login={login} />
       {login.error && (
         <p role="alert" className="form-error">

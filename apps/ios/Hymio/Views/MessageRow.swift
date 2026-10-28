@@ -103,7 +103,9 @@ struct MessageRow: View {
                   let tool = tools[String(message.id.dropFirst("assistant:".count)) + "-\(i)"]
                   VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                      Label(toolName(call["name"].text), systemImage: toolIcon(call["name"].text))
+                      Label(
+                        toolTitle(name: call["name"].text, arguments: call["arguments"]),
+                        systemImage: toolIcon(call["name"].text))
                       Spacer()
                       ToolOutcomeLabel(outcome: toolOutcome(index: i))
                     }.font(.caption)
@@ -121,7 +123,10 @@ struct MessageRow: View {
               HStack {
                 Label(
                   message.calls.count == 1
-                    ? toolName(message.calls[0]["name"].text) : "\(message.calls.count) 项工具操作",
+                    ? toolTitle(
+                      name: message.calls[0]["name"].text,
+                      arguments: message.calls[0]["arguments"])
+                    : "\(message.calls.count) 项工具操作",
                   systemImage: "chevron.left.forwardslash.chevron.right")
                 Spacer(minLength: 4)
                 ToolOutcomeLabel(outcome: summaryOutcome)
@@ -161,14 +166,15 @@ struct MessageRow: View {
   }
   private func toolOutcome(index: Int) -> String {
     let id = String(message.id.dropFirst("assistant:".count)) + "-\(index)"
-    if let result = tools[id]?["outcome"].text, !result.isEmpty, result != "running" {
-      return result
-    }
     if let approval = approvals.first(where: { $0.id == id }) {
+      if approval.status == "denied" { return "denied" }
+      if approval.status == "expired" { return "expired" }
       if approval.status == "pending" {
         return approval.expires <= Date().timeIntervalSince1970 ? "expired" : "awaiting_approval"
       }
-      if approval.status == "denied" { return "denied" }
+    }
+    if let result = tools[id]?["outcome"].text, !result.isEmpty, result != "running" {
+      return result
     }
     return tools[id]?["outcome"].text ?? "running"
   }
@@ -181,8 +187,13 @@ struct MessageRow: View {
   private func toolName(_ value: String) -> String {
     [
       "bash": "执行命令", "devices": "查看设备", "device_command": "查询设备调用", "computer": "操作电脑",
-      "browser": "浏览网页", "skill": "使用技能", "remember": "提炼并记下", "recall": "查找记忆",
+      "cli": "云端操作", "browser": "浏览网页", "skill": "使用技能", "remember": "提炼并记下",
+      "recall": "查找记忆",
     ][value] ?? value
+  }
+  private func toolTitle(name: String, arguments: JSON) -> String {
+    let description = arguments["description"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return name == "bash" && !description.isEmpty ? description : toolName(name)
   }
 }
 struct ProtectedImage: View {
@@ -353,7 +364,9 @@ struct ChatBubblePreview: View {
           MessageRow(message: ChatMessage(id: "one", role: "user",
             content: "![图片](hymio-preview:one)\n可以了", time: "2026-01-01T00:00:00Z"), tools: [:], account: account)
           MessageRow(message: ChatMessage(id: "reply", role: "assistant",
-            content: "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。", time: "2026-01-01T00:00:01Z"), tools: [:], account: account)
+            content:
+              "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。运行 `pnpm test` 检查改动：\n\n```swift\nlet status = \"ready\"\nprint(status)\n```",
+            time: "2026-01-01T00:00:01Z"), tools: [:], account: account)
           MessageRow(message: ChatMessage(id: "many", role: "user",
             content: (1...7).map { "![图片](hymio-preview:img\($0))" }.joined(separator: "\n") + "\n这几张一起核对。",
             time: "2026-01-01T00:00:02Z"), tools: [:], account: account)

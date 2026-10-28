@@ -1,5 +1,7 @@
 # Hymio 设计
 
+- [Tool authorization and approvals](feature44-tool-authorization.md)：能力边界、行动审批、授权范围和客户端交互。
+
 - [对话气泡与流畅流式文字](feature42-chat-bubbles-native-streaming.md)：附件右对齐、助手气泡与自适应流式节奏。
 
 - [展示层精修参数](feature41-interaction-finish.md)：十条Web细节规则、原生适配范围与验证。
@@ -47,6 +49,8 @@
 | 34 | [React / Python application runtime](feature34-application-runtime.md) | Implemented：React/Python bundle、coding context 与版本编辑 |
 | 39 | [Tool operations](feature39-tool-operations.md) | Implemented：工具成功率、耗时与采集健康 |
 | 40 | [iOS notifications](feature40-ios-notifications-live-activities.md) | Implementing：模型通知工具、APNs 与聚合实时活动 |
+| 43 | [CLI-first capabilities](feature43-cli-first-capabilities.md) | Implemented：Mac 优先、云端 CLI 与统一 ToolSystem |
+| 44 | [Tool authorization and approvals](feature44-tool-authorization.md) | Implemented：确定性策略、审批范围、Web/iOS 交互 |
 
 
 ## 设计与实现
@@ -83,3 +87,7 @@ Native image input: [feature36](feature36-native-images.md).
 - [Streaming responsiveness](feature38-streaming-latency.md): background frame decoding, ordered batching and bounded presentation catch-up.
 
 - [Notifications and Live Activities](feature40-ios-notifications-live-activities.md): model-requested push, Backend policy, APNs delivery and rule-driven task presence.
+
+- [CLI-first capabilities](feature43-cli-first-capabilities.md): device Bash, cloud CLI and a shared ToolSystem.
+
+- [Tool authorization and approvals](feature44-tool-authorization.md): capability boundaries, exact action approvals, task grants and cross-platform approval UI.

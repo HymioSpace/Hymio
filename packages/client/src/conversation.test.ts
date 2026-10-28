@@ -74,8 +74,24 @@ test('approval resolution and tool terminal update their original identities', (
       tool: 'bash',
       arguments: { command: 'pwd' },
       expires_at: 1,
+      title: 'Run a command?',
+      summary: 'Read the current directory.',
+      risk: 'high',
+      tier: 'critical',
+      effects: ['execute'],
+      target: { kind: 'device', id: 'mac', label: 'Mac mini' },
+      scope_options: ['once', 'run'],
+      action_digest: 'a'.repeat(64),
+      grant_key: 'synthetic',
     }),
-    event(3, 'permission.resolved', { invocation_id: 'a-0', status: 'approved' }),
+    event(3, 'permission.resolved', {
+      invocation_id: 'a-0',
+      status: 'approved',
+      scope: 'run',
+      client_id: 'iphone',
+      channel: 'ios',
+      decided_at: 2,
+    }),
     event(4, 'tool.terminal', {
       invocation_id: 'a-0',
       tool: 'bash',
@@ -84,9 +100,34 @@ test('approval resolution and tool terminal update their original identities', (
     }),
   ]);
   assert.equal(result.approvals[0].status, 'approved');
+  assert.equal(result.approvals[0].title, 'Run a command?');
+  assert.equal(result.approvals[0].tier, 'critical');
+  assert.deepEqual(result.approvals[0].scopeOptions, ['once', 'run']);
+  assert.equal(result.approvals[0].decidedBy, 'iphone');
   assert.equal(result.tools.length, 1);
   assert.equal(result.tools[0].outcome, 'succeeded');
   assert.equal(result.tools[0].result, '/workspace');
+});
+
+test('a command description is the fallback approval title', () => {
+  const result = conversation([
+    event(1, 'permission.requested', {
+      invocation_id: 'bash-description',
+      tool: 'bash',
+      arguments: {
+        command: 'pnpm test',
+        description: 'Run the test suite',
+      },
+      expires_at: 4102444800,
+      summary: 'Read the project and run tests.',
+      risk: 'medium',
+      effects: ['execute'],
+      target: { kind: 'device', id: 'mac', label: 'Mac mini' },
+      scope_options: ['once'],
+      action_digest: 'a'.repeat(64),
+    }),
+  ]);
+  assert.equal(result.approvals[0].title, 'Run the test suite');
 });
 
 test('retry clears the failed step and a later message does not retain its error', () => {

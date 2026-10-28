@@ -16,6 +16,11 @@ struct AccountScreen: View {
   @State private var contextWindows: [Int] = []
   @State private var modelBusy = false
   @State private var modelError = ""
+  @State private var authorizationMode = "guided"
+  @State private var authorizationModes = ["read_only", "guided", "autonomous"]
+  @State private var authorizationRules: [JSON] = []
+  @State private var authorizationBusy = false
+  @State private var authorizationError = ""
   @State private var pairingPresented = false
   @State private var revokeTarget: JSON?
   @State private var revokePresented = false
@@ -46,6 +51,34 @@ struct AccountScreen: View {
     }
     .task { await loadModels() }
   }
+  private var authorizationSection: some View {
+    Section {
+      Picker(
+        selection: Binding(
+          get: { authorizationMode },
+          set: { saveAuthorizationMode($0) }
+        )
+      ) {
+        ForEach(authorizationModes, id: \.self) { mode in
+          Text(authorizationModeLabel(mode)).tag(mode)
+        }
+      } label: {
+        Label("工具授权", systemImage: "shield.checkered")
+      }.pickerStyle(.menu).disabled(authorizationBusy)
+      if !authorizationRules.isEmpty {
+        NavigationLink {
+          ToolAuthorizationRulesScreen(account: account, initialRules: authorizationRules)
+        } label: {
+          LabeledContent("始终允许", value: "\(authorizationRules.count) 条")
+        }
+      }
+      if !authorizationError.isEmpty {
+        Text(authorizationError).font(.caption).foregroundStyle(.secondary)
+      }
+    } footer: {
+      Text(authorizationModeDetail(authorizationMode))
+    }.task { await loadAuthorizationMode() }
+  }
   private func loadModels() async {
     do {
       let value = try await account.request("settings/models")
@@ -75,6 +108,42 @@ struct AccountScreen: View {
     contextWindow = value["context_window"].int
     effectiveWindow = value["effective_context_window"].int
     contextWindows = value["context_windows"].items.map { $0.int }
+  }
+  private func loadAuthorizationMode() async {
+    do {
+      applyAuthorization(try await account.request("settings/tool-authorization"))
+      authorizationError = ""
+    } catch { authorizationError = "暂时无法读取工具授权设置" }
+  }
+  private func applyAuthorization(_ value: JSON) {
+    let modes = value["modes"].items.map(\.text).filter { !$0.isEmpty }
+    if !modes.isEmpty { authorizationModes = modes }
+    let mode = value["mode"].text
+    authorizationMode = authorizationModes.contains(mode) ? mode : "guided"
+    authorizationRules = value["rules"].items
+  }
+  private func saveAuthorizationMode(_ mode: String) {
+    guard !authorizationBusy, mode != authorizationMode else { return }
+    authorizationBusy = true
+    Task {
+      defer { authorizationBusy = false }
+      do {
+        applyAuthorization(
+          try await account.request(
+            "settings/tool-authorization", body: .object(["mode": .string(mode)])))
+        authorizationError = ""
+      } catch { authorizationError = "授权模式未更改，请稍后重试。" }
+    }
+  }
+  private func authorizationModeLabel(_ mode: String) -> String {
+    ["read_only": "只读", "guided": "按需确认", "autonomous": "完全访问"][mode] ?? mode
+  }
+  private func authorizationModeDetail(_ mode: String) -> String {
+    [
+      "read_only": "读取、查看和检查类操作直接执行；任何写入都会被阻止。",
+      "guided": "读取自动执行；修改操作可在当前任务中确认一次，也可加入始终允许。",
+      "autonomous": "普通读写自动执行；支付、凭据、安全设置和不可逆操作仍会确认或阻止。",
+    ][mode] ?? "选择 Hymio 何时可以自动执行工具。"
   }
   private func saveWindow(_ size: Int) {
     guard !modelBusy, size != contextWindow else { return }
@@ -107,6 +176,7 @@ struct AccountScreen: View {
           }.accessibilityIdentifier("account.connectors")
         } footer: { Text("邮件、清单和来自 iPhone 的日常，由你选择分享。") }
         modelSection
+        authorizationSection
         Section {
           Button {
             pairingPresented = true
@@ -296,6 +366,87 @@ struct AccountScreen: View {
     case "missing": return "原环境已失效"
     case "offline": return "暂时无法连接"
     default: return "暂不可用"
+    }
+  }
+}
+
+struct ToolAuthorizationRulesScreen: View {
+  @ObservedObject var account: AccountService
+  @State private var rules: [JSON]
+  @State private var busyID = ""
+  @State private var error = ""
+
+  init(account: AccountService, initialRules: [JSON] = []) {
+    self.account = account
+    _rules = State(initialValue: initialRules)
+  }
+
+  var body: some View {
+    List {
+      if rules.isEmpty {
+        ContentUnavailableView(
+          "还没有长期规则",
+          systemImage: "checkmark.shield",
+          description: Text("确认操作时选择“始终允许”，相同操作以后会自动执行。")
+        )
+      } else {
+        Section {
+          ForEach(rules, id: \.self) { rule in
+            VStack(alignment: .leading, spacing: 4) {
+              Text(rule["title"].text).font(.subheadline.weight(.medium))
+              let detail = [
+                rule["target"].text,
+                rule["last_used_at"].double > 0 ? "最近使用过" : "尚未使用",
+              ].filter { !$0.isEmpty }.joined(separator: " · ")
+              if !detail.isEmpty {
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+              }
+            }
+            .padding(.vertical, 4)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+              Button("撤销", role: .destructive) {
+                Task { await remove(rule) }
+              }
+            }
+            .disabled(busyID == rule["id"].text)
+          }
+        } footer: {
+          Text("这些规则只匹配相同工具、目标和动作；“本次任务”授权不会出现在这里。")
+        }
+      }
+      if !error.isEmpty {
+        Text(error).font(.footnote).foregroundStyle(.secondary)
+      }
+    }
+    .navigationTitle("始终允许")
+    .navigationBarTitleDisplayMode(.inline)
+    .refreshable { await load() }
+    .task { await load() }
+  }
+
+  private func load() async {
+    do {
+      let value = try await account.request("settings/tool-authorization")
+      rules = value["rules"].items
+      error = ""
+    } catch {
+      self.error = "暂时无法读取长期规则"
+    }
+  }
+
+  private func remove(_ rule: JSON) async {
+    let id = rule["id"].text
+    guard !id.isEmpty, busyID.isEmpty else { return }
+    busyID = id
+    defer { busyID = "" }
+    do {
+      let value = try await account.request(
+        "settings/tool-authorization/rules",
+        body: .object(["operation": .string("delete"), "id": .string(id)]))
+      rules = value["rules"].items
+      error = ""
+    } catch {
+      self.error = "规则未撤销，请稍后重试"
     }
   }
 }
