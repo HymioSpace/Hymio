@@ -7,40 +7,58 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-        B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */; };
 		03200C2275DCBB80B943D092 /* NetworkSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D3FAA0D7647724918AD510 /* NetworkSession.swift */; };
+		03477DA714CC7CB74CE31ADA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 815A0EA5FCAF0732CF68E8F4 /* Assets.xcassets */; };
+		0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD5700E47A1BFC4213A3589B /* AgentSurface.swift */; };
 		12865303198D46CF6EBA62D4 /* HymioUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71AFCDCDCA414701248B1A9 /* HymioUITests.swift */; };
+		185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856EE296FF34503C942684F2 /* AgentSurfaceView.swift */; };
 		1D4B5A58869F9C995894EB41 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419CB3FBB96AA3E52CE79590 /* MessageRow.swift */; };
 		208550A64016FE008FF214B4 /* AccountScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69CFA0574482053C3DD45B96 /* AccountScreen.swift */; };
+		22BAD4A10E82A26B49A7DCD6 /* Turns.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6FBE11B38B83545FC62260 /* Turns.swift */; };
 		24B8D828DBEE5A2B20AA7CD9 /* Conversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 289837D493915AFD31A1E797 /* Conversation.swift */; };
 		2C7DEF380E999F886E17F4CC /* Companion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14915AB0360238B6E30C3640 /* Companion.swift */; };
+		2DF1C7E7BC3EC24724B20FF5 /* HymioWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = BCB7B404ED893162D34730F1 /* HymioWidgets.appex */; };
+		3849156C7AA1C77AFEEF8BB3 /* HymioWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D8AFC4D3BF29817335AD1F /* HymioWidgetsBundle.swift */; };
 		3FF4260028DF483BDC665155 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172A12AE67E2F572FE902CC3 /* Models.swift */; };
+		4A3C0F3D16613BA02A4804BD /* HymioActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC7135FB07BDE05440C5498 /* HymioActivityAttributes.swift */; };
+		527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1419663CB9F728D5B1A10D48 /* TraceRow.swift */; };
 		618A883222380B7BFD99994E /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 874DBFC93CFCAF1DAC2CB2E4 /* MarkdownUI */; };
+		62058666DBE91F9D03986781 /* LiveActivityPreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14FCEECB48F951505B240A3A /* LiveActivityPreviewScreen.swift */; };
 		63D663EF2AF875D51433FDFA /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 812DD2B66728D785363C6BD2 /* Foundation.framework */; };
 		74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A08D683071705B687119808D /* ChatScreen.swift */; };
 		77D9C0B959C7A3DE1B99ABD8 /* LoginScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EF407C74ED7B6555E82B58A /* LoginScreen.swift */; };
+		7E90114EA2B46F7B2ACCB3C4 /* NotificationSettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA22BFD3FB2443E93CE523EB /* NotificationSettingsScreen.swift */; };
 		8A35F853DD6FDA4AAFC78A8A /* HymioApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D191D956B2D5C1BB207028E /* HymioApp.swift */; };
 		911D7FB47E85604CEA8C192D /* ConversationCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7BECB35225524AD1F4C54 /* ConversationCache.swift */; };
 		91D3F0F9152056EB18F0238F /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA3D248CD2A928457B0A2209 /* AgentClient.swift */; };
 		9E0248992302CB28D263C815 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90B942BCFC53E24C80465F25 /* DesignSystem.swift */; };
+		AA60568791FC4F9C85D6AF72 /* HymioActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC7135FB07BDE05440C5498 /* HymioActivityAttributes.swift */; };
+		AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */; };
 		B229FCB6E1247582F36DC38F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 812DD2B66728D785363C6BD2 /* Foundation.framework */; };
+		B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */; };
 		B87BB39B3154337D804A5C42 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C904342F375E042265BCE773 /* PrivacyInfo.xcprivacy */; };
-		D3A380EB070B8A4568F5986B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 176FE332B9C3F1046C218652 /* Assets.xcassets */; };
-		ECD5211167FA9B0613BDA793 /* AccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AE8CD1C170AC8FEE781FE /* AccountService.swift */; };
-		EFB913028BABF89FD749629B /* MarkdownMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */; };
-		0A47B005A5D832F6C4B6C629 /* AgentSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD5700E47A1BFC4213A3589B /* AgentSurface.swift */; };
-		185ABD3B84596FF3CB70EC2E /* AgentSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 856EE296FF34503C942684F2 /* AgentSurfaceView.swift */; };
-		AFAF1220728449E3D66FCA06 /* TraceScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D85FDC20A5009A0CDA661C; };
-		22BAD4A10E82A26B49A7DCD6 /* Turns.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6FBE11B38B83545FC62260 /* Turns.swift */; };
-		527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1419663CB9F728D5B1A10D48 /* TraceRow.swift */; };
+		BA5EF39B352AA1FDA3068188 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4577B88C8A0BA2E242461A90 /* LiveActivityController.swift */; };
 		BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31402 /* ProductShell.swift */; };
 		BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31404 /* KitsScreen.swift */; };
+		C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C037C0000000000000000002 /* ConnectorsScreen.swift */; };
 		C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */; };
-		C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C037C0000000000000000002; };
 		C0A3E7A11F4B427AB8D11209 /* HealthEventSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */; };
+		C4B5DFAEB12552F3B49D6EF0 /* HymioLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80587F7003248BD383D731AB /* HymioLiveActivity.swift */; };
+		D3A380EB070B8A4568F5986B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 176FE332B9C3F1046C218652 /* Assets.xcassets */; };
+		D7035E7296B409318FDC4A78 /* PushNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77EA6D7DCBC671EC5A3F1B67 /* PushNotificationManager.swift */; };
+		EA9C0A3A49EA463A5F87C1AD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8A8CE71B9E686482211FF520 /* Foundation.framework */; };
+		ECD5211167FA9B0613BDA793 /* AccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AE8CD1C170AC8FEE781FE /* AccountService.swift */; };
+		EFB913028BABF89FD749629B /* MarkdownMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		020CBEB88EDCC0C84EF963C3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8F74D6ED1442542E9F386246 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 04FD9DF1E0CA78FB2F379BD8;
+			remoteInfo = HymioWidgets;
+		};
 		BE210B3695ACB2BCC6A3DC58 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8F74D6ED1442542E9F386246 /* Project object */;
@@ -50,41 +68,66 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		C6E8F6E0ECB5D41707C84DD0 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				2DF1C7E7BC3EC24724B20FF5 /* HymioWidgets.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-        B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TasksScreen.swift; path = Views/TasksScreen.swift; sourceTree = "<group>"; };
+		1419663CB9F728D5B1A10D48 /* TraceRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TraceRow.swift; path = Views/TraceRow.swift; sourceTree = "<group>"; };
 		14915AB0360238B6E30C3640 /* Companion.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Companion.swift; path = Views/Companion.swift; sourceTree = "<group>"; };
+		14FCEECB48F951505B240A3A /* LiveActivityPreviewScreen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityPreviewScreen.swift; path = Views/LiveActivityPreviewScreen.swift; sourceTree = "<group>"; };
 		172A12AE67E2F572FE902CC3 /* Models.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Models.swift; path = Core/Models.swift; sourceTree = "<group>"; };
 		176FE332B9C3F1046C218652 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		18D3FAA0D7647724918AD510 /* NetworkSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NetworkSession.swift; path = Services/NetworkSession.swift; sourceTree = "<group>"; };
 		2738A5057694E9E64A8D71FD /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		289837D493915AFD31A1E797 /* Conversation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Conversation.swift; path = Core/Conversation.swift; sourceTree = "<group>"; };
 		419CB3FBB96AA3E52CE79590 /* MessageRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MessageRow.swift; path = Views/MessageRow.swift; sourceTree = "<group>"; };
+		4577B88C8A0BA2E242461A90 /* LiveActivityController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LiveActivityController.swift; path = Services/LiveActivityController.swift; sourceTree = "<group>"; };
+		4CC7135FB07BDE05440C5498 /* HymioActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HymioActivityAttributes.swift; path = HymioActivityAttributes.swift; sourceTree = "<group>"; };
 		4D191D956B2D5C1BB207028E /* HymioApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HymioApp.swift; sourceTree = "<group>"; };
 		53C1528819C18EBFC2D6517E /* Debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		69CFA0574482053C3DD45B96 /* AccountScreen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccountScreen.swift; path = Views/AccountScreen.swift; sourceTree = "<group>"; };
+		69D8AFC4D3BF29817335AD1F /* HymioWidgetsBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HymioWidgetsBundle.swift; sourceTree = "<group>"; };
+		77EA6D7DCBC671EC5A3F1B67 /* PushNotificationManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PushNotificationManager.swift; path = Services/PushNotificationManager.swift; sourceTree = "<group>"; };
+		80587F7003248BD383D731AB /* HymioLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HymioLiveActivity.swift; sourceTree = "<group>"; };
 		812DD2B66728D785363C6BD2 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		815A0EA5FCAF0732CF68E8F4 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Assets.xcassets; sourceTree = "<group>"; };
+		856EE296FF34503C942684F2 /* AgentSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurfaceView.swift; path = Views/AgentSurfaceView.swift; sourceTree = "<group>"; };
+		8A28EAC01D33FA65CB9411E7 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Info.plist; path = Info.plist; sourceTree = "<group>"; };
+		8A8CE71B9E686482211FF520 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		90B942BCFC53E24C80465F25 /* DesignSystem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DesignSystem.swift; path = Views/DesignSystem.swift; sourceTree = "<group>"; };
 		9EF407C74ED7B6555E82B58A /* LoginScreen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LoginScreen.swift; path = Views/LoginScreen.swift; sourceTree = "<group>"; };
 		A08D683071705B687119808D /* ChatScreen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatScreen.swift; path = Views/ChatScreen.swift; sourceTree = "<group>"; };
 		A12AE8CD1C170AC8FEE781FE /* AccountService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccountService.swift; path = Services/AccountService.swift; sourceTree = "<group>"; };
 		A8B7BECB35225524AD1F4C54 /* ConversationCache.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ConversationCache.swift; path = Core/ConversationCache.swift; sourceTree = "<group>"; };
+		AA22BFD3FB2443E93CE523EB /* NotificationSettingsScreen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationSettingsScreen.swift; path = Views/NotificationSettingsScreen.swift; sourceTree = "<group>"; };
+		AD5700E47A1BFC4213A3589B /* AgentSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurface.swift; path = Core/AgentSurface.swift; sourceTree = "<group>"; };
+		B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TasksScreen.swift; path = Views/TasksScreen.swift; sourceTree = "<group>"; };
 		B71AFCDCDCA414701248B1A9 /* HymioUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HymioUITests.swift; sourceTree = "<group>"; };
 		B975772EABFDCDF38EC03F80 /* Release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		BCB7B404ED893162D34730F1 /* HymioWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HymioWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BDA902D5620B4EAE99A31402 /* ProductShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProductShell.swift; path = Views/ProductShell.swift; sourceTree = "<group>"; };
+		BDA902D5620B4EAE99A31404 /* KitsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KitsScreen.swift; path = Views/KitsScreen.swift; sourceTree = "<group>"; };
+		C037C0000000000000000002 /* ConnectorsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ConnectorsScreen.swift; sourceTree = "<group>"; };
+		C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContextScreen.swift; path = Views/ContextScreen.swift; sourceTree = "<group>"; };
+		C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/HealthEventSync.swift; sourceTree = "<group>"; };
+		C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TraceScreen.swift; path = Views/TraceScreen.swift; sourceTree = "<group>"; };
 		C904342F375E042265BCE773 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D0C5A218D2245CDCC163E470 /* HymioUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HymioUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MarkdownMessage.swift; path = Views/MarkdownMessage.swift; sourceTree = "<group>"; };
 		DC2B5F1DFEAED91AE224EDF1 /* Hymio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Hymio.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		EA3D248CD2A928457B0A2209 /* AgentClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentClient.swift; path = Services/AgentClient.swift; sourceTree = "<group>"; };
-		AD5700E47A1BFC4213A3589B /* AgentSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurface.swift; path = Core/AgentSurface.swift; sourceTree = "<group>"; };
-		856EE296FF34503C942684F2 /* AgentSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AgentSurfaceView.swift; path = Views/AgentSurfaceView.swift; sourceTree = "<group>"; };
-		C4D85FDC20A5009A0CDA661C /* TraceScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TraceScreen.swift; path = Views/TraceScreen.swift; sourceTree = "<group>"; };
 		DE6FBE11B38B83545FC62260 /* Turns.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Turns.swift; path = Core/Turns.swift; sourceTree = "<group>"; };
-		1419663CB9F728D5B1A10D48 /* TraceRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TraceRow.swift; path = Views/TraceRow.swift; sourceTree = "<group>"; };
-		BDA902D5620B4EAE99A31402 /* ProductShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProductShell.swift; path = Views/ProductShell.swift; sourceTree = "<group>"; };
-		BDA902D5620B4EAE99A31404 /* KitsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KitsScreen.swift; path = Views/KitsScreen.swift; sourceTree = "<group>"; };
-		C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContextScreen.swift; path = Views/ContextScreen.swift; sourceTree = "<group>"; };
-		C037C0000000000000000002 /* ConnectorsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ConnectorsScreen.swift; sourceTree = "<group>"; };
-		C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/HealthEventSync.swift; sourceTree = "<group>"; };
+		EA3D248CD2A928457B0A2209 /* AgentClient.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AgentClient.swift; path = Services/AgentClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +137,14 @@
 			files = (
 				B229FCB6E1247582F36DC38F /* Foundation.framework in Frameworks */,
 				618A883222380B7BFD99994E /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F32D1687ED3B861F98B186D0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EA9C0A3A49EA463A5F87C1AD /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -116,6 +167,18 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
+		38CB73BA366F0A091D8A04A3 /* HymioWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				69D8AFC4D3BF29817335AD1F /* HymioWidgetsBundle.swift */,
+				80587F7003248BD383D731AB /* HymioLiveActivity.swift */,
+				8A28EAC01D33FA65CB9411E7 /* Info.plist */,
+				815A0EA5FCAF0732CF68E8F4 /* Assets.xcassets */,
+			);
+			name = HymioWidgets;
+			path = HymioWidgets;
+			sourceTree = "<group>";
+		};
 		60470F2A326D0F3D0D51B54E /* UITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -130,6 +193,7 @@
 			children = (
 				DC2B5F1DFEAED91AE224EDF1 /* Hymio.app */,
 				D0C5A218D2245CDCC163E470 /* HymioUITests.xctest */,
+				BCB7B404ED893162D34730F1 /* HymioWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -162,7 +226,7 @@
 				C037C0000000000000000002 /* ConnectorsScreen.swift */,
 				C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */,
 				A08D683071705B687119808D /* ChatScreen.swift */,
-                B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
+				B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
 				BDA902D5620B4EAE99A31402 /* ProductShell.swift */,
 				BDA902D5620B4EAE99A31404 /* KitsScreen.swift */,
 				C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */,
@@ -175,6 +239,10 @@
 				C904342F375E042265BCE773 /* PrivacyInfo.xcprivacy */,
 				90B942BCFC53E24C80465F25 /* DesignSystem.swift */,
 				D42A30664EAF47459CA43CA2 /* MarkdownMessage.swift */,
+				77EA6D7DCBC671EC5A3F1B67 /* PushNotificationManager.swift */,
+				AA22BFD3FB2443E93CE523EB /* NotificationSettingsScreen.swift */,
+				4577B88C8A0BA2E242461A90 /* LiveActivityController.swift */,
+				14FCEECB48F951505B240A3A /* LiveActivityPreviewScreen.swift */,
 			);
 			name = Hymio;
 			path = Hymio;
@@ -188,13 +256,25 @@
 				8F6D8548EA9B9521AE7ED1E2 /* Hymio */,
 				71A678AA1E9C3EBC8B895FFD /* Config */,
 				60470F2A326D0F3D0D51B54E /* UITests */,
+				AF7A816AB4CDDFE24BD3F541 /* Shared */,
+				38CB73BA366F0A091D8A04A3 /* HymioWidgets */,
 			);
+			sourceTree = "<group>";
+		};
+		AF7A816AB4CDDFE24BD3F541 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				4CC7135FB07BDE05440C5498 /* HymioActivityAttributes.swift */,
+			);
+			name = Shared;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		E607EDE387DB7407AA90AD07 /* iOS */ = {
 			isa = PBXGroup;
 			children = (
 				812DD2B66728D785363C6BD2 /* Foundation.framework */,
+				8A8CE71B9E686482211FF520 /* Foundation.framework */,
 			);
 			name = iOS;
 			sourceTree = "<group>";
@@ -202,6 +282,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		04FD9DF1E0CA78FB2F379BD8 /* HymioWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D3D19E65FEB3F03ACCCC68B5 /* Build configuration list for PBXNativeTarget "HymioWidgets" */;
+			buildPhases = (
+				7C7830064FD354B5D21AA4C1 /* Sources */,
+				F32D1687ED3B861F98B186D0 /* Frameworks */,
+				76297C4F2154BCC76469D13C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HymioWidgets;
+			productName = HymioWidgets;
+			productReference = BCB7B404ED893162D34730F1 /* HymioWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		B5397D965D09625D394FD1F1 /* HymioUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0BBB0365D13AF252149D415F /* Build configuration list for PBXNativeTarget "HymioUITests" */;
@@ -227,10 +324,12 @@
 				89DE61F4D429F8098AFD1F6B /* Sources */,
 				7C1A08234A536A1C65EFD130 /* Frameworks */,
 				F6E59AAF787B8A5707E9C42C /* Resources */,
+				C6E8F6E0ECB5D41707C84DD0 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				71385FCD95AB76C0FC7A498E /* PBXTargetDependency */,
 			);
 			name = Hymio;
 			packageProductDependencies = (
@@ -248,11 +347,18 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
-                TargetAttributes = {
-                    F5C5372FB20A22E4D466501F = {
-                        SystemCapabilities = { com.apple.HealthKit = { enabled = 1; }; };
-                    };
-                };
+				TargetAttributes = {
+					F5C5372FB20A22E4D466501F = {
+						SystemCapabilities = {
+							com.apple.HealthKit = {
+								enabled = 1;
+							};
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
+					};
+				};
 			};
 			buildConfigurationList = EA841F4E14AE55649F056595 /* Build configuration list for PBXProject "Hymio" */;
 			compatibilityVersion = "Xcode 3.2";
@@ -274,6 +380,7 @@
 			targets = (
 				F5C5372FB20A22E4D466501F /* Hymio */,
 				B5397D965D09625D394FD1F1 /* HymioUITests */,
+				04FD9DF1E0CA78FB2F379BD8 /* HymioWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -283,6 +390,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		76297C4F2154BCC76469D13C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				03477DA714CC7CB74CE31ADA /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -306,6 +421,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7C7830064FD354B5D21AA4C1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4A3C0F3D16613BA02A4804BD /* HymioActivityAttributes.swift in Sources */,
+				3849156C7AA1C77AFEEF8BB3 /* HymioWidgetsBundle.swift in Sources */,
+				C4B5DFAEB12552F3B49D6EF0 /* HymioLiveActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		89DE61F4D429F8098AFD1F6B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -325,7 +450,7 @@
 				C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */,
 				C0A3E7A11F4B427AB8D11209 /* HealthEventSync.swift in Sources */,
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
-                B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
+				B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
 				BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */,
 				BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */,
 				C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */,
@@ -335,12 +460,23 @@
 				1D4B5A58869F9C995894EB41 /* MessageRow.swift in Sources */,
 				9E0248992302CB28D263C815 /* DesignSystem.swift in Sources */,
 				EFB913028BABF89FD749629B /* MarkdownMessage.swift in Sources */,
+				D7035E7296B409318FDC4A78 /* PushNotificationManager.swift in Sources */,
+				7E90114EA2B46F7B2ACCB3C4 /* NotificationSettingsScreen.swift in Sources */,
+				BA5EF39B352AA1FDA3068188 /* LiveActivityController.swift in Sources */,
+				AA60568791FC4F9C85D6AF72 /* HymioActivityAttributes.swift in Sources */,
+				62058666DBE91F9D03986781 /* LiveActivityPreviewScreen.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		71385FCD95AB76C0FC7A498E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = HymioWidgets;
+			target = 04FD9DF1E0CA78FB2F379BD8 /* HymioWidgets */;
+			targetProxy = 020CBEB88EDCC0C84EF963C3 /* PBXContainerItemProxy */;
+		};
 		9DE999C9FD493B9F6E5EF83B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = Hymio;
@@ -452,6 +588,29 @@
 			};
 			name = Debug;
 		};
+		712A7CFE7EB273E9C9764FE0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B975772EABFDCDF38EC03F80 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(HYMIO_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HymioWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HYMIO_APP_BUNDLE_IDENTIFIER).widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		8844AE96DCF5AFE0FB528106 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -464,6 +623,28 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = Hymio;
+			};
+			name = Debug;
+		};
+		A28F2207AB845F133188F0CF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 53C1528819C18EBFC2D6517E /* Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(HYMIO_DEVELOPMENT_TEAM)";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HymioWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(HYMIO_APP_BUNDLE_IDENTIFIER).widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -562,6 +743,15 @@
 			buildConfigurations = (
 				45CA4099229B425E20B5FC1A /* Release */,
 				E57206E3FFAF944AF176FC96 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D3D19E65FEB3F03ACCCC68B5 /* Build configuration list for PBXNativeTarget "HymioWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				712A7CFE7EB273E9C9764FE0 /* Release */,
+				A28F2207AB845F133188F0CF /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

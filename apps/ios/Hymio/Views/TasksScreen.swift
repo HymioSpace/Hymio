@@ -311,6 +311,7 @@ private struct TaskNotePreview: View {
 
 private struct TaskEditor: View {
   @ObservedObject var account: AccountService
+  @EnvironmentObject private var notifications: PushNotificationManager
   var existing: JSON = .null
   @Environment(\.dismiss) private var dismiss
   @State private var title = ""
@@ -470,6 +471,9 @@ private struct TaskEditor: View {
     if existing != .null { body["task_id"] = existing["id"] }
     do {
       _ = try await account.request("tasks", body: .object(body))
+      if mode != "now" {
+        await notifications.requestForBackgroundWork(account)
+      }
       dismiss()
     } catch { self.error = "暂时无法保存。执行中的任务需要先取消，再修改。" }
   }

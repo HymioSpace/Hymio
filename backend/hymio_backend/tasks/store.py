@@ -529,6 +529,24 @@ class TaskStore:
                 db.execute("UPDATE task_runs SET lease_until=? WHERE id=?", (now + 120, row["id"]))
             return [dict(row) for row in rows]
 
+    def notification_runs(self):
+        with self.transaction() as db:
+            return [
+                dict(row)
+                for row in db.execute(
+                    "SELECT r.id,r.user_id,r.task_id,r.status,t.title "
+                    "FROM task_runs r JOIN tasks t ON t.id=r.task_id "
+                    "LEFT JOIN notification_outbox n ON n.event_key="
+                    "'task:'||r.task_id||':run:'||r.id||':'||CASE "
+                    "WHEN r.status IN ('blocked','failed','expired') THEN 'attention' "
+                    "ELSE 'completion' END "
+                    "WHERE r.status IN ('succeeded','failed','blocked','expired') "
+                    "AND r.finished_at>=? AND n.id IS NULL "
+                    "ORDER BY r.finished_at DESC LIMIT 100",
+                    (time.time() - 900,),
+                )
+            ]
+
     def reconcile_time(self):
         now = time.time()
         with self.transaction() as db:

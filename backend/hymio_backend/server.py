@@ -30,6 +30,7 @@ from .kits.service import KitsService
 from .media.routes import media_routes
 from .media.store import MediaStore
 from .monitoring import monitoring_routes, record_client_turn
+from .notifications import NotificationService, notification_routes
 from .observability import HTTPMetricsMiddleware, metrics_response
 from .oidc import Oidc
 from .reactions import reaction_routes
@@ -70,7 +71,8 @@ def text(data, key):
 
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
-    tasks = TaskService(settings, TaskStore(store))
+    notifications = NotificationService(settings, store)
+    tasks = TaskService(settings, TaskStore(store), notifications)
     connectors = ConnectorService(settings, store)
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
@@ -84,14 +86,18 @@ def build_app(settings, *, provider=None):
         log_capture = LogCapture(store.event_log)
         _log.info("Hymio backend started")
         scheduler = asyncio.create_task(tasks.run())
+        notification_worker = asyncio.create_task(notifications.run())
         connector_worker = asyncio.create_task(connectors.run())
         indexer = asyncio.create_task(run_indexer(settings, store, upstream))
         try:
             yield
         finally:
             connector_worker.cancel()
+            notification_worker.cancel()
             with suppress(asyncio.CancelledError):
                 await connector_worker
+            with suppress(asyncio.CancelledError):
+                await notification_worker
             scheduler.cancel()
             indexer.cancel()
             with suppress(asyncio.CancelledError):
@@ -99,6 +105,7 @@ def build_app(settings, *, provider=None):
             with suppress(asyncio.CancelledError):
                 await scheduler
             log_capture.stop()
+        await notifications.close()
         await upstream.aclose()
         if hasattr(oidc, "http"):
             oidc.http.close()
@@ -293,6 +300,7 @@ def build_app(settings, *, provider=None):
         connector_routes(settings, store, connectors, bearer, body)
         + context_routes(settings, store, bearer, body, kits)
         + task_routes(settings, store, tasks, bearer, body)
+        + notification_routes(settings, store, bearer, body, notifications)
         + kit_routes(settings, store, kits, bearer, body)
         + media_routes(
             settings,

@@ -11,8 +11,8 @@ _log = logging.getLogger(__name__)
 
 
 class TaskService:
-    def __init__(self, settings, store):
-        self.settings, self.store = settings, store
+    def __init__(self, settings, store, notifications=None):
+        self.settings, self.store, self.notifications = settings, store, notifications
         self.slots = asyncio.Semaphore(4)
 
     async def oath(self, uid, path, data):
@@ -174,6 +174,24 @@ class TaskService:
         runs = await asyncio.to_thread(self.store.claim_due)
         await asyncio.gather(*(self.deliver_one(run) for run in runs))
         await self.reconcile()
+        if self.notifications is not None:
+            for run in await asyncio.to_thread(self.store.notification_runs):
+                kind = (
+                    "attention"
+                    if run["status"] in {"blocked", "failed", "expired"}
+                    else "completion"
+                )
+                await asyncio.to_thread(
+                    self.notifications.notify,
+                    run["user_id"],
+                    {
+                        "kind": kind,
+                        "summary": run["title"],
+                        "task_id": run["task_id"],
+                        "run_id": run["id"],
+                    },
+                    "task-rule:" + run["id"] + ":" + run["status"],
+                )
 
     async def deliver_one(self, run):
         async with self.slots:

@@ -54,6 +54,11 @@ class Settings:
     vault_secret_id_file: Path | None = None
     nostalgia_connections_file: Path | None = None
     connectors_config_file: Path | None = None
+    apns_key_file: Path | None = None
+    apns_key_id: str = ""
+    apns_team_id: str = ""
+    apns_bundle_id: str = ""
+    apns_environment: str = "production"
 
     @classmethod
     def load(cls, path):
@@ -65,6 +70,16 @@ class Settings:
             data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
         if os.environ.get("HYMIO_KITS_URL"):
             data["kits_url"] = os.environ["HYMIO_KITS_URL"]
+        if os.environ.get("HYMIO_APNS_KEY_FILE"):
+            data["apns_key_file"] = os.environ["HYMIO_APNS_KEY_FILE"]
+        for key, env in (
+            ("apns_key_id", "HYMIO_APNS_KEY_ID"),
+            ("apns_team_id", "HYMIO_APNS_TEAM_ID"),
+            ("apns_bundle_id", "HYMIO_APNS_BUNDLE_ID"),
+            ("apns_environment", "HYMIO_APNS_ENVIRONMENT"),
+        ):
+            if os.environ.get(env):
+                data[key] = os.environ[env]
         for key in ("database", "client_secret_file", "service_token_file"):
             file = Path(data[key]).expanduser()
             data[key] = file if file.is_absolute() else path.parent / file
@@ -81,6 +96,7 @@ class Settings:
             "daytona_key_file",
             "oath_admin_token_file",
             "connectors_config_file",
+            "apns_key_file",
         ):
             if data.get(key):
                 file = Path(data[key]).expanduser()
@@ -186,4 +202,12 @@ class Settings:
             raise ValueError("Service credential must be at least 32 characters")
         if result.oath_admin_token_file and not result.oath_admin_token_file.read_text().strip():
             raise ValueError("Missing Oath administrator credential")
+        if result.apns_key_file and not result.apns_key_file.read_text().strip():
+            raise ValueError("Missing APNs signing key")
+        if result.apns_key_file and not all(
+            (result.apns_key_id, result.apns_team_id, result.apns_bundle_id)
+        ):
+            raise ValueError("APNs requires key ID, team ID and bundle ID")
+        if result.apns_environment not in {"sandbox", "production"}:
+            raise ValueError("apns_environment must be sandbox or production")
         return result

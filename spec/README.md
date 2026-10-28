@@ -39,6 +39,8 @@
 | 33 | [Context events and window settings](feature33-context-events-window.md) | Implemented |
 | 32 | [关联记忆](feature32-context-graph.md) | Draft：任意卡片关系、关联检索与更新、概述及星图调整 |
 | 34 | [React / Python application runtime](feature34-application-runtime.md) | Implemented：React/Python bundle、coding context 与版本编辑 |
+| 39 | [Tool operations](feature39-tool-operations.md) | Implemented：工具成功率、耗时与采集健康 |
+| 40 | [iOS notifications](feature40-ios-notifications-live-activities.md) | Implementing：模型通知工具、APNs 与聚合实时活动 |
 
 
 ## 设计与实现
@@ -73,3 +75,5 @@ Native image input: [feature36](feature36-native-images.md).
 - [Connections](feature37-connectors.md): read-only cloud and device-source foundation.
 
 - [Streaming responsiveness](feature38-streaming-latency.md): background frame decoding, ordered batching and bounded presentation catch-up.
+
+- [Notifications and Live Activities](feature40-ios-notifications-live-activities.md): model-requested push, Backend policy, APNs delivery and rule-driven task presence.

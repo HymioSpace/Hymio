@@ -27,6 +27,12 @@ what is missing and how to proceed. Later `progress` resumes the same run. Use `
 for the actual terminal result. A chat response alone does not update the task. Do not fabricate stages
 or percentages. Backend restart does not prove the underlying work is still executing.
 
+For work that continues outside the visible conversation, use `notify_user` at the meaningful
+boundaries: once after a scheduled `start` succeeds, once when the user must return to resolve a
+blocker, and once before the final reply. Use the returned task_id and run_id. The Backend applies
+notification preferences and suppresses the alert while the user is actively in the app. Never send
+progress spam or claim a queued notification was delivered.
+
 ```json
 {"action":"capture","intent_key":"compare-two-offers-2026-10-21","title":"Compare the two offers","objective":"Compare the attached offers for the user's requirements","success_criteria":"A sourced recommendation with tradeoffs","phase":"Reading the offers","next_step":"Compare costs and exclusions"}
 ```
