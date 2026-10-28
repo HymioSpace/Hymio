@@ -135,3 +135,37 @@ test('append deltas can extend the last visible Unicode cluster', () => {
     assert.equal(b.tick(500), source + '末尾');
   }
 });
+
+test('adaptive pacing absorbs a deterministic jitter trace without dropping final text', () => {
+  const intervals = [40, 80, 360, 40, 160, 280];
+  const events: { at: number; text: string }[] = [];
+  let at = 0;
+  for (let i = 0; i < 60; i++) {
+    at += intervals[i % intervals.length];
+    events.push({ at, text: '字'.repeat((i + 1) * 8) });
+  }
+  const b = new TextBuffer();
+  let event = 0,
+    shown = 0,
+    last: number | undefined,
+    complete = false;
+  const gaps: number[] = [];
+  for (let now = 0; now <= at + 500; now += 16) {
+    while (event < events.length && events[event].at <= now) {
+      b.set(events[event++].text, now);
+    }
+    if (event === events.length && !complete) {
+      b.complete(now);
+      complete = true;
+    }
+    b.tick(now);
+    if (b.value.length > shown) {
+      if (last !== undefined) gaps.push(now - last);
+      last = now;
+      shown = b.value.length;
+    }
+  }
+  assert.equal(b.value, events.at(-1)?.text);
+  assert.equal(b.pending, false);
+  assert.ok(Math.max(...gaps) <= 180);
+});

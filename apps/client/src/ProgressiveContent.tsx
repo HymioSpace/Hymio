@@ -1,12 +1,4 @@
-import {
-  Children,
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TextBuffer, contentParts, parseSurface, actionPrompt } from '@hymio/client';
 import { ArrowUpRight, Sparkles, CircleAlert } from 'lucide-react';
 
@@ -14,6 +6,7 @@ export function useBufferedText(target: string, streaming: boolean) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const buffer = useRef<TextBuffer | null>(null);
   const ticker = useRef<number | undefined>(undefined);
+  const stopTicker = useRef(() => {});
   if (!buffer.current) {
     buffer.current = new TextBuffer();
     buffer.current.set(target, performance.now(), !streaming || reduced);
@@ -23,21 +16,27 @@ export function useBufferedText(target: string, streaming: boolean) {
   useEffect(() => {
     const b = buffer.current!;
     const stop = () => {
-      window.clearInterval(ticker.current);
+      if (ticker.current !== undefined) window.cancelAnimationFrame(ticker.current);
       ticker.current = undefined;
     };
+    stopTicker.current = stop;
     setInstant(reduced || document.hidden);
     const now = performance.now();
     const next = b.set(target, now, reduced || document.hidden);
     if (!streaming) b.complete(now);
     setVisible((current) => (current === next ? current : next));
     if (b.pending && ticker.current === undefined) {
-      ticker.current = window.setInterval(() => {
+      const frame = () => {
         if (document.hidden) return;
         const next = b.tick(performance.now());
         setVisible((current) => (current === next ? current : next));
-        if (!b.pending) stop();
-      }, 32);
+        if (!b.pending) {
+          ticker.current = undefined;
+          return;
+        }
+        ticker.current = window.requestAnimationFrame(frame);
+      };
+      ticker.current = window.requestAnimationFrame(frame);
     } else if (!b.pending) stop();
     const resume = () => {
       if (!document.hidden) {
@@ -50,79 +49,8 @@ export function useBufferedText(target: string, streaming: boolean) {
     document.addEventListener('visibilitychange', resume);
     return () => document.removeEventListener('visibilitychange', resume);
   }, [target, streaming, reduced]);
-  useEffect(() => () => window.clearInterval(ticker.current), []);
+  useEffect(() => () => stopTicker.current(), []);
   return { text: visible, pending: visible !== target, instant };
-}
-const TextMotion = createContext(false);
-const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-const words = new Intl.Segmenter(undefined, { granularity: 'word' });
-export function MotionText({ children }: { children: ReactNode }) {
-  const animate = useContext(TextMotion);
-  const cache = useRef(new Map<number, { source: string; clusters: string[] }>());
-  const revealed = useRef(new Map<string, { text: string; delay: number }>());
-  const active = new Set<string>();
-  let arrival = 0;
-  const result = Children.map(children, (child, index) => {
-    if (typeof child !== 'string') return child;
-    const old = cache.current.get(index);
-    const baseline = old && child.startsWith(old.source) ? old.source.length : 0;
-    let clusters = old?.clusters || [];
-    if (old?.source !== child) {
-      if (!old || !child.startsWith(old.source)) clusters = [];
-      const last = clusters.pop() || '';
-      const offset = baseline ? baseline - last.length : 0;
-      for (const part of graphemes.segment(child.slice(offset))) clusters.push(part.segment);
-      cache.current.set(index, { source: child, clusters });
-    }
-    if (!animate) return child;
-    // History stays a text node. Only the last 32 clusters can animate, regardless
-    // of reply length. Include the beginning of a Latin word to preserve wrapping.
-    const tail = clusters.slice(-32).join('');
-    let offset = child.length - tail.length;
-    const boundary = offset;
-    while (
-      offset > 0 &&
-      offset > boundary - 128 &&
-      /[\p{L}\p{N}_]/u.test(child[offset - 1]) &&
-      /[A-Za-z0-9_]/.test(child[offset])
-    )
-      offset--;
-    if (offset === boundary - 128 && /[A-Za-z0-9_]/.test(child[offset - 1] || '')) return child;
-    const prefix = child.slice(0, offset);
-    let position = offset;
-    return (
-      <>
-        {prefix}
-        {Array.from(words.segment(child.slice(offset)), (word) => (
-          <span className="motion-word" key={`${index}-word-${offset + word.index}`}>
-            {Array.from(graphemes.segment(word.segment), (part) => {
-              const at = position;
-              position += part.segment.length;
-              const key = `${index}-${at}`;
-              let entry = revealed.current.get(key);
-              if (!entry && at < baseline) return part.segment;
-              if (!entry || entry.text !== part.segment) {
-                entry = { text: part.segment, delay: (arrival++ % 4) * 30 };
-                revealed.current.set(key, entry);
-              }
-              active.add(key);
-              return (
-                <span
-                  className="text-resolve"
-                  key={key}
-                  style={{ animationDelay: `${entry.delay}ms` }}
-                >
-                  {part.segment}
-                </span>
-              );
-            })}
-          </span>
-        ))}
-      </>
-    );
-  });
-  for (const key of revealed.current.keys()) if (!active.has(key)) revealed.current.delete(key);
-  return <>{result}</>;
 }
 
 function Prose({
@@ -135,13 +63,7 @@ function Prose({
   render: (text: string) => ReactNode;
 }) {
   const display = useBufferedText(source, streaming);
-  return (
-    <TextMotion.Provider value={!display.instant && (display.pending || streaming)}>
-      <div className={display.pending ? 'prose-release' : 'prose-settled'}>
-        {render(display.text)}
-      </div>
-    </TextMotion.Provider>
-  );
+  return <div>{render(display.text)}</div>;
 }
 export function ProgressiveContent({
   content,

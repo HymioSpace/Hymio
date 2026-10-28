@@ -16,7 +16,7 @@ import { ToolCalls } from './ToolActivityGroup';
 import { IconButton } from '@hymio/ui';
 import { Disclosure } from './Disclosure';
 import { MessageImage } from './MessageImage';
-import { ProgressiveContent, useBufferedText, MotionText } from './ProgressiveContent';
+import { ProgressiveContent, useBufferedText } from './ProgressiveContent';
 import type { LoginState } from './useLogin';
 
 const ImageLogin = createContext<LoginState | null>(null);
@@ -143,31 +143,6 @@ function MessageCode({ children }: { children?: ReactNode }) {
   );
 }
 const markdownComponents = {
-  p: ({ children }: { children?: ReactNode }) => (
-    <p>
-      <MotionText>{children}</MotionText>
-    </p>
-  ),
-  li: ({ children }: { children?: ReactNode }) => (
-    <li>
-      <MotionText>{children}</MotionText>
-    </li>
-  ),
-  h1: ({ children }: { children?: ReactNode }) => (
-    <h1>
-      <MotionText>{children}</MotionText>
-    </h1>
-  ),
-  h2: ({ children }: { children?: ReactNode }) => (
-    <h2>
-      <MotionText>{children}</MotionText>
-    </h2>
-  ),
-  h3: ({ children }: { children?: ReactNode }) => (
-    <h3>
-      <MotionText>{children}</MotionText>
-    </h3>
-  ),
   img: MarkdownImage,
   pre: MessageCode,
   a: AttachmentLink,
