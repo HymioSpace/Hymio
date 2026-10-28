@@ -240,7 +240,9 @@ struct HomeScreen: View {
   let onAccount: () -> Void
   @State private var openedTask: JSON?
   private var attention: [JSON] {
-    board.changes.filter { ["blocked", "failed"].contains(taskStatus($0)) }
+    board.items.filter { item in
+      ["blocked", "failed"].contains(taskStatus(item)) && (item["runs"].items.first?["wait_reason"].text == "user" || board.changes.contains(item))
+    }
   }
   private var ongoing: [JSON] {
     board.items.filter { ["running", "ready", "delivering"].contains(taskStatus($0)) }
@@ -254,7 +256,7 @@ struct HomeScreen: View {
     var id: String { rawValue }
     var title: String {
       switch self {
-      case .attention: return "需要你确认"
+      case .attention: return "需要处理"
       case .updates: return "最近进展"
       case .ongoing: return "正在推进"
       case .upcoming: return "接下来的安排"

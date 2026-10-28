@@ -13,7 +13,7 @@ from .dream_proposal import propose
 from .ingress import import_conversation
 
 
-def context_routes(settings, sessions, bearer, body, kits=None):
+def context_routes(settings, sessions, bearer, body, kits=None, task_store=None):
     client = NostalgiaClient(settings)
 
     async def endpoint(request):
@@ -299,9 +299,7 @@ def context_routes(settings, sessions, bearer, body, kits=None):
             if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
                 raise Unauthorized()
             task = await body(request, limit=262144)
-            from ..tasks.store import TaskStore
-
-            known = await asyncio.to_thread(TaskStore(sessions).list, task["user_id"])
+            known = await asyncio.to_thread(task_store.list, task["user_id"]) if task_store else []
             task["existing_work"] = [
                 {"title": v["title"], "objective": v["objective"][:500], "state": v["state"]}
                 for v in known[:40]
