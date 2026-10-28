@@ -19,6 +19,10 @@ import SwiftUI
         #if DEBUG
           if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
+            ChatBubblePreview(account: account)
+              .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioBubbleDarkPreview") ? .dark : nil)
+              .environment(\.dynamicTypeSize, ProcessInfo.processInfo.arguments.contains("-HymioBubbleLargePreview") ? .accessibility3 : .large)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
             StreamingPerformancePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {

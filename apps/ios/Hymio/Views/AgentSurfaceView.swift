@@ -38,7 +38,7 @@ private final class ProsePresenter: ObservableObject {
     guard task == nil, buffer.pending else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+        do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
@@ -93,7 +93,7 @@ struct BufferedProse: View {
                   options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
                   ?? AttributedString(parts.tail)
               )
-              .font(.body).lineSpacing(4).textSelection(.enabled)
+              .font(.body).lineSpacing(4).textSelection(.disabled)
               .frame(maxWidth: .infinity, alignment: .leading)
             } else {
               StableMarkdown(content: parts.tail, account: account).equatable()
@@ -107,14 +107,6 @@ struct BufferedProse: View {
         UIPasteboard.general.string = source
         copied = true
         copyGeneration += 1
-      }
-    }
-    .overlay(alignment: .bottomTrailing) {
-      if frame.pending && !reduceMotion {
-        LinearGradient(
-          colors: [.clear, Brand.surface.opacity(0.85)], startPoint: .leading, endPoint: .trailing
-        )
-        .frame(width: 28, height: 22).allowsHitTesting(false).accessibilityHidden(true)
       }
     }
     .overlay(alignment: .bottomTrailing) {
@@ -350,12 +342,26 @@ struct AgentSurfaceView: View {
     let account: AccountService
     @State private var messages: [ChatMessage] = []
     @State private var status = "Streaming synthetic Markdown"
-    private let answer =
-      String(repeating: "A small step, clearly explained. 中文和 🦦 stay intact. ", count: 10)
-      + "\n\n## Next steps\n\n- Keep the answer in place.\n- Preserve the final frame.\n\n```swift\nlet reply = \"Hello\"\n```\n\nDone."
+    @State private var replay = 0
+    private var isDemo: Bool { ProcessInfo.processInfo.arguments.contains("-HymioRevealDemo") }
+    private var answer: String {
+      if isDemo {
+        return
+          "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。新到的文字逐渐清晰，已读过的内容保持不动。中英文、数字 07:52 和 🦦 都使用同一套排版。\n\n你可以继续补充，我会接着整理。"
+      }
+      return
+        String(repeating: "A small step, clearly explained. 中文和 🦦 stay intact. ", count: 10)
+        + "\n\n## Next steps\n\n- Keep the answer in place.\n- Preserve the final frame.\n\n```swift\nlet reply = \"Hello\"\n```\n\nDone."
+    }
     var body: some View {
       VStack {
         Text(status).font(.caption).accessibilityIdentifier("stream.preview.status")
+        if isDemo {
+          Button("重播渐显") {
+            messages = []
+            replay += 1
+          }.frame(minHeight: 44)
+        }
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 18) {
             ForEach(buildTurns(messages)) { turn in
@@ -365,10 +371,10 @@ struct AgentSurfaceView: View {
         }.defaultScrollAnchor(.bottom)
           .defaultScrollAnchor(.bottom, for: .sizeChanges)
       }.background(Brand.surface)
-        .task {
+        .task(id: replay) {
           let clock = StreamFrameProbe()
           clock.start()
-          for index in 0..<12 {
+          for index in 0..<(isDemo ? 0 : 12) {
             messages.append(
               ChatMessage(
                 id: "history-\(index)", role: "assistant",
@@ -378,24 +384,34 @@ struct AgentSurfaceView: View {
           }
           messages.append(
             ChatMessage(
-              id: "question", role: "user", content: "Show me a streamed reply.",
+              id: "question", role: "user",
+              content: isDemo ? "继续整理。" : "![preview](hymio-preview:one)\n可以了",
               time: "2026-01-01T00:00:01Z"))
           var reply = ChatMessage(
             id: "reply", role: "assistant", content: "", time: "2026-01-01T00:00:02Z")
           reply.streaming = true
           messages.append(reply)
           let characters = Array(answer)
-          for count in stride(from: 8, through: characters.count + 7, by: 8) {
+          let jitterDemo = ProcessInfo.processInfo.arguments.contains("-HymioJitterDemo")
+          let cadence = [40, 80, 360, 40, 160, 280]
+          let step = jitterDemo ? 8 : (isDemo ? 4 : 8)
+          var packet = 0
+          for count in stride(from: step, through: characters.count + step - 1, by: step) {
             guard !Task.isCancelled else {
               clock.stop()
               return
             }
             messages[messages.count - 1].content = String(
               characters.prefix(min(count, characters.count)))
-            try? await Task.sleep(for: .milliseconds(40))
+            let delay = jitterDemo ? cadence[packet % cadence.count] : (isDemo ? 70 : 40)
+            packet += 1
+            try? await Task.sleep(for: .milliseconds(delay))
           }
           messages[messages.count - 1].streaming = false
-          try? await Task.sleep(for: .seconds(8))
+          do { try await Task.sleep(for: .seconds(8)) } catch {
+            clock.stop()
+            return
+          }
           let result = clock.stop()
           status = "Complete · \(result)"
           let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]

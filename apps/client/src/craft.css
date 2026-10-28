@@ -112,21 +112,10 @@ textarea:focus-visible,
 .trace-fold[data-expanded='true'] > .disclosure-toggle .trace-fold-chevron {
   transform: rotate(90deg);
 }
-.motion-word {
-  white-space: nowrap;
-}
-.text-resolve {
-  animation-duration: 120ms;
-  will-change: auto;
-}
 @media (prefers-reduced-motion: reduce) {
   .disclosure-grid,
   .disclosure-toggle svg {
     transition: none !important;
-  }
-  .text-resolve {
-    animation: none !important;
-    filter: none !important;
   }
 }
 @media (prefers-contrast: more) {
@@ -272,4 +261,11 @@ h6 {
   flex: 0 0 auto;
   margin: 0;
   border-color: transparent;
+}
+
+/* Replies read as a conversation; process controls and timestamps stay outside. */
+.message-assistant:not(.message-activity):not(.message-reasoning-only) .message-bubble {
+  padding: 14px 18px;
+  background: light-dark(#f0f3f8, #222a35);
+  border-radius: 20px 20px 20px 6px;
 }

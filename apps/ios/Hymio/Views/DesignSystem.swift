@@ -16,6 +16,7 @@ enum Brand {
   static let notePaper = adaptive(0xFFF1CF, dark: 0x3A3121)
   static let noteLine = adaptive(0xA47B31, dark: 0xC6A35E)
   static let softBlue = adaptive(0xF2F5FF, dark: 0x242A3E)
+  static let assistantBubble = adaptive(0xF0F3F8, dark: 0x222A35)
   static let userBubble = adaptive(0xEEF1FF, dark: 0x28314A)
   static let onAccent = adaptive(0xFFFFFF, dark: 0x18214A)
   static let line = adaptive(0xE6E8EF, dark: 0x353B4B)

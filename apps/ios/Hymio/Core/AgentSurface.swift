@@ -7,7 +7,9 @@ public struct SurfacePart: Identifiable {
   public let complete: Bool
 }
 public enum AgentSurface {
-  public static func proseAndQuickReplies(_ source: String) -> (content: String, suggestions: [String]) {
+  public static func proseAndQuickReplies(_ source: String) -> (
+    content: String, suggestions: [String]
+  ) {
     if !source.contains("```hymio-quick") {
       return (source.trimmingCharacters(in: .whitespacesAndNewlines), [])
     }
@@ -244,27 +246,76 @@ public struct PresentationBuffer {
   private var shown = 0
   private var start: Double = 0, previous: Double = 0, credit: Double = 0
   private var finishBy: Double?
+  private var lastArrival: Double?
+  private var inputRate = 0.0, gap = 0.08, jitter = 0.0, speed = 0.0
   public private(set) var value = ""
   public init() {}
   public mutating func set(_ text: String, now: Double, immediate: Bool = false) {
     if text != source {
-      let next = Array(text)
-      let extendedGrapheme = !characters.isEmpty && next.count >= characters.count
-        && characters[characters.count - 1] != next[characters.count - 1]
-      if !text.hasPrefix(source) || shown > next.count || extendedGrapheme {
-        let shared = zip(characters, next).prefix { $0 == $1 }.count
-        shown = min(shown, shared)
-        value = String(next.prefix(shown))
-        start = now
-        previous = now
-        credit = 0
-      }
+      let appending = text.utf8.starts(with: source.utf8)
+      let oldCount = appending ? characters.count : 0
       if source.isEmpty && !text.isEmpty {
         start = now
         previous = now
       }
+      if !appending {
+        lastArrival = nil
+        inputRate = 0
+        speed = 0
+        jitter = 0
+        gap = 0.08
+        // A final correction preserves the already visible common prefix.
+        let next = Array(text)
+        let shared = zip(characters, next).prefix { $0 == $1 }.count
+        shown = min(shown, shared)
+        value = String(next.prefix(shown))
+        characters = next
+        start = now
+        previous = now
+        credit = 0
+      } else {
+        // A delta may extend the final grapheme (combining mark, flag or ZWJ).
+        let last = characters.popLast().map(String.init) ?? ""
+        let offset = source.utf8.count - last.utf8.count
+        let utf8Index = text.utf8.index(text.utf8.startIndex, offsetBy: offset)
+        let cut = String.Index(utf8Index, within: text) ?? text.startIndex
+        let prefix = characters.count
+        let tail = Array(text[cut...])
+        characters.append(contentsOf: tail)
+        if shown > prefix {
+          shown = prefix + min(1, tail.count)
+          value = String(text[..<cut]) + (tail.first.map(String.init) ?? "")
+        }
+      }
+      let added = characters.count - oldCount
+      if added > 0 {
+        let interval = lastArrival.map { now - $0 } ?? 0
+        if interval > 0 && interval < 1.5 {
+          let sample = min(4000, Double(added) / max(0.008, interval))
+          if inputRate == 0 {
+            inputRate = sample
+            gap = interval
+          } else {
+            inputRate += 0.25 * (sample - inputRate)
+            jitter += 0.2 * (abs(interval - gap) - jitter)
+            gap += 0.2 * (interval - gap)
+          }
+        }
+        if interval >= 1.5 && interval < 5 {
+          inputRate = Double(added) / interval
+          gap = min(interval, 1.5)
+          jitter = 0
+        } else if interval >= 5 {
+          inputRate = 0
+          speed = 0
+          jitter = 0
+          gap = 0.08
+          start = now
+          previous = now
+        }
+        lastArrival = now
+      }
       source = text
-      characters = next
       finishBy = nil
     }
     if immediate {
@@ -281,13 +332,24 @@ public struct PresentationBuffer {
   public mutating func tick(_ now: Double) {
     let elapsed = min(0.1, max(0, now - previous))
     previous = now
-    guard now - start >= 0.1 else { return }
+    guard now - start >= 0.14 else { return }
     guard pending else {
       credit = 0
       return
     }
     let backlog = characters.count - shown
-    var rate = min(150, max(54, Double(backlog) * 6))
+    let input = inputRate > 0 ? inputRate : min(54, max(8, Double(backlog) / 0.3))
+    let reserve = min(0.24, max(0.1, gap * 0.5 + jitter * 1.5))
+    let desired = input * (reserve + gap * 0.5)
+    var goal = max(input * 0.25, input + (Double(backlog) - desired) / 0.35, 1)
+    goal = min(goal, input * 1.8 + 12)
+    if Double(backlog) > max(256, input * 1.5) { goal = max(goal, Double(backlog) / 0.65) }
+    speed = speed > 0 ? speed + (goal - speed) * (1 - exp(-elapsed / 0.16)) : goal
+    var rate = speed
+    let silence = lastArrival.map { now - $0 } ?? 0
+    if silence > max(0.3, gap * 1.5) {
+      rate = max(rate, Double(backlog) / max(0.016, 0.9 - silence))
+    }
     if let finishBy {
       if now >= finishBy {
         value = source

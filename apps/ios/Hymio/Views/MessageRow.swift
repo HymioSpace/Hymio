@@ -34,6 +34,7 @@ struct MessageRow: View {
               .bottom,
               showsTime && !dynamicTypeSize.isAccessibilitySize
                 && message.reactions["assistant"] != nil ? 5 : 0)
+            .frame(maxWidth: .infinity, alignment: .trailing)
           if showsTime, let date = TurnClock.date(message.time) {
             HStack(spacing: 6) {
               Text(date.formatted(.dateTime.hour().minute())).font(.caption2)
@@ -90,7 +91,10 @@ struct MessageRow: View {
               content: message.content, streaming: message.streaming, account: account,
               onAction: onAction
             )
-
+            .padding(compact ? 0 : 14)
+            .background(compact ? Color.clear : Brand.assistantBubble,
+              in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6,
+                bottomTrailingRadius: 20, topTrailingRadius: 20))
           }
           if !message.calls.isEmpty {
             DisclosureGroup(isExpanded: $expanded) {
@@ -210,6 +214,7 @@ struct ProtectedImage: View {
         .clipShape(RoundedRectangle(cornerRadius: thumbnail ? 12 : 14))
         .contentShape(Rectangle())
         .onTapGesture { show = true }
+        .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("查看完整图片")
       } else if failed {
@@ -230,6 +235,23 @@ struct ProtectedImage: View {
     }
     .task(id: source + "\(retry)") {
       failed = false
+      #if DEBUG
+      if source.hasPrefix("hymio-preview:") {
+        image = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240)).image { context in
+          UIColor.white.setFill()
+          context.fill(CGRect(x: 0, y: 0, width: 240, height: 240))
+          UIColor(red: 0.28, green: 0.55, blue: 0.9, alpha: 1).setFill()
+          context.fill(CGRect(x: 0, y: 0, width: 240, height: 50))
+          ("行程预览" as NSString).draw(at: CGPoint(x: 16, y: 14), withAttributes: [
+            .font: UIFont.systemFont(ofSize: 20, weight: .medium), .foregroundColor: UIColor.white])
+          ("07:52 → 08:20" as NSString).draw(at: CGPoint(x: 14, y: 85), withAttributes: [
+            .font: UIFont.monospacedDigitSystemFont(ofSize: 27, weight: .semibold), .foregroundColor: UIColor.darkGray])
+          ("仅用于界面验收" as NSString).draw(at: CGPoint(x: 16, y: 160), withAttributes: [
+            .font: UIFont.systemFont(ofSize: 19), .foregroundColor: UIColor.gray])
+        }
+        return
+      }
+      #endif
       do {
         let data = try await account.image(source)
         guard
@@ -281,7 +303,11 @@ private struct UserMessageContent: View {
   let content: String
   @ObservedObject var account: AccountService
   private var extracted: (text: String, images: [String]) {
+    #if DEBUG
+    let pattern = #"!\[[^\]]*\]\((/attachments/[a-f0-9]{32}|hymio-preview:[a-z0-9]+)\)"#
+    #else
     let pattern = #"!\[[^\]]*\]\((/attachments/[a-f0-9]{32})\)"#
+    #endif
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return (content, []) }
     let range = NSRange(content.startIndex..., in: content)
     let matches = regex.matches(in: content, range: range)
@@ -294,16 +320,18 @@ private struct UserMessageContent: View {
   }
   var body: some View {
     let parts = extracted
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .trailing, spacing: 8) {
       if !parts.images.isEmpty {
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 80, maximum: 80), spacing: 8)], alignment: .leading,
-          spacing: 8
-        ) {
-          ForEach(Array(parts.images.enumerated()), id: \.offset) { _, source in
-            ProtectedImage(source: source, thumbnail: true, account: account)
+        ViewThatFits(in: .horizontal) {
+          ForEach((1...min(3, parts.images.count)).reversed(), id: \.self) { columns in
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(80), spacing: 8), count: columns),
+              alignment: .trailing, spacing: 8) {
+              ForEach(Array(parts.images.enumerated()), id: \.offset) { _, source in
+                ProtectedImage(source: source, thumbnail: true, account: account)
+              }
+            }.frame(width: CGFloat(columns * 88 - 8))
           }
-        }.frame(maxWidth: 256, alignment: .leading)
+        }
       }
       if !parts.text.isEmpty {
         MessageContent(content: parts.text, account: account, expands: false)
@@ -314,3 +342,24 @@ private struct UserMessageContent: View {
     }
   }
 }
+
+#if DEBUG
+struct ChatBubblePreview: View {
+  let account: AccountService
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          MessageRow(message: ChatMessage(id: "one", role: "user",
+            content: "![图片](hymio-preview:one)\n可以了", time: "2026-01-01T00:00:00Z"), tools: [:], account: account)
+          MessageRow(message: ChatMessage(id: "reply", role: "assistant",
+            content: "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。", time: "2026-01-01T00:00:01Z"), tools: [:], account: account)
+          MessageRow(message: ChatMessage(id: "many", role: "user",
+            content: (1...7).map { "![图片](hymio-preview:img\($0))" }.joined(separator: "\n") + "\n这几张一起核对。",
+            time: "2026-01-01T00:00:02Z"), tools: [:], account: account)
+        }.padding(18)
+      }.background(Brand.surface).navigationTitle("对话布局验收").navigationBarTitleDisplayMode(.inline)
+    }
+  }
+}
+#endif
