@@ -34,10 +34,15 @@ enum Brand {
 }
 
 struct ComposerSurface: ViewModifier {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   var focused = false
   func body(content: Content) -> some View {
     content
-      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 28))
+      .background {
+        RoundedRectangle(cornerRadius: 28)
+          .fill(reduceTransparency ? AnyShapeStyle(Brand.raised) : AnyShapeStyle(.regularMaterial))
+      }
+      .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(Brand.line.opacity(0.6), lineWidth: 0.5) }
       .shadow(color: Brand.blue.opacity(focused ? 0.16 : 0), radius: 3)
       .shadow(color: Brand.blue.opacity(focused ? 0.09 : 0), radius: 8)
       .animation(.easeOut(duration: 0.12), value: focused)

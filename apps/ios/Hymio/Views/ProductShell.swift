@@ -4,6 +4,7 @@ import SwiftUI
 
 @MainActor final class TaskBoard: ObservableObject {
   @Published var items: [JSON] = []
+  @Published var suggestions: [JSON] = []
   @Published var loaded = false
   @Published var error = ""
   private var loading = false
@@ -15,6 +16,7 @@ import SwiftUI
     guard next != owner else { return }
     owner = next
     items = []
+    suggestions = []
     loaded = false
     error = ""
     baseline = UserDefaults.standard.dictionary(forKey: key) as? [String: String]
@@ -57,6 +59,7 @@ import SwiftUI
     do {
       let result = try await account.request("tasks")
       guard user == account.session?.user_id, !Task.isCancelled else { return }
+      suggestions = result["suggestions"].items
       let next = result["tasks"].items
       if items != next { items = next }
       loaded = true
@@ -115,6 +118,7 @@ struct ProductShell: View {
         KitsScreen(account: account, onAccount: { showAccount = true })
       }
     }
+    .toolbarBackground(.ultraThinMaterial, for: .tabBar)
     .task(id: scene) {
       board.bind(account)
       guard scene == .active else { return }
@@ -236,7 +240,9 @@ struct HomeScreen: View {
   let onAccount: () -> Void
   @State private var openedTask: JSON?
   private var attention: [JSON] {
-    board.items.filter { ["blocked", "failed"].contains(taskStatus($0)) }
+    board.items.filter { item in
+      ["blocked", "failed"].contains(taskStatus(item)) && (item["runs"].items.first?["wait_reason"].text == "user" || board.changes.contains(item))
+    }
   }
   private var ongoing: [JSON] {
     board.items.filter { ["running", "ready", "delivering"].contains(taskStatus($0)) }
@@ -250,7 +256,7 @@ struct HomeScreen: View {
     var id: String { rawValue }
     var title: String {
       switch self {
-      case .attention: return "需要你确认"
+      case .attention: return "需要处理"
       case .updates: return "最近进展"
       case .ongoing: return "正在推进"
       case .upcoming: return "接下来的安排"
@@ -291,6 +297,20 @@ struct HomeScreen: View {
                 .font(.subheadline).foregroundStyle(Brand.muted)
             }
           }.padding(.top, 12)
+          if !board.suggestions.isEmpty {
+            homeSection("可能值得做", symbol: "lightbulb", tint: Brand.muted, count: board.suggestions.count) {
+              ForEach(Array(board.suggestions.prefix(3)), id: \.self) { item in
+                VStack(alignment: .leading, spacing: 10) {
+                  Text(item["proposal"]["title"].text).font(.subheadline.weight(.medium))
+                  Text(item["proposal"]["reason"].text).font(.caption).foregroundStyle(Brand.muted).lineLimit(3)
+                  HStack(spacing: 20) {
+                    Button("交给 Hymio") { Task { await handleSuggestion(item, accept: true) } }
+                    Button("暂不需要") { Task { await handleSuggestion(item, accept: false) } }.foregroundStyle(Brand.muted)
+                  }.font(.subheadline).frame(minHeight: 44)
+                }.padding(.vertical, 10)
+              }
+            }
+          }
           ForEach(modules, id: \.kind) { module in
             homeSection(
               module.kind == .updates && board.hasBaseline ? "新的进展" : module.kind.title,
@@ -299,7 +319,7 @@ struct HomeScreen: View {
                 ? Brand.attention : module.kind == .ongoing ? Brand.blue : Brand.muted,
               count: module.kind == .ongoing ? nil : module.items.count
             ) {
-              ForEach(module.items, id: \.self) { item in taskLink(item) }
+              ForEach(Array(module.items.prefix(3)), id: \.self) { item in taskLink(item) }
             }
           }
           if !board.error.isEmpty {
@@ -358,7 +378,7 @@ struct HomeScreen: View {
 
         }.padding(.horizontal, 22).padding(.bottom, 28).frame(maxWidth: 680)
           .frame(maxWidth: .infinity)
-      }.background(Brand.surface).navigationTitle("此刻").navigationBarTitleDisplayMode(.inline)
+      }.background(Brand.surface).toolbarBackground(.ultraThinMaterial, for: .navigationBar).navigationTitle("此刻").navigationBarTitleDisplayMode(.inline)
         .toolbar {
           ToolbarItemGroup(placement: .topBarLeading) {
             AccountButton(account: account, action: onAccount)
@@ -398,6 +418,15 @@ struct HomeScreen: View {
       content()
     }
   }
+  private func handleSuggestion(_ item: JSON, accept: Bool) async {
+    do {
+      _ = try await account.request("tasks", body: .object([
+        "action": .string(accept ? "accept_suggestion" : "dismiss_suggestion"),
+        "suggestion_id": .string(item["id"].text)]))
+      await board.refresh(account)
+    } catch { board.error = "这次操作未完成，请重试。" }
+  }
+
 }
 
 struct TaskSummaryCard: View {

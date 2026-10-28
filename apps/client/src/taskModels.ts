@@ -12,6 +12,8 @@ export type Run = {
   status: string;
   result: string;
   progress: string;
+  wait_reason?: string;
+  resume_at?: number;
   phase: string;
   next_step: string;
   agent_id?: string;

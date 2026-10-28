@@ -74,6 +74,26 @@ export function HomePanel({
   const key = `hymio.task-baseline:${login.backend}:${login.session?.user_id}`;
   const [baseline, setBaseline] = useState(() => saved(key));
   const [retry, setRetry] = useState(0);
+  const [suggestions, setSuggestions] = useState<
+    { id: string; proposal: { title: string; reason: string } }[]
+  >([]);
+  async function handleSuggestion(id: string, accept: boolean) {
+    const response = await fetch(login.backend + '/tasks', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + login.session!.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: accept ? 'accept_suggestion' : 'dismiss_suggestion',
+        suggestion_id: id,
+      }),
+      redirect: 'error',
+    });
+    if (!response.ok) throw new Error('操作未完成，请重试');
+    setSuggestions((items) => items.filter((item) => item.id !== id));
+    setRetry((v) => v + 1);
+  }
   useEffect(() => {
     const controller = new AbortController();
     let running = false;
@@ -90,6 +110,7 @@ export function HomePanel({
         const value = await response.json();
         if (!controller.signal.aborted) {
           setTasks(value.tasks);
+          setSuggestions(value.suggestions || []);
           setLoaded(true);
           setError('');
         }
@@ -111,7 +132,11 @@ export function HomePanel({
       document.removeEventListener('visibilitychange', visibility);
     };
   }, [key, login.session?.access_token, retry]);
-  const attention = tasks.filter((t) => ['blocked', 'failed'].includes(workState(t)));
+  const attention = tasks.filter(
+    (t) =>
+      ['blocked', 'failed'].includes(workState(t)) &&
+      (t.runs[0]?.wait_reason === 'user' || (baseline ? baseline[t.id] !== fingerprint(t) : true)),
+  );
   const updates = tasks.filter(
     (t) =>
       !attention.includes(t) &&
@@ -124,10 +149,14 @@ export function HomePanel({
   const upcoming = tasks.filter((t) => workState(t) === 'scheduled');
   const firstVisit = loaded && conversationReady && !tasks.length && !hasConversation;
   const modules = [
-    { kind: 'attention' as const, title: '需要你确认', items: attention },
-    { kind: 'ongoing' as const, title: '正在推进', items: ongoing },
-    { kind: 'updates' as const, title: baseline ? '新的进展' : '最近进展', items: updates },
-    { kind: 'upcoming' as const, title: '接下来的安排', items: upcoming },
+    { kind: 'attention' as const, title: '需要处理', items: attention.slice(0, 3) },
+    { kind: 'ongoing' as const, title: '正在推进', items: ongoing.slice(0, 3) },
+    {
+      kind: 'updates' as const,
+      title: baseline ? '新的进展' : '最近进展',
+      items: updates.slice(0, 3),
+    },
+    { kind: 'upcoming' as const, title: '接下来的安排', items: upcoming.slice(0, 3) },
   ].filter((module) => module.items.length);
   function markSeen(task: Work) {
     const next = { ...(baseline || {}), [task.id]: fingerprint(task) };
@@ -226,6 +255,31 @@ export function HomePanel({
               <LoaderCircle size={16} className="spin" />
               {loaded ? '正在接回你的内容…' : '正在整理最新进展…'}
             </p>
+          )}
+          {suggestions.length > 0 && (
+            <section className="home-section">
+              <h2>可能值得做</h2>
+              {suggestions.slice(0, 3).map((item) => (
+                <article key={item.id} className="home-opportunity">
+                  <h3>{item.proposal.title}</h3>
+                  <p>{item.proposal.reason}</p>
+                  <button
+                    onClick={() =>
+                      void handleSuggestion(item.id, true).catch((e) => setError(String(e)))
+                    }
+                  >
+                    交给 Hymio
+                  </button>
+                  <button
+                    onClick={() =>
+                      void handleSuggestion(item.id, false).catch((e) => setError(String(e)))
+                    }
+                  >
+                    暂不需要
+                  </button>
+                </article>
+              ))}
+            </section>
           )}
           {modules.map((module) => (
             <div key={module.kind}>{section(module.title, module.items, module.kind)}</div>

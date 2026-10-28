@@ -27,7 +27,7 @@ import { MessageMarkdown } from './MessageView';
 const labels: Record<string, string> = {
   scheduled: '已安排',
   delivering: '正在送达',
-  ready: '等已安排',
+  ready: '等待开始',
   running: '进行中',
   blocked: '需要关注',
   succeeded: '已完成',
@@ -59,7 +59,7 @@ function TaskNoteContent({ content }: { content: string }) {
   return (
     <div className="task-note-content">
       <p className={expanded ? '' : 'task-note-preview'}>{content}</p>
-      {content && (
+      {(content.length > 180 || content.split('\n').length > 3) && (
         <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
           {expanded ? '收起' : '展开'}
         </button>
@@ -148,9 +148,51 @@ export function TasksPanel({
     }
   }
   const [detail, setDetail] = useState<Work | null>(null);
+  const [continuation, setContinuation] = useState('');
+  const [activity, setActivity] = useState<
+    {
+      id: number;
+      kind: string;
+      content: string;
+      tool: string;
+      status: string;
+      created_at: string;
+    }[]
+  >([]);
+  const agentID = detail?.runs.find((r) => r.agent_id && r.agent_id !== 'pending')?.agent_id;
+  useEffect(() => {
+    setActivity([]);
+    if (!agentID) return;
+    const controller = new AbortController();
+    let running = false;
+    async function refresh() {
+      if (running || document.hidden) return;
+      running = true;
+      try {
+        const response = await fetch(login.backend + '/agents/' + agentID + '/activity', {
+          headers: { Authorization: 'Bearer ' + login.session!.access_token },
+          signal: controller.signal,
+          redirect: 'error',
+        });
+        if (response.ok) {
+          const value = await response.json();
+          if (!controller.signal.aborted) setActivity(value.entries);
+        }
+      } finally {
+        running = false;
+      }
+    }
+    void refresh().catch(() => {});
+    const timer = setInterval(() => void refresh().catch(() => {}), 5000);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [agentID, login.backend, login.session?.access_token]);
   useEffect(() => {
     if (!selected) {
       setDetail(null);
+      setContinuation('');
       return;
     }
     let active = true;
@@ -184,9 +226,9 @@ export function TasksPanel({
       <header className="tasks-header">
         <div>
           <h2 id="tasks-title">
-            交给 Hymio 的事<span className="tasks-count">{tasks.length}</span>
+            任务<span className="tasks-count">{tasks.length}</span>
           </h2>
-          <p>进展、下一步，还有带回来的结果。</p>
+          <p>查看进展、日程和结果。</p>
         </div>
         <IconButton label="关闭任务" onClick={onClose}>
           <X size={20} />
@@ -213,7 +255,7 @@ export function TasksPanel({
               <div className="tasks-filters" aria-label="筛选任务">
                 {[
                   ['active', '未完成'],
-                  ['scheduled', '已安排'],
+                  ['scheduled', '日程'],
                   ['done', '已结束'],
                 ].map(([key, label]) => (
                   <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
@@ -236,11 +278,11 @@ export function TasksPanel({
                 <div className="tasks-empty-orbit">
                   <Flag size={27} strokeWidth={1.4} />
                 </div>
-                <h3>{filter === 'done' ? '好结果，会留在这里。' : '把想做的事，留给我。'}</h3>
+                <h3>{filter === 'done' ? '暂无已结束任务' : '还没有任务'}</h3>
                 <p>
-                  聊一句你想完成的事，进展会留在这里。
+                  需要持续推进或按时提醒的事，会留在这里。
                   <br />
-                  你离开后，工作仍会继续。
+                  可以在对话中交代，或在这里创建。
                 </p>
                 <Button onClick={() => setEditing('new')}>
                   <Plus size={15} />
@@ -251,6 +293,8 @@ export function TasksPanel({
             <div className="task-cards">
               {[...visible]
                 .sort((a, b) => {
+                  if (filter === 'scheduled')
+                    return (a.runs[0]?.due_at || 0) - (b.runs[0]?.due_at || 0);
                   const rank = (v: Work) =>
                     ['blocked', 'failed'].includes(status(v))
                       ? 0
@@ -330,6 +374,29 @@ export function TasksPanel({
                       <span className="task-milestone-label">
                         {run.status === 'blocked' ? '等待解决' : '推进到这里'}
                       </span>
+                      {run.status === 'blocked' && (
+                        <div>
+                          <input
+                            aria-label="补充决定或新的要求"
+                            placeholder="补充决定或新的要求"
+                            value={continuation}
+                            onChange={(e) => setContinuation(e.target.value)}
+                          />
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void change({
+                                action: 'continue',
+                                task_id: task.id,
+                                content: continuation,
+                              })
+                            }
+                          >
+                            <Play size={13} />
+                            继续推进
+                          </button>
+                        </div>
+                      )}
                       {run.phase && <h4>{run.phase}</h4>}
                       {run.progress && <p>{run.progress}</p>}
                       {run.next_step && (
@@ -401,6 +468,29 @@ export function TasksPanel({
                     </div>
                   </div>
                 )}
+                {activity.length > 0 && (
+                  <section className="task-agent-activity">
+                    <h4>执行过程</h4>
+                    {activity.map((entry) => (
+                      <details key={entry.id}>
+                        <summary>
+                          <span>
+                            {entry.tool ||
+                              (entry.kind === 'assistant.message' ? '进展' : '执行步骤')}
+                          </span>
+                          <span>{labels[entry.status] || entry.status}</span>
+                          <time>
+                            {new Date(entry.created_at).toLocaleTimeString(undefined, {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </time>
+                        </summary>
+                        {entry.content && <p>{entry.content}</p>}
+                      </details>
+                    ))}
+                  </section>
+                )}
                 <div className="task-timeline">
                   <h4>
                     工作记录<span>{task.runs.length} 次执行</span>
@@ -453,8 +543,8 @@ export function TasksPanel({
               <div className="task-detail-placeholder">
                 <span className="task-placeholder-line" />
                 <ArrowUpRight size={25} strokeWidth={1} />
-                <h3>让事情，慢慢有着落。</h3>
-                <p>选一件事，看看它走到了哪里。</p>
+                <h3>选择一件事</h3>
+                <p>查看进展、补充要求或继续处理。</p>
               </div>
             )}
           </section>

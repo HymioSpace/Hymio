@@ -13,7 +13,7 @@ from .dream_proposal import propose
 from .ingress import import_conversation
 
 
-def context_routes(settings, sessions, bearer, body, kits=None):
+def context_routes(settings, sessions, bearer, body, kits=None, task_store=None):
     client = NostalgiaClient(settings)
 
     async def endpoint(request):
@@ -72,13 +72,9 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                         )
                 parts = []
                 try:
-                    assembled = (
-                        await asyncio.to_thread(client.call, uid, "assembly")
-                    )["data"]
+                    assembled = (await asyncio.to_thread(client.call, uid, "assembly"))["data"]
                     core = assembled.get("stable", {}).get("content", "")
-                    index = (
-                        assembled.get("dynamic", {}).get("summary", {}).get("content", "")
-                    )
+                    index = assembled.get("dynamic", {}).get("summary", {}).get("content", "")
                     parts.append(
                         "Overall understanding and essential constraints:\n"
                         + core[:4000]
@@ -109,7 +105,7 @@ def context_routes(settings, sessions, bearer, body, kits=None):
                             "- Use the exact injected schemas. A failed or uncertain write "
                             "must not "
                             "be repeated under a new invocation.\n\n"
-                            "- Edit generated applications with `kit_build(action=\"edit\")`. "
+                            '- Edit generated applications with `kit_build(action="edit")`. '
                             "The dedicated coding context reads and changes source, then runs "
                             "checks and publishes. Only call `app.delete` after the user "
                             "explicitly confirms permanent deletion, with confirmation "
@@ -302,7 +298,13 @@ def context_routes(settings, sessions, bearer, body, kits=None):
             expected = settings.service_token_file.read_text().strip()
             if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
                 raise Unauthorized()
-            result = await asyncio.to_thread(propose, settings, await body(request, limit=262144))
+            task = await body(request, limit=262144)
+            known = await asyncio.to_thread(task_store.list, task["user_id"]) if task_store else []
+            task["existing_work"] = [
+                {"title": v["title"], "objective": v["objective"][:500], "state": v["state"]}
+                for v in known[:40]
+            ]
+            result = await asyncio.to_thread(propose, settings, task)
             return JSONResponse(result)
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)

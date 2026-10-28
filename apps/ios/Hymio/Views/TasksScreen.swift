@@ -36,6 +36,7 @@ struct TasksScreen: View {
   @ObservedObject var board: TaskBoard
   let onAccount: () -> Void
   @State private var filter = 0
+  @State private var agenda = false
   @State private var creating = false
   private let groups: [(String, [String])] = [
     ("需要你看看", ["blocked", "failed"]),
@@ -79,13 +80,31 @@ struct TasksScreen: View {
         } else if groups.allSatisfy({ visible($0.1).isEmpty }) {
           VStack(spacing: 16) {
             Companion(size: 80)
-            Text(filter == 2 ? "好结果，会留在这里。" : "这一页，先留给下一件事。").font(.headline)
+            Text(filter == 2 ? "暂无已结束任务" : "还没有任务").font(.headline)
             Text("在对话里交代，或在这里安排。")
               .font(.subheadline).foregroundStyle(Brand.muted)
             Button("安排一件事", systemImage: "plus") { creating = true }.buttonStyle(.bordered)
           }.frame(maxWidth: .infinity).padding(.vertical, 35)
         }
-        ForEach(groups.indices, id: \.self) { index in
+        Toggle("按日期查看", isOn: $agenda).font(.subheadline)
+        if agenda {
+          ForEach(board.items.filter { taskStatus($0) == "scheduled" }.sorted {
+            ($0["runs"].items.first?["due_at"].double ?? 0) < ($1["runs"].items.first?["due_at"].double ?? 0)
+          }, id: \.self) { item in
+            NavigationLink {
+              TaskDetailScreen(account: account, taskID: item["id"].text, initial: item,
+                               onViewed: { board.markSeen($0) })
+            } label: {
+              HStack(alignment: .top, spacing: 16) {
+                Text(taskSchedule(item["schedule"])).font(.caption).foregroundStyle(Brand.muted)
+                  .frame(width: 110, alignment: .leading)
+                Text(item["title"].text).font(.subheadline).foregroundStyle(Brand.ink)
+              }.padding(.vertical, 12)
+            }
+            Divider()
+          }
+        }
+        ForEach(agenda ? [] : Array(groups.indices), id: \.self) { index in
           let values = visible(groups[index].1)
           if !values.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
@@ -126,6 +145,7 @@ struct TaskDetailScreen: View {
   @ObservedObject var account: AccountService
   let taskID: String
   let initial: JSON
+  var previewMode = false
   var onViewed: (JSON) -> Void = { _ in }
   @Environment(\.dismiss) private var dismiss
   @State private var value: JSON = .null
@@ -133,10 +153,11 @@ struct TaskDetailScreen: View {
   @State private var busy = false
   @State private var editing = false
   @State private var deleting = false
+  @State private var continuation = ""
   private var item: JSON { value == .null ? initial : value }
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 25) {
+      VStack(alignment: .leading, spacing: 20) {
         VStack(alignment: .leading, spacing: 14) {
           HStack {
             Label(taskLabel(taskStatus(item)), systemImage: taskSymbol(taskStatus(item))).font(
@@ -152,11 +173,13 @@ struct TaskDetailScreen: View {
           }
           Text(item["title"].text).font(.system(.title, design: .rounded, weight: .semibold))
             .tracking(-0.8)
-          Text(item["objective"].text).font(.subheadline).foregroundStyle(.secondary).lineSpacing(6)
+          DisclosureGroup("任务信息") {
+          Text(item["objective"].text).font(.subheadline).foregroundStyle(.secondary).lineSpacing(4)
           VStack(alignment: .leading, spacing: 7) {
             Label("怎样算完成", systemImage: "flag").font(.caption).foregroundStyle(.tertiary)
             Text(item["success_criteria"].text).font(.subheadline).foregroundStyle(.secondary)
           }.padding(.top, 6)
+          }.font(.subheadline)
         }
         if let run = item["runs"].items.first, !run["result"].text.isEmpty {
           VStack(alignment: .leading, spacing: 13) {
@@ -186,17 +209,31 @@ struct TaskDetailScreen: View {
               Label("下一步 · \(run["next_step"].text)", systemImage: "arrow.up.right")
                 .font(.subheadline).foregroundStyle(Brand.muted)
             }
+            if run["status"].text == "blocked" {
+              TextField("补充决定或新的要求", text: $continuation, axis: .vertical)
+                .font(.subheadline).lineLimit(1...3).padding(.vertical, 8)
+              if run["resume_at"].double > 0 {
+                Text("下次跟进：" + taskDate(run["resume_at"].double)).font(.caption).foregroundStyle(Brand.muted)
+              }
+              Button("继续推进", systemImage: "play") { Task { await action("continue") } }
+                .font(.subheadline).frame(minHeight: 44).disabled(busy)
+            }
           }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
             .background(Brand.mist, in: RoundedRectangle(cornerRadius: 16))
         }
+        if let agentID = item["runs"].items.first?["agent_id"].text,
+           !agentID.isEmpty && agentID != "pending" {
+          AgentActivityView(account: account, agentID: agentID)
+        }
         Divider()
         HStack {
-          Text("探索记录").font(.caption).foregroundStyle(.secondary)
+          Text("进展记录").font(.caption).foregroundStyle(.secondary)
           Spacer()
           Text("\(item["runs"].items.count) 次执行").font(.caption2).foregroundStyle(.tertiary)
         }
         ForEach(item["runs"].items, id: \.self) { run in
           VStack(alignment: .leading, spacing: 16) {
+            if item["runs"].items.count > 1 {
             HStack {
               Text(taskLabel(run["status"].text)).font(.caption).foregroundStyle(Brand.muted)
               Spacer()
@@ -204,6 +241,7 @@ struct TaskDetailScreen: View {
                 taskDate(
                   run["started_at"].double > 0 ? run["started_at"].double : run["due_at"].double)
               ).font(.caption2).foregroundStyle(.tertiary)
+            }
             }
             if !run["agent_id"].text.isEmpty {
               Label("独立专家协作", systemImage: "sparkles").font(.caption2).foregroundStyle(.secondary)
@@ -228,12 +266,13 @@ struct TaskDetailScreen: View {
             if run["updates"].items.isEmpty {
               Text("进展和成果会记录在这里。").font(.caption).foregroundStyle(.tertiary)
             }
-          }.padding(.vertical, 6)
+          }.padding(.leading, 14).overlay(alignment: .leading) { Rectangle().fill(Brand.line).frame(width: 1) }.padding(.vertical, 6)
         }
         if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.secondary) }
       }.padding(24)
     }.onAppear { onViewed(item) }.background(Brand.surface).navigationTitle("任务详情")
       .navigationBarTitleDisplayMode(.inline)
+      .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
@@ -268,6 +307,7 @@ struct TaskDetailScreen: View {
         TaskEditor(account: account, existing: item)
       }
       .task {
+        guard !previewMode else { return }
         while !Task.isCancelled {
           await load()
           do { try await Task.sleep(for: .seconds(5)) } catch { return }
@@ -287,7 +327,7 @@ struct TaskDetailScreen: View {
     defer { busy = false }
     do {
       _ = try await account.request(
-        "tasks", body: .object(["action": .string(action), "task_id": .string(taskID)]))
+        "tasks", body: .object(["action": .string(action), "task_id": .string(taskID), "content": .string(continuation)]))
       error = ""
       await load()
     } catch { self.error = "操作未完成，请稍后再试。" }
@@ -301,7 +341,7 @@ private struct TaskNotePreview: View {
     VStack(alignment: .leading, spacing: 4) {
       Text(content).font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
         .lineLimit(expanded ? nil : 3).textSelection(.enabled)
-      if !content.isEmpty {
+      if content.count > 120 || content.components(separatedBy: "\n").count > 3 {
         Button(expanded ? "收起" : "展开") { expanded.toggle() }
           .font(.caption).frame(minHeight: 44)
       }
@@ -478,3 +518,96 @@ private struct TaskEditor: View {
     } catch { self.error = "暂时无法保存。执行中的任务需要先取消，再修改。" }
   }
 }
+
+
+struct AgentActivityView: View {
+  @ObservedObject var account: AccountService
+  let agentID: String
+  @State private var entries: [JSON] = []
+  @State private var error = ""
+  @Environment(\.scenePhase) private var scene
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text("执行过程").font(.subheadline.weight(.semibold))
+      if entries.isEmpty { Text(error.isEmpty ? "等待第一条执行记录" : error).font(.caption).foregroundStyle(Brand.muted) }
+      ForEach(entries, id: \.self) { entry in
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: entry["kind"].text == "tool.terminal" ? "terminal" : "circle.dotted")
+            .font(.caption).foregroundStyle(Brand.muted).frame(width: 16)
+          VStack(alignment: .leading, spacing: 5) {
+            HStack {
+              Text(title(entry)).font(.caption.weight(.medium))
+              Spacer()
+              if let date = eventDate(entry["created_at"].text) {
+                Text(date.formatted(date: .omitted, time: .shortened)).font(.caption2).foregroundStyle(Brand.muted)
+              }
+            }
+            if !entry["content"].text.isEmpty {
+              DisclosureGroup {
+                Text(entry["content"].text).font(.subheadline).textSelection(.enabled)
+              } label: { Text(entry["content"].text).lineLimit(2).font(.caption).foregroundStyle(Brand.muted) }
+            }
+            if !entry["trace_id"].text.isEmpty {
+              NavigationLink("查看执行详情") {
+                TraceRecordScreen(traceID: entry["trace_id"].text, agentID: agentID, account: account)
+              }.font(.caption)
+            }
+          }
+        }.padding(.vertical, 6)
+      }
+    }.frame(maxWidth: .infinity, alignment: .leading)
+    .task(id: scene) {
+      guard scene == .active else { return }
+      while !Task.isCancelled {
+        do {
+          let result = try await account.request("agents/\(agentID)/activity")
+          let next = result["entries"].items
+          if next != entries { entries = next }
+          error = ""
+          try await Task.sleep(for: .seconds(result["status"].text == "running" ? 3 : 12))
+        } catch is CancellationError { return }
+        catch { self.error = "执行记录暂时不可用"; return }
+      }
+    }
+  }
+  private func eventDate(_ text: String) -> Date? {
+    let format = ISO8601DateFormatter()
+    format.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return format.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+  }
+  private func title(_ entry: JSON) -> String {
+    if entry["kind"].text == "tool.terminal" { return entry["tool"].text + " · " + taskLabel(entry["status"].text) }
+    if entry["kind"].text == "assistant.message" { return "进展" }
+    return taskLabel(entry["status"].text)
+  }
+}
+
+#if DEBUG
+struct TaskExperiencePreview: View {
+  let account: AccountService
+  private var item: JSON {
+    .object([
+      "id": .string("synthetic-task"), "title": .string("准备周末徒步路线"),
+      "objective": .string("比较交通、距离和沿途补给，整理两条适合周末的路线。"),
+      "success_criteria": .string("两条可比较的路线及交通建议"), "state": .string("active"),
+      "source": .string("conversation"), "runs": .array([.object([
+        "id": .string("synthetic-run"), "status": .string("blocked"),
+        "phase": .string("两条路线已整理好"),
+        "progress": .string("山间路线更安静，湖边路线交通方便。需要选定偏好后再细化行程。"),
+        "next_step": .string("选择轻松散步或稍有挑战的徒步"), "wait_reason": .string("user"),
+        "started_at": .number(Date().timeIntervalSince1970 - 1800),
+        "updates": .array([
+          .object(["created_at": .number(Date().timeIntervalSince1970 - 1800), "phase": .string("开始整理"), "status": .string("running"), "content": .string("查阅交通和路线信息，优先考虑当天往返。")]),
+          .object(["created_at": .number(Date().timeIntervalSince1970 - 600), "phase": .string("完成比较"), "status": .string("blocked"), "content": .string("保留两条路线，等你选一个方向。")])])])])])
+  }
+  var body: some View {
+    NavigationStack {
+      TaskDetailScreen(account: account, taskID: "synthetic-task", initial: item, previewMode: true)
+        .safeAreaInset(edge: .bottom) {
+          HStack { Text("补充想法…").foregroundStyle(Brand.muted); Spacer(); Image(systemName: "arrow.up.circle.fill").foregroundStyle(Brand.blue) }
+            .padding(18).modifier(ComposerSurface()).padding(.horizontal, 20).padding(.bottom, 10)
+        }
+    }
+  }
+}
+#endif

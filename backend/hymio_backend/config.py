@@ -26,6 +26,7 @@ class Settings:
     invitation_codes_file: Path | None = None
     host: str = "127.0.0.1"
     port: int = 8080
+    task_parallelism: int = 2
     computer_provider: str = "daytona"
     daytona_key_file: Path | None = None
     daytona_api_url: str = "https://app.daytona.io/api"
@@ -210,4 +211,6 @@ class Settings:
             raise ValueError("APNs requires key ID, team ID and bundle ID")
         if result.apns_environment not in {"sandbox", "production"}:
             raise ValueError("apns_environment must be sandbox or production")
+        if type(result.task_parallelism) is not int or not 1 <= result.task_parallelism <= 8:
+            raise ValueError("task_parallelism must be between 1 and 8")
         return result
