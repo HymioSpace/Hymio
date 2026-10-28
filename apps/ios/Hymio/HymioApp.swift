@@ -17,7 +17,17 @@ import SwiftUI
     WindowGroup {
       Group {
         #if DEBUG
-          if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
+          if ProcessInfo.processInfo.arguments.contains("-HymioApprovalPreview") {
+            ApprovalPreviewScreen()
+              .preferredColorScheme(
+                ProcessInfo.processInfo.arguments.contains("-HymioApprovalDarkPreview") ? .dark : nil
+              )
+              .environment(
+                \.dynamicTypeSize,
+                ProcessInfo.processInfo.arguments.contains("-HymioApprovalLargePreview")
+                  ? .accessibility3 : .large
+              )
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
           } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
             ChatBubblePreview(account: account)

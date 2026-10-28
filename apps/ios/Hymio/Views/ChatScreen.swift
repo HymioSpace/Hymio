@@ -481,53 +481,80 @@ struct ChatScreen: View {
 struct ApprovalCard: View {
   let approval: Approval
   @ObservedObject var client: AgentClient
+  var body: some View {
+    ApprovalCardView(
+      approval: approval,
+      connected: client.connected,
+      pending: client.state.pending.contains {
+        $0.payload["invocation_id"].text == approval.id
+      },
+      onDecision: { approved, scope in
+        Task {
+          await client.decide(
+            approval.id, approved, scope: scope, actionDigest: approval.actionDigest)
+        }
+      }
+    )
+  }
+}
+
+struct ApprovalCardView: View {
+  let approval: Approval
+  let connected: Bool
+  let pending: Bool
+  let onDecision: (_ approved: Bool, _ scope: String) -> Void
   @State private var scope = "once"
+
   var body: some View {
     TimelineView(.periodic(from: .now, by: 1)) { context in
-      let expired = approval.expires <= context.date.timeIntervalSince1970
-      let pending = client.state.pending.contains {
-        $0.payload["invocation_id"].text == approval.id
-      }
-      if !expired {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(displayTitle).font(.subheadline.weight(.semibold)).lineLimit(2)
-            Spacer(minLength: 8)
-            if let warning = warningLabel {
-              Text(warning).font(.caption2.weight(.medium)).foregroundStyle(warningColor)
+      if approval.expires > context.date.timeIntervalSince1970 {
+        VStack(alignment: .leading, spacing: 10) {
+          VStack(alignment: .leading, spacing: 5) {
+            Text(displayTitle)
+              .font(.headline)
+              .foregroundStyle(.primary)
+              .lineLimit(2)
+            if !approval.summary.isEmpty {
+              Text(approval.summary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
           }
-          if !approval.summary.isEmpty {
-            Text(approval.summary).font(.footnote).foregroundStyle(.secondary)
-          }
-          if !metadata(context.date).isEmpty {
-            Text(metadata(context.date).joined(separator: " · "))
-              .font(.caption2).foregroundStyle(.tertiary)
-          }
+
+          Text(metadata(context.date).joined(separator: " · "))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
           DisclosureGroup("操作详情") {
-            Text(approval.arguments.pretty).font(.system(.caption, design: .monospaced))
-              .textSelection(.enabled).padding(.top, 6)
-          }.font(.caption).tint(.secondary)
-          if approval.status == "pending" {
-            ViewThatFits(in: .horizontal) {
-              HStack(spacing: 8) {
-                scopeMenu(pending: pending)
-                Spacer(minLength: 8)
-                decisionButtons(pending: pending)
-              }
-              VStack(alignment: .leading, spacing: 4) {
-                scopeMenu(pending: pending)
-                decisionButtons(pending: pending)
-              }
-            }.disabled(!client.connected || pending)
+            Text(approval.arguments.pretty)
+              .font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled)
+              .padding(.top, 6)
           }
+          .font(.subheadline)
+          .tint(.secondary)
+
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+              scopeMenu
+              Spacer(minLength: 8)
+              decisionButtons
+            }
+            VStack(alignment: .leading, spacing: 2) {
+              scopeMenu
+              decisionButtons
+            }
+          }
+          .disabled(!connected || pending)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Brand.mist.opacity(0.76), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 14)
+        .overlay(alignment: .top) { Divider() }
+        .overlay(alignment: .bottom) { Divider() }
       }
     }
   }
+
   private var options: [String] {
     let value = approval.scopeOptions.filter { ["once", "run", "exact_rule"].contains($0) }
     return value.isEmpty ? ["once"] : value
@@ -547,17 +574,15 @@ struct ApprovalCard: View {
   private var warningLabel: String? {
     ["high": "高风险", "critical": "受保护操作"][approval.risk]
   }
-  private var warningColor: Color {
-    approval.risk == "critical" ? .red : .orange
-  }
   private func metadata(_ now: Date) -> [String] {
     [
+      warningLabel,
       approval.target.label,
       approval.effects.map(effectLabel).joined(separator: "、"),
       expiryLabel(approval.expires - now.timeIntervalSince1970),
-    ].filter { !$0.isEmpty }
+    ].compactMap { $0 }.filter { !$0.isEmpty }
   }
-  @ViewBuilder private func scopeMenu(pending: Bool) -> some View {
+  @ViewBuilder private var scopeMenu: some View {
     if options.count > 1 {
       Menu {
         ForEach(options, id: \.self) { option in
@@ -565,31 +590,33 @@ struct ApprovalCard: View {
         }
       } label: {
         HStack(spacing: 4) {
-          Text(scopeLabel(scope))
-          Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
+          Text(scopeLabel(scope)).foregroundStyle(.primary)
+          Image(systemName: "chevron.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.primary)
         }
-        .font(.footnote)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 4)
+        .font(.subheadline)
         .frame(minHeight: 44)
-      }.disabled(pending)
+      }
+      .tint(.primary)
+      .disabled(pending)
     }
   }
-  private func decisionButtons(pending: Bool) -> some View {
+  private var decisionButtons: some View {
     HStack(spacing: 8) {
       Spacer(minLength: 0)
       Button("拒绝") {
-        Task {
-          await client.decide(
-            approval.id, false, scope: scope, actionDigest: approval.actionDigest)
-        }
-      }.buttonStyle(.borderless).foregroundStyle(.secondary).frame(minHeight: 44)
+        onDecision(false, scope)
+      }
+      .buttonStyle(.borderless)
+      .foregroundStyle(.secondary)
+      .frame(minHeight: 44)
       Button(pending ? "正在提交…" : "允许") {
-        Task {
-          await client.decide(
-            approval.id, true, scope: scope, actionDigest: approval.actionDigest)
-        }
-      }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+        onDecision(true, scope)
+      }
+      .buttonStyle(.borderedProminent)
+      .tint(.blue)
+      .frame(minHeight: 44)
     }
   }
   private func expiryLabel(_ seconds: TimeInterval) -> String {
@@ -607,6 +634,53 @@ struct ApprovalCard: View {
     ][value] ?? value
   }
 }
+
+#if DEBUG
+struct ApprovalPreviewScreen: View {
+  private let approval = Approval(
+    id: "approval-preview",
+    tool: "bash",
+    arguments: .object([
+      "command": .string("pnpm test"),
+      "description": .string("运行测试"),
+    ]),
+    status: "pending",
+    expires: Date().addingTimeInterval(300).timeIntervalSince1970,
+    title: "运行测试",
+    summary: "读取当前项目并运行测试。",
+    risk: "high",
+    effects: ["execute", "local_access"],
+    target: ApprovalTarget(kind: "device", id: "mac-mini", label: "Mac mini"),
+    scopeOptions: ["once", "run"],
+    actionDigest: String(repeating: "0", count: 64),
+    decidedAt: nil,
+    decidedBy: "",
+    decisionChannel: "",
+    reason: ""
+  )
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 14) {
+          Text("我已检查项目结构，准备运行测试。")
+            .font(.body)
+          ApprovalCardView(
+            approval: approval,
+            connected: true,
+            pending: false,
+            onDecision: { _, _ in }
+          )
+        }
+        .padding(20)
+      }
+      .background(Color(uiColor: .systemBackground))
+      .navigationTitle("对话")
+      .navigationBarTitleDisplayMode(.inline)
+    }
+  }
+}
+#endif
 
 private struct CameraCapture: UIViewControllerRepresentable {
   let completion: (UIImage?) -> Void

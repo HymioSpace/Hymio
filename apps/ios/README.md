@@ -160,6 +160,10 @@ Debug includes synthetic, account-independent memory previews. Launch the built 
 with `-HymioContextPreview`; add `-HymioContextEmptyPreview` for first use,
 `-HymioContextDarkPreview` for dark appearance, or `-HymioContextLargeTextPreview` for
 accessibility text size. These flags do not alter the real account or system appearance.
+
+Use `-HymioApprovalPreview` for a synthetic approval request. Add
+`-HymioApprovalDarkPreview` or `-HymioApprovalLargePreview` to inspect dark appearance and
+accessibility text sizing without signing in.
 For actual persistence across clients, `backend/scripts/memory_preview.py` serves a loopback-only
 synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http://127.0.0.1:1422`.
 
