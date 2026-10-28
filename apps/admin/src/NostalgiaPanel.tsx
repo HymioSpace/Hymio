@@ -12,6 +12,7 @@ type Proposal = {
 };
 type Status = {
   users: string[];
+  user_profiles?: { user_id: string; username: string }[];
   user_id: string;
   prompt: string;
   prompt_sha256: string;
@@ -29,6 +30,7 @@ type Card = { id: string; kind: string; title?: string; preview?: string };
 
 export function NostalgiaPanel({ session }: { session: Session }) {
   const [owner, setOwner] = useState("");
+  const [userQuery, setUserQuery] = useState("");
   const [tab, setTab] = useState("status");
   const [status, setStatus] = useState<Status>();
   const [revision, setRevision] = useState(0);
@@ -94,6 +96,21 @@ export function NostalgiaPanel({ session }: { session: Session }) {
       /* error is displayed above */
     }
   }
+  const profiles =
+    status?.user_profiles ||
+    status?.users.map((user_id) => ({
+      user_id,
+      username: "未命名用户",
+    })) ||
+    [];
+  const selected = profiles.find((user) => user.user_id === status?.user_id);
+  const filteredUsers = profiles.filter(
+    (user) =>
+      user.user_id === status?.user_id ||
+      `${user.username} ${user.user_id}`
+        .toLowerCase()
+        .includes(userQuery.trim().toLowerCase()),
+  );
   return (
     <main className="workspace nostalgia-workspace">
       <header className="topbar">
@@ -110,19 +127,34 @@ export function NostalgiaPanel({ session }: { session: Session }) {
         </button>
       </header>
       <div className="nostalgia-controls">
-        <label>
-          上下文用户{" "}
-          <select
-            value={owner || status?.user_id || ""}
-            onChange={(e) => setOwner(e.target.value)}
-          >
-            {status?.users.map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="nostalgia-owner-picker">
+          <label htmlFor="nostalgia-owner">查看用户</label>
+          <div className="nostalgia-owner-fields">
+            <input
+              aria-label="搜索用户"
+              placeholder="搜索用户名"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+            />
+            <select
+              id="nostalgia-owner"
+              value={owner || status?.user_id || ""}
+              disabled={!profiles.length}
+              onChange={(e) => setOwner(e.target.value)}
+            >
+              {!profiles.length && <option value="">暂无绑定用户</option>}
+              {filteredUsers.map((user) => (
+                <option key={user.user_id} value={user.user_id}>
+                  {user.username}
+                  {profiles.filter((p) => p.username === user.username).length >
+                  1
+                    ? ` · ${user.user_id.slice(0, 8)}`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <nav aria-label="上下文管理">
           {[
             ["status", "运行"],
@@ -140,6 +172,21 @@ export function NostalgiaPanel({ session }: { session: Session }) {
           ))}
         </nav>
       </div>
+      {selected && (
+        <div className="nostalgia-owner-summary">
+          <span className="nostalgia-owner-avatar" aria-hidden="true">
+            {selected.username.slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <strong>{selected.username}</strong>
+            <span>已绑定个人上下文</span>
+          </div>
+          <details>
+            <summary>账号标识</summary>
+            <code>{selected.user_id}</code>
+          </details>
+        </div>
+      )}
       {error && (
         <p role="alert" className="nostalgia-error">
           {error}
@@ -178,11 +225,26 @@ export function NostalgiaPanel({ session }: { session: Session }) {
               秒。运行记录按时间保留，失败不会冒充已完成。
             </p>
           )}
+          {!status.runtime.events?.length && (
+            <div className="nostalgia-empty">
+              <BookOpen size={24} />
+              <strong>还没有整理记录</strong>
+              <p>产生上下文记录后，整理进展和发现的线索会显示在这里。</p>
+            </div>
+          )}
           <ol className="nostalgia-timeline">
             {status.runtime.events?.map((event) => (
               <li key={event.id}>
                 <time>{new Date(event.created_at).toLocaleString()}</time>
-                <strong>{event.kind}</strong>
+                <strong>
+                  {{
+                    "dreaming.completed": "上下文整理完成",
+                    "dreaming.failed": "上下文整理失败",
+                    "dreaming.started": "开始整理上下文",
+                    "opportunity.proposed": "发现新的任务线索",
+                    "core.commit": "上下文版本已保存",
+                  }[event.kind] || event.kind}
+                </strong>
                 <details>
                   <summary>事件详情</summary>
                   <pre>{JSON.stringify(event.data, null, 2)}</pre>
@@ -203,7 +265,14 @@ export function NostalgiaPanel({ session }: { session: Session }) {
             <article className="nostalgia-proposal" key={item.id}>
               <div>
                 <h3>{item.proposal.title}</h3>
-                <span>{item.state}</span>
+                <span>
+                  {{
+                    pending: "待评估",
+                    accepting: "正在接纳",
+                    accepted: "已转为任务",
+                    dismissed: "已忽略",
+                  }[item.state] || item.state}
+                </span>
               </div>
               <p>{item.proposal.reason}</p>
               <small>来源记录：{item.proposal.record_ids.join(", ")}</small>

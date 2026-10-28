@@ -25,8 +25,22 @@ def nostalgia_admin_routes(settings, sessions, discovery, bearer, body):
             users = discovery.users()
             uid = request.query_params.get("user_id") or (users[0] if users else "")
             if request.method == "GET":
+
+                def profiles():
+                    with sessions.transaction() as db:
+                        return [
+                            {"user_id": owner, "username": (row[0] if row else "未命名用户")}
+                            for owner in users
+                            for row in [
+                                db.execute(
+                                    "SELECT name FROM users WHERE user_id=?", (owner,)
+                                ).fetchone()
+                            ]
+                        ]
+
                 result = {
                     "users": users,
+                    "user_profiles": await asyncio.to_thread(profiles),
                     "user_id": uid,
                     "prompt": SYSTEM_PROMPT,
                     "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest(),

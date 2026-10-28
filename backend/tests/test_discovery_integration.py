@@ -71,4 +71,9 @@ def test_committed_context_opportunity_reaches_authenticated_task_api(request):
         status = client.get("/admin/api/nostalgia", headers=headers)
         assert status.status_code == 200
         assert status.json()["runtime"]["counts"]["records"] == 1
+        profiles = status.json()["user_profiles"]
+        assert [profile["user_id"] for profile in profiles] == [uid]
+        with environment.sessions.transaction() as db:
+            name = db.execute("SELECT name FROM users WHERE user_id=?", (uid,)).fetchone()[0]
+        assert profiles[0]["username"] == name
         assert client.get("/admin/api/nostalgia?user_id=other", headers=headers).status_code == 400
