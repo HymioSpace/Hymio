@@ -48,6 +48,7 @@ import os
   @Published var changes: [JSON] = []
   @Published var agentStatus = "not_started"
   @Published var agentResult = ""
+  @Published var agentID = ""
   @Published var loading = true
   @Published var sending = false
   @Published var error = ""
@@ -89,6 +90,7 @@ import os
       changes = value["changes"].items
       agentStatus = value["agent_status"].text
       agentResult = value["agent_result"].text
+      agentID = value["coding_agent_id"].text
       loading = false
       error = ""
     } catch {
@@ -498,6 +500,7 @@ private struct KitEditorScreen: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 18) {
           statusHeader
+          if !store.agentID.isEmpty { AgentActivityView(account: account, agentID: store.agentID) }
           if !store.messages.isEmpty {
             sectionTitle("对话记录", detail: "你和 Hymio 的修改要求")
             ForEach(store.messages, id: \.self) { message in

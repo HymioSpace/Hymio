@@ -23,9 +23,9 @@ class TasksTool(Tool):
             "capture(title, objective, success_criteria, intent_key): records an already "
             "admitted running task, NEVER dispatches it again. Reuse the intent_key for "
             "the same outcome; use returned run_id for updates. "
-            "For a quick task capture with status=succeeded and content=result. "
             "Use kind=reminder for notifications; use task for work requiring explicit outcome. "
-            "Create schedules NEW work; do not create a second run for work already underway. "
+            "Create schedules NEW independent background work; the backend binds its subagent. "
+            "Do not create a second run for work already underway. "
             "For app.task.due call action=start with run_id before acting; cancelled runs "
             "must not execute. Record progress, complete/fail/block with content, phase "
             "and next_step. Delegate a started run for independent asynchronous work. "
@@ -53,6 +53,11 @@ class TasksTool(Tool):
                             "fail",
                             "block",
                             "delegate",
+                            "activity",
+                            "wait",
+                            "continue",
+                            "accept_suggestion",
+                            "dismiss_suggestion",
                         ],
                     },
                     **{
@@ -67,7 +72,16 @@ class TasksTool(Tool):
                             "intent_key",
                             "phase",
                             "next_step",
+                            "suggestion_id",
                         ]
+                    },
+                    "wait_reason": {
+                        "type": "string",
+                        "enum": ["user", "time", "external", "device", "retry"],
+                    },
+                    "resume_at": {
+                        "type": "number",
+                        "description": "UTC Unix timestamp for a justified follow-up; omit while awaiting a user decision.",
                     },
                     "kind": {"type": "string", "enum": ["task", "reminder"]},
                     "status": {

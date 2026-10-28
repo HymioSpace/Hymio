@@ -91,3 +91,5 @@ Native image input: [feature36](feature36-native-images.md).
 - [CLI-first capabilities](feature43-cli-first-capabilities.md): device Bash, cloud CLI and a shared ToolSystem.
 
 - [Tool authorization and approvals](feature44-tool-authorization.md): capability boundaries, exact action approvals, task grants and cross-platform approval UI.
+
+- [Task experience and proactive work](feature45-task-experience.md)
