@@ -77,6 +77,7 @@ test('approval resolution and tool terminal update their original identities', (
       title: 'Run a command?',
       summary: 'Read the current directory.',
       risk: 'high',
+      tier: 'critical',
       effects: ['execute'],
       target: { kind: 'device', id: 'mac', label: 'Mac mini' },
       scope_options: ['once', 'run'],
@@ -100,6 +101,7 @@ test('approval resolution and tool terminal update their original identities', (
   ]);
   assert.equal(result.approvals[0].status, 'approved');
   assert.equal(result.approvals[0].title, 'Run a command?');
+  assert.equal(result.approvals[0].tier, 'critical');
   assert.deepEqual(result.approvals[0].scopeOptions, ['once', 'run']);
   assert.equal(result.approvals[0].decidedBy, 'iphone');
   assert.equal(result.tools.length, 1);

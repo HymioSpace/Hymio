@@ -97,6 +97,12 @@ extension Theme {
       FontSize(17)
     }
     .link { ForegroundColor(Brand.blue) }
+    .code {
+      FontFamilyVariant(.monospaced)
+      FontSize(.em(0.88))
+      ForegroundColor(Brand.ink)
+      BackgroundColor(Color(uiColor: .secondarySystemFill))
+    }
     .heading1 { configuration in
       configuration.label.markdownTextStyle {
         FontWeight(.semibold)
@@ -119,22 +125,39 @@ extension Theme {
       .markdownMargin(top: 8, bottom: 6)
     }
     .codeBlock { configuration in
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: 0) {
         HStack {
-          Text(configuration.language ?? "代码").font(.caption).foregroundStyle(.secondary)
+          Text(configuration.language ?? "代码")
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
           Spacer()
           CopyFeedbackButton(content: configuration.content)
+            .buttonStyle(.plain).foregroundStyle(.secondary)
         }
+        .padding(.horizontal, 12).frame(minHeight: 36)
+        Divider().opacity(0.7)
         ScrollView(.horizontal) {
           configuration.label
             .markdownTextStyle {
               FontFamilyVariant(.monospaced)
-              FontSize(14)
+              FontSize(13)
             }
+            .relativeLineSpacing(.em(0.22))
             .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-      }.padding(14).background(Brand.mist, in: RoundedRectangle(cornerRadius: 14))
-        .markdownMargin(top: 6, bottom: 12)
+      }
+      .background(
+        Color(uiColor: .secondarySystemBackground),
+        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .stroke(Color(uiColor: .separator).opacity(0.28), lineWidth: 0.5)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .markdownMargin(top: 6, bottom: 12)
     }
     .blockquote { configuration in
       configuration.label

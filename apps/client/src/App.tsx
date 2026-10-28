@@ -2,7 +2,7 @@ import { CompactionStatus } from './CompactionStatus';
 import { MomentsPanel } from './MomentsPanel';
 import { HomePanel } from './HomePanel';
 import { enqueueTelemetry, flushTelemetry } from './telemetry';
-import { Home, Menu, MessageCircle } from 'lucide-react';
+import { Home, Menu, MessageCircle, ShieldAlert } from 'lucide-react';
 import { Attachments, attachmentText, type Attachment } from './Attachments';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
@@ -28,6 +28,7 @@ import {
   conversation,
   executionActivity,
   createIdentity,
+  type Approval,
 } from '@hymio/client';
 import { Companion, StatusBadge, type Mood } from '@hymio/ui';
 import { type Connection } from '@hymio/protocol';
@@ -40,6 +41,7 @@ import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 import { ApprovalCard } from './ApprovalCard';
+import { rememberApproval } from './authorization';
 const client = new OathClient();
 client.channelKind = desktop ? 'desk' : 'web';
 export default function App() {
@@ -96,7 +98,10 @@ export default function App() {
     [toolsOpen, setToolsOpen] = useState(false),
     [nearBottom, setNearBottom] = useState(true),
     [sending, setSending] = useState(false),
-    [clock, setClock] = useState(Date.now());
+    [clock, setClock] = useState(Date.now()),
+    [decidingApprovals, setDecidingApprovals] = useState<Record<string, 'approved' | 'denied'>>({}),
+    [approvalReceipt, setApprovalReceipt] = useState('');
+  const approvalReceiptTimer = useRef<number | undefined>(undefined);
   function setDebug(value: boolean) {
     window.location.hash = value ? '/trace' : '/' + page;
     changeDebug(value);
@@ -305,7 +310,8 @@ export default function App() {
   const viewport = useRef<HTMLDivElement>(null),
     input = useRef<HTMLTextAreaElement>(null);
   const pendingApprovals = model.approvals.filter(
-    (a) => a.status === 'pending' && a.expiresAt * 1000 > clock,
+    (a) =>
+      a.status === 'pending' && a.expiresAt * 1000 > clock && decidingApprovals[a.id] === undefined,
   );
   const attachedToolIds = new Set(
     model.messages.flatMap((m) => (m.calls || []).map((_, i) => `${m.stepId}-${i}`)),
@@ -438,6 +444,13 @@ export default function App() {
     );
     return () => clearInterval(timer);
   }, [busy, connected, hasPendingApprovals]);
+  useEffect(
+    () => () => {
+      if (approvalReceiptTimer.current !== undefined)
+        window.clearTimeout(approvalReceiptTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -454,6 +467,40 @@ export default function App() {
       await fn();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
+    }
+  }
+  function showApprovalReceipt(message: string) {
+    if (approvalReceiptTimer.current !== undefined)
+      window.clearTimeout(approvalReceiptTimer.current);
+    setApprovalReceipt(message);
+    approvalReceiptTimer.current = window.setTimeout(() => setApprovalReceipt(''), 3200);
+  }
+  async function decideApproval(
+    approval: Approval,
+    decision: 'approved' | 'denied',
+    scope: 'once' | 'run' | 'exact_rule',
+    actionDigest: string,
+  ) {
+    setDecidingApprovals((current) => ({ ...current, [approval.id]: decision }));
+    try {
+      await client.decide(approval.id, decision, { scope, actionDigest });
+      if (decision === 'approved' && scope === 'exact_rule') {
+        try {
+          await rememberApproval(login, approval);
+          showApprovalReceipt('已允许，并加入始终允许');
+        } catch {
+          showApprovalReceipt('已允许；长期规则未保存');
+        }
+      } else {
+        showApprovalReceipt(decision === 'approved' ? '已允许' : '已拒绝');
+      }
+    } catch (error) {
+      setDecidingApprovals((current) => {
+        const next = { ...current };
+        delete next[approval.id];
+        return next;
+      });
+      setNotice(error instanceof Error ? error.message : String(error));
     }
   }
   function reconnect() {
@@ -611,6 +658,30 @@ export default function App() {
           </small>
         </div>
       </nav>
+      {!debug && (page !== 'chat' || !nearBottom) && pendingApprovals.length > 0 && (
+        <button
+          className="approval-reminder"
+          onClick={() => {
+            navigate('chat');
+            following.current = true;
+            setNearBottom(true);
+            requestAnimationFrame(() =>
+              viewport.current?.scrollTo({
+                top: viewport.current.scrollHeight,
+                behavior: 'instant',
+              }),
+            );
+          }}
+        >
+          <ShieldAlert size={17} />
+          <span>
+            <b>需要你的确认</b>
+            <small>{pendingApprovals[0].title}</small>
+          </span>
+          <span className="approval-reminder-count">{pendingApprovals.length}</span>
+          <ArrowRight size={14} className="approval-reminder-arrow" />
+        </button>
+      )}
       {!debug && page === 'home' && (
         <HomePanel
           key={`${login.backend}|${login.session.user_id}`}
@@ -781,12 +852,7 @@ export default function App() {
                   clock={clock}
                   pending={state.pending.some((p) => p.command.payload.invocation_id === a.id)}
                   onDecide={(id, decision, scope, actionDigest) =>
-                    act(() =>
-                      client.decide(id, decision, {
-                        scope,
-                        actionDigest,
-                      }),
-                    )
+                    decideApproval(a, decision, scope, actionDigest)
                   }
                 />
               ))}
@@ -842,6 +908,12 @@ export default function App() {
         </div>
         <div className={`composer-dock ${welcome ? 'welcome-dock' : ''}`}>
           <CompactionStatus events={state.events} now={clock} />
+          {approvalReceipt && (
+            <div className="approval-receipt" role="status">
+              <CheckCheck size={14} />
+              {approvalReceipt}
+            </div>
+          )}
           {!nearBottom && !welcome && (
             <button
               className="jump-bottom"

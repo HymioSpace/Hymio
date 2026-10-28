@@ -639,17 +639,15 @@ import UIKit
   func decide(
     _ id: String, _ approved: Bool, scope: String = "once", actionDigest: String = "",
     reason: String = ""
-  ) async {
-    do {
-      try await command(
-        "permission.decide",
-        [
-          "invocation_id": .string(id),
-          "status": .string(approved ? "approved" : "denied"),
-          "scope": .string(scope), "action_digest": .string(actionDigest),
-          "reason": .string(reason),
-        ])
-    } catch { self.error = error.localizedDescription }
+  ) async throws {
+    try await command(
+      "permission.decide",
+      [
+        "invocation_id": .string(id),
+        "status": .string(approved ? "approved" : "denied"),
+        "scope": .string(scope), "action_digest": .string(actionDigest),
+        "reason": .string(reason),
+      ])
   }
   func loadHistory() async {
     guard !loadingHistory, state.hasMore, let before = state.before else { return }

@@ -364,7 +364,9 @@ struct ChatBubblePreview: View {
           MessageRow(message: ChatMessage(id: "one", role: "user",
             content: "![图片](hymio-preview:one)\n可以了", time: "2026-01-01T00:00:00Z"), tools: [:], account: account)
           MessageRow(message: ChatMessage(id: "reply", role: "assistant",
-            content: "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。", time: "2026-01-01T00:00:01Z"), tools: [:], account: account)
+            content:
+              "好，这一段已经补上了。\n\n**时间、地点和价格**会保留在同一份安排里。运行 `pnpm test` 检查改动：\n\n```swift\nlet status = \"ready\"\nprint(status)\n```",
+            time: "2026-01-01T00:00:01Z"), tools: [:], account: account)
           MessageRow(message: ChatMessage(id: "many", role: "user",
             content: (1...7).map { "![图片](hymio-preview:img\($0))" }.joined(separator: "\n") + "\n这几张一起核对。",
             time: "2026-01-01T00:00:02Z"), tools: [:], account: account)

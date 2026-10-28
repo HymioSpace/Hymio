@@ -32,6 +32,7 @@ public struct Approval: Identifiable, Equatable {
   public var title: String
   public var summary: String
   public var risk: String
+  public var tier: String
   public var effects: [String]
   public var target: ApprovalTarget
   public var scopeOptions: [String]
@@ -201,6 +202,7 @@ public struct Conversation {
         title: p["title"].text.isEmpty
           ? (description.isEmpty ? "允许执行操作？" : description) : p["title"].text,
         summary: p["summary"].text, risk: p["risk"].text.isEmpty ? "medium" : p["risk"].text,
+        tier: p["tier"].text.isEmpty ? "write" : p["tier"].text,
         effects: p["effects"].items.map(\.text),
         target: ApprovalTarget(
           kind: target["kind"].text, id: target["id"].text, label: target["label"].text),

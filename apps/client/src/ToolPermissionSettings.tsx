@@ -1,49 +1,37 @@
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import {
+  forgetApproval,
+  loadAuthorizationSettings,
+  setAuthorizationMode,
+  type AuthorizationSettings,
+} from './authorization';
 import type { LoginState } from './useLogin';
-
-type Settings = { mode: 'read_only' | 'guided' | 'autonomous'; modes: string[] };
 
 const labels = {
   read_only: {
     title: '只读',
-    detail: '只读取已授权来源，不修改文件、浏览器或外部数据。',
+    detail: '读取、查看和检查类操作直接执行；任何写入都会被阻止。',
   },
   guided: {
-    title: '按需授权',
-    detail: '低风险操作自动执行，命令、设备控制和外部写入先询问你。',
+    title: '按需确认',
+    detail: '读取自动执行；修改操作可在当前任务中确认一次，也可加入始终允许。',
   },
   autonomous: {
-    title: '自动执行',
-    detail: '精确规则和任务授权自动执行，未知或高风险操作仍会询问。',
+    title: '完全访问',
+    detail: '普通读写自动执行；支付、凭据、安全设置和不可逆操作仍会确认或阻止。',
   },
 };
 
 export function ToolPermissionSettings({ login }: { login: LoginState }) {
-  const [data, setData] = useState<Settings>();
+  const [data, setData] = useState<AuthorizationSettings>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  async function request(mode?: string) {
-    const session = login.session;
-    if (!session) return;
-    const response = await fetch(session.backend + '/settings/tool-authorization', {
-      method: mode ? 'POST' : 'GET',
-      headers: {
-        Authorization: 'Bearer ' + session.access_token,
-        'Content-Type': 'application/json',
-      },
-      body: mode ? JSON.stringify({ mode }) : undefined,
-      signal: AbortSignal.timeout(15000),
-      redirect: 'error',
-    });
-    if (!response.ok) throw new Error('tool_authorization_unavailable');
-    return response.json() as Promise<Settings>;
-  }
   useEffect(() => {
     let active = true;
     setData(undefined);
     setError('');
-    void request()
+    void loadAuthorizationSettings(login)
       .then((value) => {
         if (active) setData(value);
       })
@@ -58,9 +46,20 @@ export function ToolPermissionSettings({ login }: { login: LoginState }) {
     setBusy(true);
     setError('');
     try {
-      setData(await request(mode));
+      setData(await setAuthorizationMode(login, mode));
     } catch {
       setError('授权模式未更改，请稍后重试');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeRule(id: string) {
+    setBusy(true);
+    setError('');
+    try {
+      setData(await forgetApproval(login, id));
+    } catch {
+      setError('始终允许规则未移除，请稍后重试');
     } finally {
       setBusy(false);
     }
@@ -88,6 +87,36 @@ export function ToolPermissionSettings({ login }: { login: LoginState }) {
             </option>
           ))}
         </select>
+      </div>
+      <div className="authorization-rules">
+        <div className="authorization-rules-heading">
+          <span>始终允许</span>
+          <small>{data?.rules?.length || 0}</small>
+        </div>
+        {!data?.rules?.length ? (
+          <p>还没有长期规则。确认操作时可选择“始终允许”。</p>
+        ) : (
+          data.rules.map((rule) => (
+            <div className="authorization-rule" key={rule.id}>
+              <div>
+                <strong>{rule.title}</strong>
+                <span>
+                  {[rule.target, rule.last_used_at ? '最近使用过' : '尚未使用']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </div>
+              <button
+                className="icon-button"
+                aria-label={`撤销始终允许：${rule.title}`}
+                disabled={busy}
+                onClick={() => void removeRule(rule.id)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))
+        )}
       </div>
       {error && <p role="alert">{error}</p>}
     </section>

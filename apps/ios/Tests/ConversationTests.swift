@@ -87,11 +87,15 @@ final class ConversationTests: XCTestCase {
     let model = Conversation(events: [
       event(
         1, "permission.requested",
-        ["invocation_id": .string("a"), "tool": .string("bash"), "expires_at": .number(999)]),
+        [
+          "invocation_id": .string("a"), "tool": .string("bash"), "expires_at": .number(999),
+          "tier": .string("critical"),
+        ]),
       event(2, "tool.terminal", ["invocation_id": .string("b"), "outcome": .string("succeeded")]),
       event(
         3, "permission.resolved", ["invocation_id": .string("a"), "status": .string("denied")]),
     ])
+    XCTAssertEqual(model.approvals[0].tier, "critical")
     XCTAssertEqual(model.approvals[0].status, "denied")
     XCTAssertEqual(model.terminals["b"]?["outcome"].text, "succeeded")
   }

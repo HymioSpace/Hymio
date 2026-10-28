@@ -658,10 +658,26 @@ a {
 .approval-card {
   width: 100%;
   margin: 14px 0;
-  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  background: color-mix(in srgb, var(--subtle) 76%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--line) 64%, transparent);
+  background: color-mix(in srgb, var(--subtle) 52%, var(--surface));
   border-radius: 16px;
-  padding: 15px 16px 13px;
+  padding: 14px 16px 12px;
+}
+.approval-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.approval-tool-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--surface);
 }
 .approval-card h3 {
   margin: 0;
@@ -673,6 +689,7 @@ a {
 }
 .approval-copy {
   min-width: 0;
+  flex: 1;
 }
 .approval-heading {
   display: flex;
@@ -687,12 +704,36 @@ a {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.approval-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 10px 0 0 40px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  font: 11px/1.55 var(--font-code);
+}
+.approval-preview > span {
+  flex: none;
+  color: var(--muted);
+}
+.approval-preview code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  padding: 0;
+  color: inherit;
+}
 .approval-meta {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 3px;
-  margin: 5px 0 0;
+  margin: 8px 0 0 40px;
   color: var(--muted);
   font-size: 11px;
   line-height: 1.5;
@@ -711,7 +752,7 @@ a {
   color: #9f3142;
 }
 .approval-details {
-  margin-top: 6px;
+  margin: 6px 0 0 40px;
 }
 .approval-details summary {
   cursor: pointer;
@@ -731,7 +772,7 @@ a {
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin: 8px 0 0 40px;
 }
 .approval-actions select {
   min-height: 36px;
@@ -750,6 +791,13 @@ a {
 .approval-actions button {
   min-height: 38px;
 }
+.approval-actions .primary-button {
+  color: var(--surface);
+  background: var(--ink);
+}
+.approval-actions .primary-button:hover {
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+}
 .approval-reject {
   border-radius: 9px;
   padding: 9px 11px;
@@ -759,6 +807,73 @@ a {
 .approval-reject:hover {
   color: var(--ink);
   background: var(--surface);
+}
+.approval-reminder {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 16px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 10px 30px #18203618;
+  text-align: left;
+  backdrop-filter: blur(14px);
+}
+.approval-reminder > svg {
+  color: var(--muted);
+}
+.approval-reminder span {
+  min-width: 0;
+}
+.approval-reminder b,
+.approval-reminder small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approval-reminder b {
+  font-size: 12px;
+  font-weight: calc(600 - var(--weight-adjust, 0));
+}
+.approval-reminder small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.approval-reminder-count {
+  min-width: 21px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--muted);
+  background: var(--subtle);
+  font-size: 11px;
+  text-align: center;
+}
+.approval-reminder-arrow {
+  color: var(--muted);
+}
+.approval-receipt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 11px;
 }
 .primary-button {
   display: flex;
@@ -1389,6 +1504,12 @@ a {
   .approval-card {
     padding: 14px;
   }
+  .approval-preview,
+  .approval-meta,
+  .approval-details,
+  .approval-actions {
+    margin-left: 0;
+  }
   .approval-actions {
     display: grid;
     grid-template-columns: 1fr auto auto;
@@ -1398,6 +1519,10 @@ a {
   }
   .approval-actions button {
     min-height: 44px;
+  }
+  .approval-reminder {
+    right: 12px;
+    bottom: 82px;
   }
   .copy-message {
     opacity: 0.7;
@@ -2228,19 +2353,40 @@ a {
 }
 .message-bubble .message-code {
   margin-block: 14px;
-  border: 1px solid var(--line);
-  background: var(--subtle);
-  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+  background: var(--surface);
+  border-radius: 12px;
   overflow: hidden;
+}
+.message-bubble :not(pre) > code {
+  padding: 0.08em 0.34em;
+  border: 0;
+  border-radius: 0.38em;
+  color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+  background: color-mix(in srgb, var(--line) 42%, var(--subtle));
+  font: 0.82em/1.45 var(--font-code);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 .code-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 8px 2px 16px;
+  min-height: 36px;
+  padding: 4px 8px 4px 12px;
   color: var(--muted);
-  font: 12px var(--font-code);
-  border-bottom: 1px solid var(--line);
+  font: 11px/1.4 var(--font-code);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+.code-toolbar .icon-button {
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  border-radius: 7px;
+}
+.code-toolbar .icon-button:hover {
+  color: var(--ink);
+  background: var(--subtle);
 }
 .message-code pre {
   margin: 0;
@@ -2248,8 +2394,9 @@ a {
   background: transparent;
   border-radius: 0;
   white-space: pre;
-  padding: 16px;
-  font-size: 13px;
+  padding: 13px 15px 14px;
+  font-size: 12.5px;
+  line-height: 1.62;
 }
 .message-code pre code {
   font-size: inherit;
@@ -3099,6 +3246,63 @@ a {
   font-size: 12px;
   color: var(--muted);
   margin-top: 10px;
+}
+.authorization-rules {
+  display: grid;
+  gap: 8px;
+}
+.authorization-rules-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+}
+.authorization-rules-heading small {
+  min-width: 20px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  text-align: center;
+  background: var(--subtle);
+}
+.authorization-rules > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.authorization-rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.authorization-rule > div {
+  min-width: 0;
+  flex: 1;
+}
+.authorization-rule strong,
+.authorization-rule span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.authorization-rule strong {
+  font-size: 12px;
+  font-weight: calc(500 - var(--weight-adjust, 0));
+}
+.authorization-rule span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.authorization-rule .icon-button {
+  width: 32px;
+  height: 32px;
+  color: var(--muted);
 }
 .settings-dialog .dialog-note {
   margin: 12px 0 24px;

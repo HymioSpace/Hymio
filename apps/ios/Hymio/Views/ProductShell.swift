@@ -78,6 +78,16 @@ struct ProductShell: View {
   @State private var notificationTask: JSON?
   @State private var showAccount = false
   @Environment(\.scenePhase) private var scene
+  private func pendingApproval(at date: Date) -> Approval? {
+    client.model.approvals.first {
+      $0.status == "pending" && $0.expires > date.timeIntervalSince1970
+    }
+  }
+  private func expiredApproval(at date: Date) -> Approval? {
+    client.model.approvals.first {
+      $0.status == "pending" && $0.expires <= date.timeIntervalSince1970
+    }
+  }
   var body: some View {
     TabView(selection: $selected) {
       Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
@@ -122,14 +132,24 @@ struct ProductShell: View {
       Task {
         await liveActivity.sync(
           account: account, items: items, chatWorking: client.model.working,
-          chatAwaiting: client.model.awaitingReply)
+          chatAwaiting: client.model.awaitingReply,
+          chatApproval: pendingApproval(at: Date())?.title)
       }
     }
     .onChange(of: client.model.working) { _, _ in
       Task {
         await liveActivity.sync(
           account: account, items: board.items, chatWorking: client.model.working,
-          chatAwaiting: client.model.awaitingReply)
+          chatAwaiting: client.model.awaitingReply,
+          chatApproval: pendingApproval(at: Date())?.title)
+      }
+    }
+    .onChange(of: client.model.approvals) { _, _ in
+      Task {
+        await liveActivity.sync(
+          account: account, items: board.items, chatWorking: client.model.working,
+          chatAwaiting: client.model.awaitingReply,
+          chatApproval: pendingApproval(at: Date())?.title)
       }
     }
     .onChange(of: scene) { _, phase in
@@ -137,7 +157,56 @@ struct ProductShell: View {
         Task {
           await liveActivity.sync(
             account: account, items: board.items, chatWorking: client.model.working,
-            chatAwaiting: client.model.awaitingReply, leavingApp: true)
+            chatAwaiting: client.model.awaitingReply,
+            chatApproval: pendingApproval(at: Date())?.title,
+            leavingApp: true)
+        }
+      }
+    }
+    .overlay(alignment: .bottom) {
+      TimelineView(.periodic(from: .now, by: 1)) { timeline in
+        let approval = pendingApproval(at: timeline.date)
+        let expired = expiredApproval(at: timeline.date) != nil
+        Group {
+          if selected != .chat, let approval {
+            Button {
+              selected = .chat
+            } label: {
+              HStack(spacing: 10) {
+                Image(systemName: "hand.raised")
+                  .font(.system(size: 16, weight: .medium))
+                  .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                  Text("需要你的确认").font(.caption.weight(.semibold))
+                  Text(approval.title)
+                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                  .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+              }
+              .padding(.horizontal, 14)
+              .frame(minHeight: 54)
+              .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+              .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                  .stroke(Color(uiColor: .separator).opacity(0.24), lineWidth: 0.5)
+              )
+              .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 72)
+            .accessibilityHint("打开对话处理授权")
+          } else {
+            Color.clear.frame(width: 0, height: 0)
+          }
+        }
+        .task(id: "\(approval?.id ?? "")|\(expired)") {
+          await liveActivity.sync(
+            account: account, items: board.items, chatWorking: client.model.working,
+            chatAwaiting: client.model.awaitingReply, chatApproval: approval?.title,
+            expiredApproval: expired)
         }
       }
     }

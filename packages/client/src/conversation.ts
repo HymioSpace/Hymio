@@ -29,6 +29,7 @@ export interface Approval {
   title: string;
   summary: string;
   risk: string;
+  tier: 'write' | 'critical';
   effects: string[];
   target: { kind: string; id: string; label: string };
   scopeOptions: Array<'once' | 'run' | 'exact_rule'>;
@@ -161,6 +162,7 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
         title: str(p.title) || description || `允许运行 ${tool}？`,
         summary: str(p.summary),
         risk: str(p.risk) || 'medium',
+        tier: str(p.tier) === 'critical' ? 'critical' : 'write',
         effects: list(p.effects).map(str),
         target: {
           kind: str(target.kind),

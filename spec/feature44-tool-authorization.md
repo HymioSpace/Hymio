@@ -62,13 +62,25 @@ Claude Code uses tiered permissions and evaluates `deny`, then `ask`, then `allo
 approval scopes are offered only when the prompt can show everything they would cover. See
 [Claude Code permissions](https://code.claude.com/docs/en/permissions).
 
+Meta Muse keeps standard browsing uninterrupted and stops for consequential actions such as
+purchases or sending mail. Its deterministic card previews the target and effect before presenting
+clear accept/reject actions. Grok Bot's Auto Review lets most actions run and offers `Allow once`,
+`Always allow` and `Deny`; narrow Auto-review rules are editable and Ask-first wins over Allow.
+Manus-style long-running agents pair checkpoints with a live activity trail and a persistent
+needs-input state. Sources reviewed 2026-10-28:
+[Muse design](https://introducing.muse.ai/),
+[Grok Bot approvals](https://docs.x.ai/grok-bot/approvals-security-and-privacy), and
+[agent UI patterns](https://www.setproduct.com/blog/ai-agent-ui-design-patterns).
+
 Apple HIG requires permission requests to be specific and contextual, gives users control over
 AI actions, and asks for confirmation before significant or irreversible actions. See
 [Privacy](https://developer.apple.com/design/human-interface-guidelines/privacy#Requesting-permission)
 and [Generative AI](https://developer.apple.com/design/human-interface-guidelines/generative-ai).
 
 Hymio combines OpenAI's separation of technical boundary and approval, Claude Code's rule
-precedence and exact scopes, and Apple's contextual plain-language consent.
+precedence and exact scopes, Muse/Grok's proportional interruption, and Apple's contextual
+plain-language consent. Approval fatigue is a safety failure: if every command asks, people learn
+to approve without reading.
 
 ## Product policy
 
@@ -76,15 +88,12 @@ Users choose one assistant mode:
 
 | Mode | Default | Behavior |
 | --- | --- | --- |
-| Read-only | Research and review | Read operations inside granted sources; mutations and device control are denied until the user switches mode |
-| Guided | Default | Safe reads and reversible internal writes run; shell, device control and external effects ask |
-| Autonomous | Power use | Exact pre-approved rules and task grants run; unknown or high-risk actions still ask |
-
-`Full local access` is not a normal assistant mode. It may exist only as a local development
-setting on an explicitly selected device, with a warning that the Agent acts with the same file,
-network and account access as that process.
+| Read-only | Research and review | Reads, inspection, screenshots and safe test/report commands run; mutations and device control are denied |
+| Guided | Default | Reads run; mutations ask once per exact action or task, with an optional exact-rule whitelist |
+| Fully Accessible (`autonomous`) | Power use | Ordinary read/write actions run; payment, credentials, security settings, irreversible deletion and external mutation still ask or deny |
 
 The mode narrows or widens `allow` and `ask`. It never overrides a hard denial.
+`Fully Accessible` is still subject to the executor boundary and always-confirm tier.
 
 ## Action classification
 
@@ -112,7 +121,11 @@ Automatic within the effective policy:
 
 - Device discovery, task list/get, memory search/read and owned-media understanding; task progress,
   current-run capture, self-notifications, reactions and bounded internal writes.
-- User-requested image generation within budget and browser reads inside a granted task/origin.
+- User-requested image generation within budget, desktop screenshots, application reads and
+  bounded browser reads or navigation.
+- Shell reads parsed without redirection, command substitution or mutation flags, including common
+  workspace inspection, `git status`/`diff`/`log`, and known test, lint-without-fix, type-check and
+  read-only build-check commands.
 
 Automatic decisions still produce audit events. They are not silent.
 
@@ -120,11 +133,9 @@ Automatic decisions still produce audit events. They are not silent.
 
 Require a person:
 
-- Arbitrary Bash, including commands believed to be read-only unless they match an exact safe
-  rule.
-- Browser navigation to a new origin, clicking, filling, submission, upload, download, and
-  desktop screenshots, clicks, typing, shortcuts or scrolling outside an existing task grant.
-- Reading a new personal source such as mail, calendar, files or screen content.
+- Bash that writes, installs, generates artifacts or cannot be parsed as a bounded read.
+- Browser clicking, filling, downloading or changing page state; desktop clicks, typing,
+  shortcuts or scrolling outside an existing task grant.
 - Writing, moving or deleting files outside the Agent workspace.
 - Scheduling, delegation, cancellation, application publishing, mail/message sends, external
   calendar/task changes, software installation and downloaded scripts.
@@ -140,9 +151,10 @@ Hard denial is an executable policy result, not a warning:
 - Accessing another user, device, account or channel outside the current execution scope.
 - Bypassing TCC, pairing, lock screen, administrator approval or audit; privilege escalation,
   process injection, security-setting changes and disabling safeguards.
-- Financial transfers, payments or purchases.
 - Recursive deletion of home/root/system directories; unverified code execution; arbitrary
   private/loopback access without an explicit target grant.
+- Exporting credentials or bypassing platform authentication for a payment, transfer, purchase or
+  other financial action.
 
 There is no `Allow once` button for a hard denial. The model receives a stable policy reason and
 must stop, not search for a workaround through Bash, CLI, Browser or a subagent.
@@ -150,16 +162,34 @@ must stop, not search for a workaround through Bash, CLI, Browser or a subagent.
 Subagents cannot create human approval requests in v1. An `ask` decision for a subagent is denied,
 and safe read-only alternatives remain available.
 
+Non-read shell commands in guided mode ask once per exact command. Choosing `run` grants that exact
+action until the current Oath `run_id` ends; a new user message normally starts a new run. Choosing
+`exact_rule` adds a durable whitelist entry for the same tool, action and target, which can be
+reviewed or revoked in Settings.
+
+Critical actions ask on every use and do not offer a task, exact-rule or full-access bypass.
+Examples include payment or purchase submission, sending or publishing externally, deleting
+irreversible data, changing permissions, credentials or security settings, forced pushes and
+remote release operations. Network mutations such as an authenticated HTTP POST, upload,
+remote shell and package publication are also critical even in Fully Accessible mode.
+
 ## Scopes and grants
 
-The v1 UI exposes `Allow once` and **This task**, which binds the exact action class, device,
-origin/account/path and expiry to the run. The protocol reserves **Exact rule**, such as
-`device:<id>/browser:origin:example.com/read`, but grant inventory and revocation are not yet
-exposed to users.
+The UI exposes `Only this time`, **For this task**, and **Always allow** where safe. “For this
+task” binds the exact action class, device, origin/account/path and expiry to the current Oath
+run. A new user request normally starts a new run. “Always allow” stores one narrow rule for the
+same tool, action and target and exposes it under Settings → Tool authorization for revocation.
+Bash rules bind the complete command text rather than only its first line. Rule titles, summaries
+and targets are derived by the server from the stored action; a client cannot put misleading
+display copy on a whitelist entry.
 
 There is no “allow all shell”, “allow all sites” or broad wildcard grant. A task grant cannot
 cover submission, upload, purchase, deletion or another high-risk class unless those actions are
 listed separately in the approval.
+
+Guided mode stores at most 100 exact rules per user. Reaching the limit rejects a new rule rather
+than silently evicting one the user chose. Revocation takes effect before the next policy check;
+there is no separate in-memory wildcard to expire.
 
 Run grants are persisted with creator, channel, device and expiry. A grant affects future calls
 only and does not claim to undo a side effect already in progress.
@@ -210,8 +240,12 @@ client receives the winning decision and updates its card instead of showing a s
 
 ## Client experience
 
-Approvals appear inline with the tool activity they govern. A separate global list is useful for
-recovery, but it is not the primary interaction.
+Approvals appear inline with the tool activity they govern. When one is waiting on another tab or
+outside the visible transcript, a compact live reminder opens the conversation. In the iOS
+conversation, a `Needs confirmation` pill replaces the scroll-to-latest control when the user has
+scrolled away from a pending request. The same waiting state participates in the existing Live
+Activity and is visible from the Lock Screen or Dynamic Island. Its one-second client projection
+stops advertising the request at expiry and changes the activity to `Approval expired`.
 
 ```text
 Run the test suite
@@ -219,22 +253,33 @@ Read the current project and run its tests.
 Mac mini · Read files, execute commands · Expires in 5 min
 
 Operation details
-                                  Decline   This task v   Allow
+                                  Decline   For this task v   Allow
 ```
 
-The approval surface uses the same text column and baseline as the assistant response. It has one
-heading, one sentence of effect copy, one compact metadata line, progressive raw details, and one
-primary action. Scope is a quiet adjacent menu only when more than one scope is valid. Decorative
-icons, risk capsules, fact grids and tinted full-card treatments are omitted; a small text warning
-is reserved for high-risk actions.
+The approval surface uses the same text column and baseline as the assistant response. Its icon,
+heading, effect copy, command/target preview, metadata and actions share one leading edge. A
+single hairline surface replaces nested grey boxes. It has one heading, one sentence of effect
+copy, a one-line command/target preview, compact metadata, progressive raw details, and one
+primary action. Scope is a quiet adjacent menu only when more than one scope is valid. A critical
+request has no menu and is labelled `Needs confirmation every time`.
+
+Submitting a decision removes the active card immediately and shows a short acknowledgement while
+the durable `permission.resolved` event travels. The acknowledgement is plain secondary text, not
+a second card. If enqueueing fails, the original card returns with an error instead of leaving the
+interface ambiguous.
+
+Inline and assistant Markdown code use neutral surfaces, system monospaced type, a compact
+language/copy toolbar, and a visible keyboard focus state. Inline code is visually distinct from
+fenced blocks without using an accent color.
 
 Bash calls include a `description` of at most 80 characters for display. Hymio policy normalizes it
 and uses it as the approval title; native and device Bash schemas enforce the same limit. If it is
 absent, clients use a stable tool label rather than exposing an internal name such as `cli`.
 
-For destructive or irreversible actions, opening the card presents a focused sheet with the exact
-target, affected item count when known, reversibility and the safe alternative. It never defaults
-focus to the confirmation button and does not approve on Return.
+The inline card remains the default for destructive and irreversible actions. Raw arguments expand
+in place. A separate sheet is reserved for cases where a complete affected-item list cannot fit;
+it must show the exact target, reversibility and safe alternative, must not default focus to the
+confirmation button and must not approve on Return.
 
 Visible states include `Waiting for approval`, `Submitting`, `Allowed on iPhone`, `Allowed,
 waiting to run`, `Running`, `Declined, not run`, `Expired, not run` and `Superseded`.
@@ -254,7 +299,8 @@ Interaction requirements:
 The user permission center lists assistant mode and device capabilities. Users cannot edit the
 hard-denial policy from the model conversation. HymioDevice's local Shell/Screen Recording/
 Accessibility switches remain separate: they expose a capability, while Hymio approval authorizes
-a concrete action.
+a concrete action. Settings also lists the user's bounded always-allow rules and supports revoking
+one rule without changing the assistant mode.
 
 ## Ownership and cross-repository contract
 
