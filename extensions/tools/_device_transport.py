@@ -10,7 +10,7 @@ from core.protocol.error import ToolExecutionError
 
 def call(invocation, operation, capability=None):
     config = json.loads(Path(__file__).with_name("_connection.local").read_text())
-    budget = 110 if operation in {"list", "select"} else 25
+    budget = 110 if operation in {"execute", "list", "select"} else 25
     timeout = min(budget, invocation.deadline - time.monotonic()) if invocation.deadline else budget
     if timeout <= 0:
         raise ToolExecutionError("Device request deadline expired")

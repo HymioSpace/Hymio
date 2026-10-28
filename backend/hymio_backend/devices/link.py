@@ -18,8 +18,11 @@ from .store import DeviceConflict
 
 
 class DeviceLink:
-    def __init__(self, store):
+    def __init__(self, store, *, result_grace: float = 5.0):
+        if result_grace < 0:
+            raise ValueError("result_grace must be non-negative")
         self.store = store
+        self.result_grace = result_grace
         self.lock = threading.RLock()
         self.connections = {}
         self.pending = {}
@@ -211,10 +214,8 @@ class DeviceLink:
                 connection["socket"].send_json(frame), connection["loop"]
             )
         try:
-            sent.result(timeout=min(timeout, 5))
-            return future.result(timeout=timeout)
+            sent.result(timeout=min(timeout + self.result_grace, 5))
         except Exception:
-            # A send timeout does not prove the device did not receive the operation.
             return self.store.finish(
                 user_id,
                 invocation,
@@ -223,6 +224,32 @@ class DeviceLink:
                     "invocation_id": invocation,
                     "status": "outcome_unknown",
                     "error": "Link interrupted; do not repeat the operation. Await saved result.",
+                },
+                release=False,
+            )
+        try:
+            return future.result(timeout=timeout + self.result_grace)
+        except TimeoutError:
+            return self.store.finish(
+                user_id,
+                invocation,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation,
+                    "status": "outcome_unknown",
+                    "error": "No device result before the execution deadline.",
+                },
+                release=False,
+            )
+        except Exception:
+            return self.store.finish(
+                user_id,
+                invocation,
+                {
+                    "device_id": device_id,
+                    "invocation_id": invocation,
+                    "status": "outcome_unknown",
+                    "error": "Device result could not be confirmed.",
                 },
                 release=False,
             )

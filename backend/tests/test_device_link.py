@@ -1,4 +1,5 @@
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,7 +27,7 @@ def stack():
             raise Unauthorized()
 
         sessions.verify = verify
-        link = DeviceLink(DeviceStore(sessions))
+        link = DeviceLink(DeviceStore(sessions), result_grace=0.05)
 
         def bearer(request):
             return request.headers.get("authorization", "").removeprefix("Bearer ")
@@ -167,6 +168,32 @@ def test_unknown_outcome_keeps_lock_until_late_durable_result(stack):
         assert known["status"] == "succeeded" and known["result"]["output"] == "saved-result"
         with link.store.transaction() as db:
             assert db.execute("SELECT 1 FROM device_locks").fetchone() is None
+
+
+def test_result_arriving_just_after_command_timeout_is_still_returned(stack):
+    client, _ = stack
+    paired, _ = pair(client)
+    with client.websocket_connect("/devices/link/ws") as ws, ThreadPoolExecutor() as workers:
+        ready = connect(ws, paired)
+        future = workers.submit(
+            client.post, "/devices/execute", headers=headers(), json=request(paired, timeout=0.1)
+        )
+        command = ws.receive_json()
+        time.sleep(0.12)
+        ws.send_json(
+            {
+                "v": 1,
+                "type": "link.result",
+                "generation": ready["generation"],
+                "invocation_id": command["invocation_id"],
+                "payload": {"timed_out": True, "exit_code": 124, "output": ""},
+            }
+        )
+        assert ws.receive_json()["type"] == "link.ack"
+        result = future.result(timeout=2).json()
+        assert result["status"] == "succeeded"
+        assert result["result"]["timed_out"] is True
+        assert result["result"]["exit_code"] == 124
 
 
 def test_unrecognized_and_stale_results_are_rejected(stack):

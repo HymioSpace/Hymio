@@ -303,14 +303,20 @@ class NotificationService:
         if not preferences[preference]:
             return {"accepted": True, "status": "suppressed", "reason": "preference"}
         with self.sessions.transaction() as db:
-            if task_id and not db.execute(
-                "SELECT 1 FROM tasks WHERE user_id=? AND id=?", (uid, task_id)
-            ).fetchone():
+            if (
+                task_id
+                and not db.execute(
+                    "SELECT 1 FROM tasks WHERE user_id=? AND id=?", (uid, task_id)
+                ).fetchone()
+            ):
                 raise ValueError("task_not_found")
-            if run_id and not db.execute(
-                "SELECT 1 FROM task_runs WHERE user_id=? AND id=? AND task_id=?",
-                (uid, run_id, task_id),
-            ).fetchone():
+            if (
+                run_id
+                and not db.execute(
+                    "SELECT 1 FROM task_runs WHERE user_id=? AND id=? AND task_id=?",
+                    (uid, run_id, task_id),
+                ).fetchone()
+            ):
                 raise ValueError("run_not_found")
             devices = db.execute(
                 "SELECT 1 FROM push_devices WHERE user_id=? AND invalidated=0 LIMIT 1",
@@ -414,9 +420,7 @@ class NotificationService:
                     "WHERE t.user_id=? AND t.id=? AND r.id=?",
                     (row["user_id"], row["task_id"], row["run_id"]),
                 ).fetchone()
-        show_details = bool(
-            self._preferences(row["user_id"])["show_details"]
-        )
+        show_details = bool(self._preferences(row["user_id"])["show_details"])
         now = time.time()
         for activity in activities:
             event = "end" if row["kind"] in {"completion", "chat_reply"} else "update"
@@ -436,9 +440,7 @@ class NotificationService:
                 phase = (task["phase"] or task["next_step"] or generic_phase)[:72]
             state = {
                 "title": (
-                    (task["title"] if task else row["summary"])[:80]
-                    if show_details
-                    else "Hymio"
+                    (task["title"] if task else row["summary"])[:80] if show_details else "Hymio"
                 ),
                 "phase": phase,
                 "status": status,
@@ -573,8 +575,17 @@ def notification_routes(settings, sessions, bearer, body, service):
         try:
             data = await body(request) if request.method == "POST" else {}
             if request.url.path == "/internal/notifications":
-                expected = settings.service_token_file.read_text().strip()
-                if not hmac.compare_digest(bearer(request).encode(), expected.encode()):
+                credential = bearer(request).encode()
+                token_files = [
+                    settings.service_token_file,
+                    getattr(settings, "oath_admin_token_file", None),
+                ]
+                authorized = any(
+                    path is not None
+                    and hmac.compare_digest(credential, path.read_text().strip().encode())
+                    for path in token_files
+                )
+                if not authorized:
                     raise Unauthorized()
                 uid = data.get("user_id")
                 if not isinstance(uid, str) or not uid:

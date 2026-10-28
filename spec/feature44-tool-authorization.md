@@ -253,6 +253,9 @@ conversation, a `Needs confirmation` pill replaces the scroll-to-latest control 
 scrolled away from a pending request. The same waiting state participates in the existing Live
 Activity and is visible from the Lock Screen or Dynamic Island. Its one-second client projection
 stops advertising the request at expiry and changes the activity to `Approval expired`.
+Creating `permission.requested` also enqueues a server-side `attention` notification with a stable
+`approval:<invocation_id>` identity. This path does not require the App to hold a WebSocket at that
+moment, so a suspended client can still be woken and routed to the pending approval.
 
 ```text
 Run the test suite
