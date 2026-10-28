@@ -309,7 +309,7 @@ def build_app(settings, *, provider=None):
 
     routes = (
         connector_routes(settings, store, connectors, bearer, body)
-        + context_routes(settings, store, bearer, body, kits)
+        + context_routes(settings, store, bearer, body, kits, tasks.store)
         + nostalgia_admin_routes(settings, store, discovery, bearer, body)
         + task_routes(settings, store, tasks, bearer, body)
         + notification_routes(settings, store, bearer, body, notifications)
