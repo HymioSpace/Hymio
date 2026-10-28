@@ -32,6 +32,14 @@ def task_routes(settings, sessions, service, bearer, body):
                 identity = await asyncio.to_thread(sessions.verify, bearer(request))
                 uid = identity["user_id"]
                 action = data.get("action", "list") if request.method == "POST" else "list"
+            if request.url.path.startswith("/agents/"):
+                return JSONResponse(
+                    await service.oath(
+                        uid,
+                        "/subagents/activity",
+                        {"agent_id": request.path_params["agent_id"], "limit": 60},
+                    )
+                )
             if action == "list":
                 result = await asyncio.to_thread(store.list, uid)
             elif action == "get":
@@ -44,6 +52,50 @@ def task_routes(settings, sessions, service, bearer, body):
                     uid,
                     data,
                     data.get("request_id"),
+                )
+            elif action in {"accept_suggestion", "dismiss_suggestion"}:
+                if action == "accept_suggestion":
+                    result = await asyncio.to_thread(
+                        service.discovery.accept, uid, data["suggestion_id"]
+                    )
+                else:
+                    await asyncio.to_thread(service.discovery.dismiss, uid, data["suggestion_id"])
+                    return JSONResponse({"dismissed": True})
+            elif action == "continue":
+                result = await asyncio.to_thread(
+                    store.request_continuation,
+                    uid,
+                    data["task_id"],
+                    data.get("request_id")
+                    or request.headers.get("idempotency-key")
+                    or uuid.uuid4().hex,
+                    data.get("content", ""),
+                )
+            elif action == "wait":
+                result = await asyncio.to_thread(
+                    store.wait,
+                    uid,
+                    data["run_id"],
+                    data["wait_reason"],
+                    data["content"],
+                    data["next_step"],
+                    data.get("resume_at"),
+                    data.get("note_id") or data.get("request_id") or uuid.uuid4().hex,
+                )
+            elif action == "activity":
+                value = await asyncio.to_thread(store.get, uid, data["task_id"])
+                agent = next(
+                    (
+                        r.get("agent_id")
+                        for r in value["runs"]
+                        if r.get("agent_id") and r["agent_id"] != "pending"
+                    ),
+                    None,
+                )
+                return JSONResponse(
+                    await service.oath(uid, "/subagents/activity", {"agent_id": agent})
+                    if agent
+                    else {"entries": [], "status": "not_delegated"}
                 )
             elif action == "edit":
                 result = await asyncio.to_thread(store.edit, uid, data["task_id"], data)
@@ -75,7 +127,19 @@ def task_routes(settings, sessions, service, bearer, body):
                 )
             else:
                 raise ValueError("Unknown action")
-            return JSONResponse({"tasks": result} if isinstance(result, list) else result)
+            if isinstance(result, list):
+                suggestions = (
+                    await asyncio.to_thread(service.discovery.list, uid)
+                    if hasattr(service, "discovery")
+                    else []
+                )
+                return JSONResponse(
+                    {
+                        "tasks": result,
+                        "suggestions": [v for v in suggestions if v["state"] == "pending"],
+                    }
+                )
+            return JSONResponse(result)
         except Unauthorized:
             return JSONResponse({"error": "unauthorized"}, 401)
         except (KeyError, TypeError, ValueError) as exc:
@@ -85,5 +149,6 @@ def task_routes(settings, sessions, service, bearer, body):
 
     return [
         Route("/tasks", endpoint, methods=["GET", "POST"]),
+        Route("/agents/{agent_id}/activity", endpoint, methods=["GET"]),
         Route("/internal/tasks", endpoint, methods=["POST"]),
     ]

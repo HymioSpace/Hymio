@@ -745,3 +745,31 @@
   background: transparent;
   border: 0;
 }
+
+.task-agent-activity {
+  padding-block: 16px;
+  border-top: 1px solid var(--line);
+}
+.task-agent-activity details {
+  padding: 10px 0 10px 14px;
+  border-left: 1px solid var(--line);
+}
+.task-agent-activity summary {
+  display: flex;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.task-agent-activity summary span:nth-child(2),
+.task-agent-activity time {
+  color: var(--muted);
+  font-size: 12px;
+}
+.task-agent-activity time {
+  margin-left: auto;
+}
+.task-agent-activity p {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+}

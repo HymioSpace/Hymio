@@ -21,6 +21,8 @@ from .casdoor_accounts import AccountRejected, CasdoorAccounts
 from .cli_gateway import cli_routes
 from .connectors.routes import connector_routes
 from .connectors.service import ConnectorService
+from .context.admin import nostalgia_admin_routes
+from .context.discovery import Discovery
 from .context.routes import context_routes
 from .devices.admin import admin_routes
 from .devices.link import DeviceLink, link_routes
@@ -75,6 +77,8 @@ def build_app(settings, *, provider=None):
     store = SessionStore(settings)
     notifications = NotificationService(settings, store)
     tasks = TaskService(settings, TaskStore(store), notifications)
+    discovery = Discovery(settings, store, tasks)
+    tasks.discovery = discovery
     connectors = ConnectorService(settings, store)
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
@@ -89,12 +93,16 @@ def build_app(settings, *, provider=None):
         log_capture = LogCapture(store.event_log)
         _log.info("Hymio backend started")
         scheduler = asyncio.create_task(tasks.run())
+        discovery_worker = asyncio.create_task(discovery.run())
         notification_worker = asyncio.create_task(notifications.run())
         connector_worker = asyncio.create_task(connectors.run())
         indexer = asyncio.create_task(run_indexer(settings, store, upstream))
         try:
             yield
         finally:
+            discovery_worker.cancel()
+            with suppress(asyncio.CancelledError):
+                await discovery_worker
             connector_worker.cancel()
             notification_worker.cancel()
             with suppress(asyncio.CancelledError):
@@ -302,6 +310,7 @@ def build_app(settings, *, provider=None):
     routes = (
         connector_routes(settings, store, connectors, bearer, body)
         + context_routes(settings, store, bearer, body, kits)
+        + nostalgia_admin_routes(settings, store, discovery, bearer, body)
         + task_routes(settings, store, tasks, bearer, body)
         + notification_routes(settings, store, bearer, body, notifications)
         + kit_routes(settings, store, kits, bearer, body)
@@ -317,9 +326,7 @@ def build_app(settings, *, provider=None):
         + device_routes(settings, store, bearer, body, link=device_link)
         + admin_routes(settings, store, bearer, body)
         + monitoring_routes(settings, store, upstream, bearer, body)
-        + tool_authorization_routes(
-            settings, store, tool_authorization, bearer, body
-        )
+        + tool_authorization_routes(settings, store, tool_authorization, bearer, body)
         + cli_routes(settings, upstream)
         + reaction_routes(settings, bearer, body)
         + [

@@ -27,6 +27,8 @@ import SwiftUI
                 ProcessInfo.processInfo.arguments.contains("-HymioApprovalLargePreview")
                   ? .accessibility3 : .large
               )
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
+            TaskExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
           } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
