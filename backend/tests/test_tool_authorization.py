@@ -24,9 +24,7 @@ def client_for(tmp_path, subject="alice"):
     )
     sessions = SessionStore(settings)
     service = ToolAuthorizationService(settings, sessions)
-    session = sessions.create_session(
-        {"iss": "synthetic", "sub": subject, "name": subject.title()}
-    )
+    session = sessions.create_session({"iss": "synthetic", "sub": subject, "name": subject.title()})
 
     async def body(request, **_):
         return await request.json()
@@ -34,9 +32,7 @@ def client_for(tmp_path, subject="alice"):
     def bearer(request):
         return request.headers.get("authorization", "").removeprefix("Bearer ")
 
-    app = Starlette(
-        routes=tool_authorization_routes(settings, sessions, service, bearer, body)
-    )
+    app = Starlette(routes=tool_authorization_routes(settings, sessions, service, bearer, body))
     return TestClient(app), session, token_file
 
 
@@ -51,11 +47,16 @@ def test_guided_policy_asks_for_shell_and_allows_bounded_reads(tmp_path):
             "user_id": session["user_id"],
             "tool": "bash",
             "channel": "ios",
-            "arguments": {"device_id": "mac", "command": "npm test"},
+            "arguments": {
+                "device_id": "mac",
+                "command": "npm test",
+                "description": "Run the test suite",
+            },
         },
     ).json()
     assert shell["verdict"] == "ask"
     assert shell["approval"]["risk"] == "high"
+    assert shell["approval"]["title"] == "Run the test suite"
     assert shell["approval"]["scope_options"] == ["once", "run"]
     assert shell["grant_key"]
 
@@ -71,6 +72,18 @@ def test_guided_policy_asks_for_shell_and_allows_bounded_reads(tmp_path):
     ).json()
     assert read["verdict"] == "allow"
     assert client.get("/settings/tool-authorization", headers=headers).json()["mode"] == "guided"
+
+    too_long = client.post(
+        "/internal/tool-authorization/check",
+        headers=internal,
+        json={
+            "user_id": session["user_id"],
+            "tool": "bash",
+            "channel": "web",
+            "arguments": {"command": "pwd", "description": "x" * 81},
+        },
+    )
+    assert too_long.status_code == 400
 
 
 def test_hard_denials_and_read_only_cannot_be_overridden(tmp_path):

@@ -48,6 +48,7 @@ export default function App() {
     () => conversation(state.events, state.pending),
     [state.events, state.pending],
   );
+  const hasPendingApprovals = model.approvals.some((approval) => approval.status === 'pending');
   const unreadMessages = model.messages.filter(
     (m) =>
       state.unread &&
@@ -428,12 +429,15 @@ export default function App() {
     };
   }, [model.messages.length === 0, page]);
   useEffect(() => {
-    const timer = setInterval(() => {
-      setClock(Date.now());
-      if (connected && busy) client.status();
-    }, 5000);
+    const timer = setInterval(
+      () => {
+        setClock(Date.now());
+        if (connected && busy) client.status();
+      },
+      hasPendingApprovals ? 1000 : 5000,
+    );
     return () => clearInterval(timer);
-  }, [connected, busy]);
+  }, [busy, connected, hasPendingApprovals]);
   useEffect(() => {
     function key(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -769,7 +773,7 @@ export default function App() {
                   )}
                 </div>
               )}
-              {model.approvals.map((a) => (
+              {pendingApprovals.map((a) => (
                 <ApprovalCard
                   key={a.id}
                   approval={a}

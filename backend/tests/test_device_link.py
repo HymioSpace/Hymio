@@ -282,6 +282,9 @@ def test_android_swipe_delivery_and_canvas_validation(stack):
     from hymio_backend.devices.validation import validate
 
     client, link = stack
+    validate("bash", {"command": "pwd", "description": "Inspect the workspace"})
+    with pytest.raises(ValueError, match="description_too_long"):
+        validate("bash", {"command": "pwd", "description": "x" * 81})
     paired = link.claim(link.pairing("alice")["code"], "Synthetic phone", "personal_android")
     args = {"action": "swipe", "x": 640, "y": 600, "x2": 640, "y2": 250, "duration_ms": 400}
     validate("computer", args)

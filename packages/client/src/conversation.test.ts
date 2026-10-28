@@ -107,6 +107,27 @@ test('approval resolution and tool terminal update their original identities', (
   assert.equal(result.tools[0].result, '/workspace');
 });
 
+test('a command description is the fallback approval title', () => {
+  const result = conversation([
+    event(1, 'permission.requested', {
+      invocation_id: 'bash-description',
+      tool: 'bash',
+      arguments: {
+        command: 'pnpm test',
+        description: 'Run the test suite',
+      },
+      expires_at: 4102444800,
+      summary: 'Read the project and run tests.',
+      risk: 'medium',
+      effects: ['execute'],
+      target: { kind: 'device', id: 'mac', label: 'Mac mini' },
+      scope_options: ['once'],
+      action_digest: 'a'.repeat(64),
+    }),
+  ]);
+  assert.equal(result.approvals[0].title, 'Run the test suite');
+});
+
 test('retry clears the failed step and a later message does not retain its error', () => {
   const failed = event(1, 'step.status', {
     step_id: 'first',

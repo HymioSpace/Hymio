@@ -488,88 +488,116 @@ struct ApprovalCard: View {
       let pending = client.state.pending.contains {
         $0.payload["invocation_id"].text == approval.id
       }
-      VStack(alignment: .leading, spacing: 14) {
-        HStack(alignment: .top, spacing: 12) {
-          Image(systemName: "hand.raised.fill").foregroundStyle(riskColor).frame(
-            width: 34, height: 34).background(riskColor.opacity(0.12), in: RoundedRectangle(
-              cornerRadius: 11))
-          VStack(alignment: .leading, spacing: 5) {
-            Text(approval.title).font(.subheadline.weight(.semibold))
-            if !approval.summary.isEmpty {
-              Text(approval.summary).font(.caption).foregroundStyle(.secondary)
+      if !expired {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(displayTitle).font(.subheadline.weight(.semibold)).lineLimit(2)
+            Spacer(minLength: 8)
+            if let warning = warningLabel {
+              Text(warning).font(.caption2.weight(.medium)).foregroundStyle(warningColor)
             }
           }
-          Spacer(minLength: 8)
-          Text(riskLabel).font(.caption2).padding(.horizontal, 8).padding(.vertical, 4).background(
-            riskColor.opacity(0.1), in: Capsule())
+          if !approval.summary.isEmpty {
+            Text(approval.summary).font(.footnote).foregroundStyle(.secondary)
+          }
+          if !metadata(context.date).isEmpty {
+            Text(metadata(context.date).joined(separator: " · "))
+              .font(.caption2).foregroundStyle(.tertiary)
+          }
+          DisclosureGroup("操作详情") {
+            Text(approval.arguments.pretty).font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled).padding(.top, 6)
+          }.font(.caption).tint(.secondary)
+          if approval.status == "pending" {
+            ViewThatFits(in: .horizontal) {
+              HStack(spacing: 8) {
+                scopeMenu(pending: pending)
+                Spacer(minLength: 8)
+                decisionButtons(pending: pending)
+              }
+              VStack(alignment: .leading, spacing: 4) {
+                scopeMenu(pending: pending)
+                decisionButtons(pending: pending)
+              }
+            }.disabled(!client.connected || pending)
+          }
         }
-        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
-          if !approval.target.label.isEmpty {
-            GridRow { Text("目标").foregroundStyle(.secondary); Text(approval.target.label) }
-          }
-          if !approval.effects.isEmpty {
-            GridRow {
-              Text("影响").foregroundStyle(.secondary)
-              Text(approval.effects.map(effectLabel).joined(separator: "、"))
-            }
-          }
-          GridRow {
-            Text("状态").foregroundStyle(.secondary)
-            Text(expired ? "已过期，未执行" : statusLabel)
-          }
-        }.font(.caption)
-        DisclosureGroup("查看操作详情") {
-          Text(approval.arguments.pretty).font(.system(.caption, design: .monospaced))
-            .textSelection(.enabled).padding(.top, 8)
-        }.font(.caption)
-        if approval.status == "pending" && !expired {
-          if options.count > 1 {
-            Picker("授权范围", selection: $scope) {
-              ForEach(options, id: \.self) { option in
-                Text(scopeLabel(option)).tag(option)
-              }
-            }.pickerStyle(.menu).font(.caption).disabled(pending)
-          }
-          HStack {
-            Button("拒绝") {
-              Task {
-                await client.decide(
-                  approval.id, false, scope: scope, actionDigest: approval.actionDigest)
-              }
-            }.buttonStyle(.bordered).frame(minHeight: 44)
-            Spacer()
-            Button(pending ? "正在提交…" : scopeLabel(scope)) {
-              Task {
-                await client.decide(
-                  approval.id, true, scope: scope, actionDigest: approval.actionDigest)
-              }
-            }.buttonStyle(.borderedProminent).frame(minHeight: 44)
-          }.disabled(!client.connected || pending)
-        }
-      }.padding(18).background(Brand.mist, in: RoundedRectangle(cornerRadius: 20)).padding(
-        .leading, 39)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Brand.mist.opacity(0.76), in: RoundedRectangle(cornerRadius: 16))
+      }
     }
   }
   private var options: [String] {
     let value = approval.scopeOptions.filter { ["once", "run", "exact_rule"].contains($0) }
     return value.isEmpty ? ["once"] : value
   }
-  private var riskLabel: String {
-    [
-      "low": "低风险", "medium": "需要确认", "high": "高风险", "critical": "受保护操作",
-    ][approval.risk] ?? approval.risk
+  private var displayTitle: String {
+    let title = approval.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let description = approval.arguments["description"].text.trimmingCharacters(
+      in: .whitespacesAndNewlines)
+    if !description.isEmpty,
+      title.isEmpty || title == approval.tool || title == "允许运行 \(approval.tool)？"
+        || title == "Allow \(approval.tool)?"
+    {
+      return description
+    }
+    return title.isEmpty ? "允许执行操作？" : title
   }
-  private var riskColor: Color {
-    approval.risk == "critical" ? .red : approval.risk == "high" ? .orange : Brand.blue
+  private var warningLabel: String? {
+    ["high": "高风险", "critical": "受保护操作"][approval.risk]
   }
-  private var statusLabel: String {
+  private var warningColor: Color {
+    approval.risk == "critical" ? .red : .orange
+  }
+  private func metadata(_ now: Date) -> [String] {
     [
-      "pending": "等待你的授权", "approved": "已允许，等待执行", "denied": "已拒绝，未执行",
-      "expired": "已过期，未执行", "superseded": "授权已失效",
-    ][approval.status] ?? approval.status
+      approval.target.label,
+      approval.effects.map(effectLabel).joined(separator: "、"),
+      expiryLabel(approval.expires - now.timeIntervalSince1970),
+    ].filter { !$0.isEmpty }
+  }
+  @ViewBuilder private func scopeMenu(pending: Bool) -> some View {
+    if options.count > 1 {
+      Menu {
+        ForEach(options, id: \.self) { option in
+          Button(scopeLabel(option)) { scope = option }
+        }
+      } label: {
+        HStack(spacing: 4) {
+          Text(scopeLabel(scope))
+          Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .semibold))
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
+        .frame(minHeight: 44)
+      }.disabled(pending)
+    }
+  }
+  private func decisionButtons(pending: Bool) -> some View {
+    HStack(spacing: 8) {
+      Spacer(minLength: 0)
+      Button("拒绝") {
+        Task {
+          await client.decide(
+            approval.id, false, scope: scope, actionDigest: approval.actionDigest)
+        }
+      }.buttonStyle(.borderless).foregroundStyle(.secondary).frame(minHeight: 44)
+      Button(pending ? "正在提交…" : "允许") {
+        Task {
+          await client.decide(
+            approval.id, true, scope: scope, actionDigest: approval.actionDigest)
+        }
+      }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+    }
+  }
+  private func expiryLabel(_ seconds: TimeInterval) -> String {
+    let value = max(0, Int(ceil(seconds)))
+    return value < 60 ? "\(value) 秒后失效" : "\(Int(ceil(Double(value) / 60))) 分钟后失效"
   }
   private func scopeLabel(_ value: String) -> String {
-    ["once": "允许一次", "run": "本次任务允许", "exact_rule": "一直允许这个操作"][value] ?? value
+    ["once": "仅这次", "run": "本次任务", "exact_rule": "始终允许"][value] ?? value
   }
   private func effectLabel(_ value: String) -> String {
     [

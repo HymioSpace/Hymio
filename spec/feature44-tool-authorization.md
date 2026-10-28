@@ -214,23 +214,23 @@ Approvals appear inline with the tool activity they govern. A separate global li
 recovery, but it is not the primary interaction.
 
 ```text
-┌ Allow Hymio to run this command on Mac mini?           High
-│ Read the current project and run the test suite.
-│
-│ Target   Mac mini · personal device
-│ Effect   Read project files; execute npm test
-│ Scope    This task
-│ Expires  in 5 minutes
-│
-│ [Show details]
-│
-│ Decline                                      Allow once  v
-└
+Run the test suite
+Read the current project and run its tests.
+Mac mini · Read files, execute commands · Expires in 5 min
+
+Operation details
+                                  Decline   This task v   Allow
 ```
 
-The collapsed card shows the plain-language action, target, effect and expiry. Raw arguments are
-available through progressive disclosure and are redacted before display. The primary action is
-`Allow once`; narrower or broader scope choices live in a menu only when valid.
+The approval surface uses the same text column and baseline as the assistant response. It has one
+heading, one sentence of effect copy, one compact metadata line, progressive raw details, and one
+primary action. Scope is a quiet adjacent menu only when more than one scope is valid. Decorative
+icons, risk capsules, fact grids and tinted full-card treatments are omitted; a small text warning
+is reserved for high-risk actions.
+
+Bash calls include a `description` of at most 80 characters for display. Hymio policy normalizes it
+and uses it as the approval title; native and device Bash schemas enforce the same limit. If it is
+absent, clients use a stable tool label rather than exposing an internal name such as `cli`.
 
 For destructive or irreversible actions, opening the card presents a focused sheet with the exact
 target, affected item count when known, reversibility and the safe alternative. It never defaults
@@ -247,6 +247,9 @@ Interaction requirements:
   multiple blocking alerts, auto-focus approval or visually over-emphasize it.
 - Allow an optional denial reason; denial means the Agent stops that route. Keep resolved
   approvals as history, not active questions.
+- Hide the active approval surface at `expires_at` even if the resolution event is delayed. The
+  tool activity then reports `Expired, not run`; clients never derive that the tool is still
+  waiting from a stale pending card.
 
 The user permission center lists assistant mode and device capabilities. Users cannot edit the
 hard-denial policy from the model conversation. HymioDevice's local Shell/Screen Recording/

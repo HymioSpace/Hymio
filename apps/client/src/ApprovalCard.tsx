@@ -1,18 +1,15 @@
-import { ShieldAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { Approval } from '@hymio/client';
 
-const risks: Record<string, string> = {
-  low: '低风险',
-  medium: '需要确认',
+const warningRisks: Record<string, string> = {
   high: '高风险',
   critical: '受保护操作',
 };
 
 const scopes = {
-  once: '允许一次',
-  run: '本次任务允许',
-  exact_rule: '一直允许这个操作',
+  once: '仅这次',
+  run: '本次任务',
+  exact_rule: '始终允许',
 };
 const effectLabels: Record<string, string> = {
   execute: '执行命令',
@@ -22,6 +19,12 @@ const effectLabels: Record<string, string> = {
   app_write: '修改应用数据',
   scheduled_work: '安排未来任务',
   unknown: '未分类影响',
+};
+const toolLabels: Record<string, string> = {
+  bash: '运行命令',
+  cli: '执行云端操作',
+  browser: '操作浏览器',
+  computer: '操作桌面',
 };
 
 export function ApprovalCard({
@@ -42,59 +45,52 @@ export function ApprovalCard({
     actionDigest: string,
   ) => Promise<void>;
 }) {
+  const titleId = useId();
   const options = approval.scopeOptions.length ? approval.scopeOptions : (['once'] as const);
   const [scope, setScope] = useState<(typeof options)[number]>('once');
   const expired = approval.status === 'pending' && approval.expiresAt * 1000 <= clock;
   const waiting = approval.status === 'pending' && !expired;
-  const status = expired ? '已过期，未执行' : statusLabel(approval.status);
+  const title = displayTitle(approval);
+  const warning = warningRisks[approval.risk];
+  const metadata = [
+    approval.target.label,
+    approval.effects.map((effect) => effectLabels[effect] || effect).join('、'),
+    waiting ? `${expiryLabel(approval.expiresAt * 1000 - clock)}后失效` : '',
+  ].filter(Boolean);
+
   return (
-    <section className={`approval-card risk-${approval.risk || 'medium'}`} aria-live="polite">
-      <header>
-        <span className="approval-icon">
-          <ShieldAlert size={18} />
-        </span>
-        <div>
-          <h3>{approval.title}</h3>
-          <p>{approval.summary || `Hymio 请求使用 ${approval.tool}`}</p>
+    <section
+      className={`approval-card risk-${approval.risk || 'medium'}`}
+      aria-labelledby={titleId}
+    >
+      <div className="approval-copy">
+        <div className="approval-heading">
+          <h3 id={titleId}>{title}</h3>
+          {warning && <span className="approval-risk">{warning}</span>}
         </div>
-        <span className="approval-risk">{risks[approval.risk] || approval.risk}</span>
-      </header>
-      <dl className="approval-facts">
-        {approval.target.label && (
-          <div>
-            <dt>目标</dt>
-            <dd>{approval.target.label}</dd>
-          </div>
+        <p className="approval-summary">
+          {approval.summary || `Hymio 请求${toolLabels[approval.tool] || '执行操作'}。`}
+        </p>
+        {metadata.length > 0 && (
+          <p className="approval-meta">
+            {metadata.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </p>
         )}
-        {approval.effects.length > 0 && (
-          <div>
-            <dt>影响</dt>
-            <dd>{approval.effects.map((effect) => effectLabels[effect] || effect).join('、')}</dd>
-          </div>
-        )}
-        <div>
-          <dt>状态</dt>
-          <dd>{status}</dd>
-        </div>
-        {waiting && (
-          <div>
-            <dt>有效</dt>
-            <dd>{expiryLabel(approval.expiresAt * 1000 - clock)}</dd>
-          </div>
-        )}
-      </dl>
+      </div>
       <details className="approval-details">
-        <summary>查看操作详情</summary>
+        <summary>操作详情</summary>
         <pre>{JSON.stringify(approval.arguments, null, 2)}</pre>
       </details>
       {waiting && (
         <div className="approval-actions">
           <button
-            className="secondary-button"
+            className="approval-reject"
             disabled={!connected || pending}
             onClick={() => void onDecide(approval.id, 'denied', scope, approval.actionDigest)}
           >
-            拒绝
+            {pending ? '正在提交…' : '拒绝'}
           </button>
           {options.length > 1 && (
             <select
@@ -115,7 +111,7 @@ export function ApprovalCard({
             disabled={!connected || pending}
             onClick={() => void onDecide(approval.id, 'approved', scope, approval.actionDigest)}
           >
-            {pending ? '正在提交…' : scopes[scope]}
+            {pending ? '正在提交…' : '允许'}
           </button>
         </div>
       )}
@@ -123,16 +119,21 @@ export function ApprovalCard({
   );
 }
 
-function statusLabel(status: string) {
-  return (
-    {
-      pending: '等待你的授权',
-      approved: '已允许，等待执行',
-      denied: '已拒绝，未执行',
-      expired: '已过期，未执行',
-      superseded: '授权已失效',
-    }[status] || status
-  );
+function displayTitle(approval: Approval) {
+  const title = approval.title.trim();
+  const description = approval.arguments.description;
+  const toolLabel = toolLabels[approval.tool] || approval.tool;
+  if (
+    typeof description === 'string' &&
+    description.trim() &&
+    (!title ||
+      title === approval.tool ||
+      title === `允许运行 ${approval.tool}？` ||
+      title === `Allow ${approval.tool}?`)
+  ) {
+    return description.trim();
+  }
+  return title || `允许${toolLabel}？`;
 }
 
 function expiryLabel(milliseconds: number) {

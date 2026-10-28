@@ -656,89 +656,73 @@ a {
   max-height: 220px;
 }
 .approval-card {
-  margin: 20px 0 20px 49px;
-  border: 1px solid var(--line);
-  background: var(--subtle);
+  width: 100%;
+  margin: 14px 0;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--subtle) 76%, var(--surface));
   border-radius: 16px;
-  padding: 20px;
-  max-width: 620px;
-}
-.approval-card > header {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-.approval-icon {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  color: #627ec1;
-  background: color-mix(in srgb, #627ec1 13%, var(--surface));
-  flex: 0 0 auto;
-}
-.approval-card header > div {
-  min-width: 0;
-  flex: 1;
+  padding: 15px 16px 13px;
 }
 .approval-card h3 {
   margin: 0;
   color: var(--ink);
-  font-size: 15px;
-  line-height: 1.45;
-  font-weight: calc(620 - var(--weight-adjust, 0));
+  font-size: 14px;
+  line-height: 1.4;
+  font-weight: calc(600 - var(--weight-adjust, 0));
+  overflow-wrap: anywhere;
 }
-.approval-card header p {
-  margin: 5px 0 0;
+.approval-copy {
+  min-width: 0;
+}
+.approval-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.approval-summary {
+  margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.approval-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.approval-meta > span + span::before {
+  content: '·';
+  margin: 0 5px;
 }
 .approval-risk {
   flex: 0 0 auto;
-  border: 1px solid color-mix(in srgb, #b86a26 32%, var(--line));
-  border-radius: 999px;
-  padding: 4px 8px;
   color: #8b541f;
-  background: color-mix(in srgb, #b86a26 10%, var(--surface));
   font-size: 11px;
+  font-weight: calc(500 - var(--weight-adjust, 0));
 }
-.approval-card.risk-critical .approval-icon,
 .approval-card.risk-critical .approval-risk {
   color: #9f3142;
-  background: color-mix(in srgb, #9f3142 10%, var(--surface));
-}
-.approval-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 18px;
-  margin: 17px 0 12px;
-}
-.approval-facts div {
-  min-width: 0;
-}
-.approval-facts dt {
-  color: var(--muted);
-  font-size: 11px;
-}
-.approval-facts dd {
-  margin: 3px 0 0;
-  color: var(--ink);
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 .approval-details {
-  border-top: 1px solid var(--line);
-  padding-top: 10px;
+  margin-top: 6px;
 }
 .approval-details summary {
   cursor: pointer;
-  min-height: 32px;
+  width: fit-content;
+  min-height: 28px;
+  padding: 4px 0;
   color: var(--muted);
   font-size: 12px;
 }
 .approval-card pre {
+  margin: 5px 0 7px;
   font-size: 12px;
   max-height: 160px;
 }
@@ -746,20 +730,35 @@ a {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 9px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 8px;
 }
 .approval-actions select {
-  min-height: 40px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 0 10px;
-  color: var(--ink);
-  background: var(--surface);
+  min-height: 36px;
+  max-width: 148px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: transparent;
   font-size: 12px;
 }
+.approval-actions select:hover {
+  border-color: var(--line);
+  background: var(--surface);
+}
 .approval-actions button {
-  min-height: 42px;
+  min-height: 38px;
+}
+.approval-reject {
+  border-radius: 9px;
+  padding: 9px 11px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.approval-reject:hover {
+  color: var(--ink);
+  background: var(--surface);
 }
 .primary-button {
   display: flex;
@@ -1388,16 +1387,17 @@ a {
     margin-left: 0;
   }
   .approval-card {
-    padding: 16px;
-  }
-  .approval-facts {
-    grid-template-columns: 1fr;
+    padding: 14px;
   }
   .approval-actions {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
   }
-  .approval-actions .primary-button {
-    flex: 1 1 150px;
+  .approval-actions select {
+    justify-self: start;
+  }
+  .approval-actions button {
+    min-height: 44px;
   }
   .copy-message {
     opacity: 0.7;

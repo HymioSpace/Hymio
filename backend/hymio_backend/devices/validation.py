@@ -1,5 +1,5 @@
 FIELDS = {
-    "bash": {"command", "cwd"},
+    "bash": {"command", "cwd", "description"},
     "browser": {"action", "url", "selector", "text", "key", "page_id"},
     "computer": {"action", "x", "y", "x2", "y2", "duration_ms", "text", "key", "amount"},
 }
@@ -57,6 +57,8 @@ def validate(capability, args):
                 raise ValueError("invalid_coordinate")
         elif not isinstance(value, str) or len(value) > 8192:
             raise ValueError("invalid_text")
+        elif field == "description" and len(value) > 80:
+            raise ValueError("description_too_long")
     if capability == "bash" and not args["command"].strip():
         raise ValueError("empty_command")
     if (

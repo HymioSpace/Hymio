@@ -149,13 +149,16 @@ export function conversation(events: OathEvent[], pending: Pending[] = []) {
     if (event.event_type === 'permission.requested') {
       const id = str(p.invocation_id);
       const target = obj(p.target);
+      const tool = str(p.tool);
+      const toolArguments = obj(p.arguments);
+      const description = str(toolArguments.description).trim();
       approvals.set(id, {
         id,
-        tool: str(p.tool),
-        arguments: obj(p.arguments),
+        tool,
+        arguments: toolArguments,
         status: 'pending',
         expiresAt: Number(p.expires_at),
-        title: str(p.title) || `允许运行 ${str(p.tool)}？`,
+        title: str(p.title) || description || `允许运行 ${tool}？`,
         summary: str(p.summary),
         risk: str(p.risk) || 'medium',
         effects: list(p.effects).map(str),

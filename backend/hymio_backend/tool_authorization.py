@@ -20,6 +20,7 @@ MODE_GUIDED = "guided"
 MODE_AUTONOMOUS = "autonomous"
 MODES = (MODE_READ_ONLY, MODE_GUIDED, MODE_AUTONOMOUS)
 POLICY_VERSION = "hymio-tool-policy-v1"
+COMMAND_DESCRIPTION_LIMIT = 80
 
 _DENY_COMMAND = re.compile(
     r"\b(?:sudo|su)\b|"
@@ -130,6 +131,11 @@ class ToolAuthorizationService:
             command = arguments.get("command")
             if not isinstance(command, str) or not command.strip():
                 return self._deny("Invalid shell command")
+            description = arguments.get("description")
+            if description is not None and (
+                not isinstance(description, str) or len(description) > COMMAND_DESCRIPTION_LIMIT
+            ):
+                raise ValueError("invalid_command_description")
             if _DENY_COMMAND.search(command):
                 return self._deny("This command crosses a protected local security boundary")
             if mode == MODE_READ_ONLY:
@@ -138,7 +144,7 @@ class ToolAuthorizationService:
                 user_id,
                 tool,
                 arguments,
-                title="允许在所选电脑上运行命令？",
+                title=_command_title(description),
                 summary="命令将在选中的设备上执行，并可能读取或修改其文件。",
                 risk="high",
                 effects=["execute", "local_access"],
@@ -192,9 +198,7 @@ class ToolAuthorizationService:
                     "id": host
                     or str(arguments.get("page_id", ""))
                     or str(arguments.get("device_id", "")),
-                    "label": host
-                    or str(arguments.get("page_id", ""))
-                    or "所选浏览器",
+                    "label": host or str(arguments.get("page_id", "")) or "所选浏览器",
                 },
                 scopes=["once", "run"],
             )
@@ -321,6 +325,13 @@ class ToolAuthorizationService:
                 "policy_version": POLICY_VERSION,
             },
         }
+
+
+def _command_title(value):
+    if not isinstance(value, str):
+        return "允许运行命令？"
+    title = " ".join(value.split())
+    return title[:COMMAND_DESCRIPTION_LIMIT] or "允许运行命令？"
 
 
 def tool_authorization_routes(settings, sessions, service, bearer, body):

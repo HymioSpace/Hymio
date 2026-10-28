@@ -193,10 +193,13 @@ public struct Conversation {
     case "tool.terminal": terminals[p["invocation_id"].text] = p
     case "permission.requested":
       let target = p["target"]
+      let description = p["arguments"]["description"].text.trimmingCharacters(
+        in: .whitespacesAndNewlines)
       let approval = Approval(
         id: p["invocation_id"].text, tool: p["tool"].text, arguments: p["arguments"],
         status: "pending", expires: p["expires_at"].double,
-        title: p["title"].text.isEmpty ? "允许运行 \(p["tool"].text)？" : p["title"].text,
+        title: p["title"].text.isEmpty
+          ? (description.isEmpty ? "允许执行操作？" : description) : p["title"].text,
         summary: p["summary"].text, risk: p["risk"].text.isEmpty ? "medium" : p["risk"].text,
         effects: p["effects"].items.map(\.text),
         target: ApprovalTarget(

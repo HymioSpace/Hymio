@@ -2,10 +2,28 @@ import { ConnectionsPanel } from '../ConnectionsPanel';
 import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button, Companion, IconButton, Sheet, StatusBadge, type Mood } from '@hymio/ui';
+import type { Approval } from '@hymio/client';
+import { ApprovalCard } from '../ApprovalCard';
+import '../styles.css';
 import './gallery.css';
 import { ToolActivityGroup } from '../ToolActivityGroup';
 function Gallery() {
   const [sheet, setSheet] = useState(false);
+  const approval: Approval = {
+    id: 'design-approval',
+    tool: 'bash',
+    arguments: { command: 'pnpm test', description: '运行测试' },
+    status: 'pending',
+    expiresAt: Math.ceil(Date.now() / 1000) + 300,
+    title: '运行测试',
+    summary: '读取当前项目并运行测试。',
+    risk: 'medium',
+    effects: ['execute', 'local_access'],
+    target: { kind: 'device', id: 'mac-mini', label: 'Mac mini' },
+    scopeOptions: ['once', 'run'],
+    actionDigest: '0'.repeat(64),
+    grantKey: 'synthetic-grant',
+  };
   return (
     <main className="studio">
       <header>
@@ -177,6 +195,16 @@ function Gallery() {
             />
           ))}
         </div>
+        <article className="approval-sample">
+          <p>我已检查项目结构，准备运行测试。</p>
+          <ApprovalCard
+            approval={approval}
+            connected
+            pending={false}
+            clock={Date.now()}
+            onDecide={async () => {}}
+          />
+        </article>
       </section>
       <footer>布局草图与组件预览 · 内容为合成示例 · 不连接 Agent 或账号服务</footer>
       {sheet && (

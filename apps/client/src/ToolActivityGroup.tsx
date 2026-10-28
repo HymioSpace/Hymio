@@ -18,6 +18,7 @@ import { JsonView } from './JsonView';
 
 const names: Record<string, string> = {
   bash: '执行命令',
+  cli: '云端操作',
   devices: '查看设备',
   device_command: '查询执行结果',
   browser: '操作浏览器',
@@ -40,14 +41,13 @@ const states: Record<string, string> = {
 };
 
 function outcome(id: string, result: ToolActivity | undefined, approvals: Approval[]) {
-  if (result && result.outcome !== 'running') return result.outcome;
   const permission = approvals.find((a) => a.id === id);
+  if (permission?.status === 'denied') return 'denied';
+  if (permission?.status === 'expired') return 'expired';
+  if (result && result.outcome !== 'running') return result.outcome;
   if (permission?.status === 'pending')
     return permission.expiresAt * 1000 <= Date.now() ? 'expired' : 'awaiting_approval';
-  if (!result || result.outcome === 'running') {
-    if (permission?.status === 'denied') return 'denied';
-    return 'running';
-  }
+  if (!result || result.outcome === 'running') return 'running';
   return result.outcome;
 }
 export function ToolCalls({
@@ -66,6 +66,7 @@ export function ToolCalls({
         const result = tools.find((t) => t.id === `${message.stepId}-${i}`);
         const state = outcome(`${message.stepId}-${i}`, result, approvals);
         const name = str(call.name);
+        const description = str(args.description).trim();
         const ToolIcon =
           (
             {
@@ -94,7 +95,9 @@ export function ToolCalls({
             summary={
               <>
                 <ToolIcon size={13} />
-                <strong>{names[name] || name}</strong>
+                <strong>
+                  {name === 'bash' && description ? description : names[name] || name}
+                </strong>
                 {hint && <span className="tool-call-hint">{hint}</span>}
                 <span>{states[state] || state}</span>
                 <ChevronRight size={12} className="tool-chevron" />
@@ -142,8 +145,10 @@ export function ToolActivityGroup({
   const failed = calls.some((c) =>
     ['failed', 'denied', 'timeout', 'timed_out', 'outcome_unknown', 'expired'].includes(c.state),
   );
+  const runningName = running ? str(running.call.name) : '';
+  const runningDescription = running ? str(obj(running.call.arguments).description).trim() : '';
   const label = running
-    ? `${names[str(running.call.name)] || str(running.call.name)}…`
+    ? `${runningName === 'bash' && runningDescription ? runningDescription : names[runningName] || runningName}…`
     : waiting
       ? '等待你的授权'
       : failed

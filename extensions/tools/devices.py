@@ -26,12 +26,19 @@ class DeviceBashTool(Tool):
         return ToolDefinition(
             "bash",
             "Run Bash on an explicit owned device. Never run on the Oath host "
-            "or silently switch devices. Returns device_id and bounded command output.",
+            "or silently switch devices. Always provide a concise description (at most "
+            "80 characters) of what this command is trying to accomplish. Returns device_id "
+            "and bounded command output.",
             schema(
                 {
                     "device_id": DEVICE,
                     "command": TEXT,
                     "cwd": TEXT,
+                    "description": {
+                        "type": "string",
+                        "maxLength": 80,
+                        "description": "Short user-facing title for this command's purpose",
+                    },
                 },
                 ["command"],
             ),
