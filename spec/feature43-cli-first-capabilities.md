@@ -21,3 +21,9 @@ unrelated actions remain serialized.
 Prompts contain role, capabilities and concise shell-composition guidance. Skills document CLI
 usage progressively. The operator prompt page renders the same configured Markdown assembled by
 Oath, identifies its fingerprint and channel, and distinguishes it from per-user context data.
+
+## Extension guidance
+
+Product extensions use CLI + Skill: handlers provide atomic operations and structured results;
+skills describe intent and composition. Examples invoke oath-cli and discover current parameters
+through its help catalog. All execution status queries use ToolSystem.

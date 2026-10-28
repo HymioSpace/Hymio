@@ -25,7 +25,7 @@ product decision and state it through the brief.
 
 ## Create
 
-Use `kit_build(action="create", ...)` with:
+Use `oath-cli kit_build --json` with `action="create"` and:
 
 - a short product name and one-sentence promise;
 - a concrete category, accent and user-facing item label;
@@ -41,7 +41,7 @@ Omit fields only for deliberately static content such as a guide or breathing ex
 
 ## Edit
 
-For an installed generated app, use `kit_build(action="edit", kit_id=..., requirements=...)`.
+For an installed generated app, use `oath-cli kit_build --json` with `action="edit"`, `kit_id` and `requirements`.
 Describe the desired user-visible change, what must remain stable, and how to recognize success.
 Do not ask for the source in the main conversation and do not send a full replacement page.
 
@@ -59,8 +59,8 @@ Tell the user what is being built, using the product name rather than implementa
 Do not claim it is ready until the app appears as published or a completion event confirms it.
 
 If the coding context reports a build or tool failure after accepting a new app, keep the same
-`kit_id` and call `kit_build(action="edit", ...)` to repair it. Never create a duplicate application
+`kit_id` and call `oath-cli kit_build --json` with `action="edit"` to repair it. Never create a duplicate application
 merely because the asynchronous coding turn failed or timed out.
 
-Invoke application capabilities with `oath-cli kit_build`, `oath-cli kit_call` or the child-only
-`oath-cli kit_dev`, using `--json` for structured arguments. Inspect schemas with `oath-cli help NAME`.
+Read the current argument schema with `oath-cli help kit_build`. Use `--json` for structured arguments.
+Inspect execution state with `oath-cli status INVOCATION_ID`.
