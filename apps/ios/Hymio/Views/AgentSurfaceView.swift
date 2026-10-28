@@ -44,7 +44,9 @@ private struct NativeStreamingText: View {
     TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !animating || reduced || !animated)) { timeline in
       rendered
         .textRenderer(ArrivalRenderer(now: timeline.date.timeIntervalSinceReferenceDate, reduced: reduced || !animated))
-        .font(.body).foregroundStyle(Brand.ink).lineSpacing(4).textSelection(.enabled)
+        // Selectable Text can bypass custom rendering on the tested iOS26.2 path. The live tail
+        // retains the parent's Copy action; settled Markdown restores selection.
+        .font(.body).foregroundStyle(Brand.ink).lineSpacing(4).textSelection(.disabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .onChange(of: source, initial: true) { _, value in prepare(value) }
@@ -59,16 +61,24 @@ private struct NativeStreamingText: View {
     let attributed = (try? AttributedString(markdown: value,
       options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(value)
     let plain = String(attributed.characters)
-    let baseline = plain.hasPrefix(previous) ? previous.count : 0
+    // Closing Markdown delimiters can restyle an existing prefix. Do not replay it.
+    if !previous.isEmpty && !plain.hasPrefix(previous) {
+      rendered = Text(attributed)
+      previous = plain
+      arrivals = [:]
+      animating = false
+      return
+    }
+    let baseline = previous.count
     let count = attributed.characters.count
     let start = max(0, count - 32)
     let cut = attributed.characters.index(attributed.startIndex, offsetBy: start)
     var text = Text(AttributedString(attributed[..<cut]))
     var index = cut
     var position = start
-    var wave = 0
     var retained: [Int: TimeInterval] = [:]
     let now = Date.timeIntervalSinceReferenceDate
+    var nextArrival = max(now, (arrivals.values.max() ?? (now - 0.03)) + 0.03)
     while index < attributed.endIndex {
       let next = attributed.characters.index(after: index)
       let cluster = Text(AttributedString(attributed[index..<next]))
@@ -76,9 +86,9 @@ private struct NativeStreamingText: View {
         retained[position] = time
         text = text + cluster.customAttribute(ArrivalAttribute(time: time))
       } else if !reduced && animated && position >= baseline {
-        let time = now + Double(wave % 4) * 0.03
+        let time = min(now + 0.09, nextArrival)
+        nextArrival = time + 0.03
         retained[position] = time
-        wave += 1
         text = text + cluster.customAttribute(ArrivalAttribute(time: time))
       } else {
         text = text + cluster
@@ -176,6 +186,7 @@ struct BufferedProse: View {
           if !parts.tail.isEmpty {
             if frame.pending || streaming {
               NativeStreamingText(source: parts.tail, animated: !frame.instant)
+                .id(parts.stable.utf8.count)
             } else {
               StableMarkdown(content: parts.tail, account: account).equatable()
             }
