@@ -152,18 +152,17 @@ and safe read-only alternatives remain available.
 
 ## Scopes and grants
 
-The default is `Allow once`. Other scopes appear only when the server can enumerate their full
-effect. **This task** binds the exact action class, device, origin/account/path and expiry to the
-run. **Exact rule** is server-generated, such as
-`device:<id>/browser:origin:example.com/read` or `workspace:<id>/shell:git-status`.
+The v1 UI exposes `Allow once` and **This task**, which binds the exact action class, device,
+origin/account/path and expiry to the run. The protocol reserves **Exact rule**, such as
+`device:<id>/browser:origin:example.com/read`, but grant inventory and revocation are not yet
+exposed to users.
 
 There is no “allow all shell”, “allow all sites” or broad wildcard grant. A task grant cannot
 cover submission, upload, purchase, deletion or another high-risk class unless those actions are
 listed separately in the approval.
 
-Persistent grants are user-owned records with creator, channel, device, creation time, expiry,
-last use and revocation. A grant affects future calls only. Revoking it does not claim to undo a
-side effect already in progress.
+Run grants are persisted with creator, channel, device and expiry. A grant affects future calls
+only and does not claim to undo a side effect already in progress.
 
 ## Decision semantics
 
@@ -249,10 +248,10 @@ Interaction requirements:
 - Allow an optional denial reason; denial means the Agent stops that route. Keep resolved
   approvals as history, not active questions.
 
-The user permission center lists assistant mode, device capabilities, standing grants and recent
-decisions. Users can revoke a grant, but cannot edit the hard-denial policy from the model
-conversation. HymioDevice's local Shell/Screen Recording/Accessibility switches remain separate:
-they expose a capability, while Hymio approval authorizes a concrete action.
+The user permission center lists assistant mode and device capabilities. Users cannot edit the
+hard-denial policy from the model conversation. HymioDevice's local Shell/Screen Recording/
+Accessibility switches remain separate: they expose a capability, while Hymio approval authorizes
+a concrete action.
 
 ## Ownership and cross-repository contract
 
