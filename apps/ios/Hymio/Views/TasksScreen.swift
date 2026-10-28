@@ -80,7 +80,7 @@ struct TasksScreen: View {
         } else if groups.allSatisfy({ visible($0.1).isEmpty }) {
           VStack(spacing: 16) {
             Companion(size: 80)
-            Text(filter == 2 ? "好结果，会留在这里。" : "这一页，先留给下一件事。").font(.headline)
+            Text(filter == 2 ? "暂无已结束任务" : "还没有任务").font(.headline)
             Text("在对话里交代，或在这里安排。")
               .font(.subheadline).foregroundStyle(Brand.muted)
             Button("安排一件事", systemImage: "plus") { creating = true }.buttonStyle(.bordered)
