@@ -230,6 +230,13 @@ admitting -> queued -> running
 `expired` are distinct from an execution failure. `superseded` is used when revocation, a changed
 policy or a cancelled run invalidates a pending request before execution.
 
+Approval expiry is a terminal `permission_expired` result with `executed=false`; it is never
+`outcome_unknown`. The Agent receives that terminal through the tool queue and may continue
+without waiting for the user indefinitely. A decision received after expiry is a late decision:
+the original call remains expired, a `permission.late_resolved` event is delivered to the Agent,
+and an approved late decision creates a one-use retry credit for the exact action and run. The
+Agent decides whether to create a new invocation; the tool system never revives the old one.
+
 `permission.requested` carries the approval view model. `permission.resolved` carries the decision
 metadata. `session.status` exposes pending and recently resolved approvals so a reconnecting
 client does not depend on receiving one online event. Any signed-in client for the same user may
