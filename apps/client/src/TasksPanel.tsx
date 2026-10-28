@@ -226,9 +226,9 @@ export function TasksPanel({
       <header className="tasks-header">
         <div>
           <h2 id="tasks-title">
-            交给 Hymio 的事<span className="tasks-count">{tasks.length}</span>
+            任务<span className="tasks-count">{tasks.length}</span>
           </h2>
-          <p>进展、下一步，还有带回来的结果。</p>
+          <p>查看进展、日程和结果。</p>
         </div>
         <IconButton label="关闭任务" onClick={onClose}>
           <X size={20} />
@@ -278,11 +278,11 @@ export function TasksPanel({
                 <div className="tasks-empty-orbit">
                   <Flag size={27} strokeWidth={1.4} />
                 </div>
-                <h3>{filter === 'done' ? '好结果，会留在这里。' : '把想做的事，留给我。'}</h3>
+                <h3>{filter === 'done' ? '暂无已结束任务' : '还没有任务'}</h3>
                 <p>
-                  聊一句你想完成的事，进展会留在这里。
+                  需要持续推进或按时提醒的事，会留在这里。
                   <br />
-                  你离开后，工作仍会继续。
+                  可以在对话中交代，或在这里创建。
                 </p>
                 <Button onClick={() => setEditing('new')}>
                   <Plus size={15} />
@@ -543,8 +543,8 @@ export function TasksPanel({
               <div className="task-detail-placeholder">
                 <span className="task-placeholder-line" />
                 <ArrowUpRight size={25} strokeWidth={1} />
-                <h3>让事情，慢慢有着落。</h3>
-                <p>选一件事，看看它走到了哪里。</p>
+                <h3>选择一件事</h3>
+                <p>查看进展、补充要求或继续处理。</p>
               </div>
             )}
           </section>
