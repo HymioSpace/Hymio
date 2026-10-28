@@ -1,6 +1,6 @@
 # 多设备与执行环境
 
-状态：Implemented（第一阶段，E2B Desktop）
+状态：Implemented：Mac 优先、云电脑回退与统一 ToolSystem
 
 ## 总览
 
@@ -11,23 +11,28 @@ Hymio 管绑定、能力、执行路由；Oath 管工具生命周期。Kit 不�
 flowchart LR
   Client[Web / Desk / iOS] -->|独立 client_id 与 ACK| Oath
   Client -->|绑定 / 查看 / 撤销| Backend[Hymio backend]
+  Oath[Oath ToolSystem] -->|Bash / CLI / Skill| Backend
+  Backend -->|短期 capability| CLI[oath-cli]
   Oath -->|user_id + device_id + invocation_id| Backend
   Backend --> Provider[Computer provider]
-  Provider --> Shell[Bash]
-  Provider --> Browser[Browser Use]
-  Provider --> Desktop[Computer Use]
+  Provider --> Mac[Personal Mac]
+  Provider --> Cloud[Cloud desktop]
+  Mac --> Shell[Bash]
+  Mac --> Browser[Chromium]
+  Mac --> Desktop[Computer Use]
 ```
 
-规则：身份来自凭据；工具必须显式指定 device_id；已提交操作不随客户端切换目标；
-设备离线不停止 Agent，也不回退到 Oath 宿主机。
+规则：身份来自凭据；Bash 默认选择在线的个人 Mac，指定 device_id 时不切换目标；
+已提交操作不随客户端切换设备；设备离线不停止 Agent，也不回退到 Oath 宿主机。
 
-## 第一阶段
+## 执行入口
 
 - 设备归属与撤销、能力查询；手机和 Web 只作为渠道，不宣称可控。
-- 云电脑统一 Bash / Browser / Desktop；仅接入 E2B Desktop 托管环境。
-- Browser 通过 Playwright 连接桌面 Chromium，同一 profile、下载目录和文件系统。
+- 个人 Mac 提供 Bash、独立 Chromium profile 的 DOM browser 和桌面控制。
+- 云电脑仍是离线 fallback；选择结果明确区分 personal_mac 与 cloud_fallback。
+- Browser 的 DOM 操作与截图共享所选设备，不跨设备拼接页面状态。
 - 每个客户端独立接收历史事件；设备 ID 与用于投递的 client_id 分开。
-- Mac 原生控制、云安卓、自动休眠策略和跨区域调度后续实现。
+- 云安卓、自动休眠策略和跨区域调度继续按独立设备能力接入。
 
 ## 设备与命令
 
@@ -60,13 +65,13 @@ Oath outbox 是 user_id 下的连续 event_seq。ACK 按 (user_id, client_id) �
 ToolInvocation.user，不能从模型参数读取。所有查询和调用都校验设备属于该用户。
 服务凭据不传给设备命令环境，不进入 prompt / trace。
 
-工具：devices（列可用目标）、bash（device_id + command + cwd）、
-browser（device_id + action + 参数）、computer（device_id + action + 参数）、
-device_command（device_id + 原 invocation_id，只查询执行状态与结果）。
-它只接受 `bash`、`browser`、`computer` 产生的设备 invocation；媒体、任务、技能和
-subagent 结果不能通过它查询。非设备 invocation 返回明确的 `not_a_device_invocation`。
-结果始终包含 device_id。截图存为受鉴权媒体资源；工具返回引用，不把 Base64 塞进对话。
-模型通过设备清单了解能力；上下文明确宿主机与云电脑不同，不能猜默认设备。
+Agent 的常驻工具是 `bash`、`cli` 和 `skill`。设备、浏览器、桌面、任务、媒体、通知、
+上下文、应用与委派都由 `oath-cli` 调用同一 ToolSystem；任何 invocation 的状态都通过
+`oath-cli status ID` 查询。设备层不再向模型暴露独立的 command 状态工具。
+
+Bash 未指定 device_id 时选择在线个人 Mac；结果包含 device_id、device_kind 和 selection。
+显式指定后保持目标不变。Browser 与 Computer 通过 CLI 调用，截图存为受鉴权媒体资源并返回
+引用。父 Bash 执行期间，同设备的单个子操作可以复用控制租约；无关操作继续串行。
 
 ## Provider 与持久化
 
@@ -102,7 +107,7 @@ Provider 请求有 deadline；HTTP 断开不能证明命令没执行。执行前
 ## 后续边界
 
 - Oath 当前 context 为文本，截图返回鉴权媒体引用；视觉推理需多模态 context adapter。
-- 本机 Mac 执行器、云安卓、人工接管与视频后续实现。
+- 云安卓、人工接管与视频后续实现。
 - 客户端 reload 使用新投递 ID 从历史恢复；后续增加旧 client cursor 清理策略。
 - 截图和命令记录尚无自动保留期限；生产部署需增加清理、配额与审计策略。
 - E2B 运行窗口到期自动暂停，再次使用时恢复；撤销仍会销毁数据。备份尚未实现。
@@ -131,8 +136,9 @@ missing 优先于本地控制状态；移除需用户确认，历史记录保留
 
 ## 自动绑定
 
-登录和打开设备面板调用 POST /devices/ensure；Agent 的 devices 查询也触发确保可用。
-GET /devices 与轮询只读。按 user_id 持久租约串行处理，唯一活跃绑定约束避免多端重复创建。
+登录和用户明确请求云电脑时调用 POST /devices/ensure；设备发现和 Bash 选择不会因查询
+创建资源。选择在线个人 Mac 失败时，Bash 可以显式选择 cloud_fallback 并返回该结果。
+按 user_id 持久租约串行处理，唯一活跃绑定约束避免多端重复创建。
 在线复用，自动暂停后恢复原沙箱；手动暂停仅在 Agent 明确请求用电脑时恢复。
 只有 provider 明确报告 missing 才原子撤销旧绑定并创建新绑定，记录 replaces_device_id；
 新环境为空，客户端和工具结果都提示旧文件未恢复。网络/鉴权错误不触发更换。

@@ -313,6 +313,8 @@ class DeviceService:
         ):
             raise ValueError("invalid_timeout")
         request = {"capability": capability, "arguments": arguments}
+        if data.get("parent_invocation_id"):
+            request["parent_invocation_id"] = data["parent_invocation_id"]
         selected = self.store.get(user_id, device_id)
         if (
             capability == "computer"
@@ -376,7 +378,13 @@ class DeviceService:
                     },
                 )
             payload = self.provider(device).execute(
-                device, {**request, "timeout": remaining}, remaining
+                device,
+                {
+                    **request,
+                    "timeout": remaining,
+                    "execution_environment": data.get("execution_environment", {}),
+                },
+                remaining,
             )
             if "operation_rejected" in payload:
                 return self.store.finish(

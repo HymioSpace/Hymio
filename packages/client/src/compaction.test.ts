@@ -44,10 +44,7 @@ test('sync preparation is one human status without implementation details', () =
 test('a matching terminal event clears only its own sync status', () => {
   assert.equal(
     compactionState(
-      [
-        event('started', 'sync', now, 'first', 1),
-        event('ready', 'async', now, 'other', 2),
-      ],
+      [event('started', 'sync', now, 'first', 1), event('ready', 'async', now, 'other', 2)],
       now,
     )?.id,
     1,
@@ -55,10 +52,7 @@ test('a matching terminal event clears only its own sync status', () => {
   for (const status of ['ready', 'applied', 'failed', 'skipped']) {
     assert.equal(
       compactionState(
-        [
-          event('started', 'sync', now, 'first', 1),
-          event(status, 'sync', now, 'first', 2),
-        ],
+        [event('started', 'sync', now, 'first', 1), event(status, 'sync', now, 'first', 2)],
         now,
       ),
       undefined,

@@ -1,4 +1,6 @@
-from core.protocol.datatype import ToolDefinition
+from dataclasses import replace
+
+from core.protocol.datatype import ToolDefinition, ToolResult
 from core.protocol.interface import Tool
 
 from ._device_transport import DEVICE, TEXT, call, schema
@@ -9,11 +11,8 @@ class DevicesTool(Tool):
     def definition(self):
         return ToolDefinition(
             "devices",
-            "List owned personal and cloud devices with capabilities. "
-            "Ensure an approved cloud computer is available when configured. "
-            "Automatically creates a missing computer and resumes a paused one. "
-            "Read binding notices: a replaced computer is empty; do not assume old files exist. "
-            "Call before choosing an explicit execution device.",
+            "List owned devices and their current capabilities. "
+            "Does not provision cloud resources.",
             schema({}, []),
         )
 
@@ -34,31 +33,28 @@ class DeviceBashTool(Tool):
                     "command": TEXT,
                     "cwd": TEXT,
                 },
-                ["device_id", "command"],
+                ["command"],
             ),
         )
 
     def execute(self, invocation):
-        return call(invocation, "execute", "bash")
-
-
-class DeviceCommandTool(Tool):
-    @property
-    def definition(self):
-        return ToolDefinition(
-            "device_command",
-            "Query an existing bash, browser or computer invocation on the same device without "
-            "repeating it. Requires the original device_id and invocation_id. Never use this for "
-            "multimodal_understand, image_generate, tasks, skills, subagents or other tool calls: "
-            "those are not device invocations; their results arrive as tool events automatically.",
-            schema(
-                {"device_id": DEVICE, "invocation_id": TEXT},
-                ["device_id", "invocation_id"],
-            ),
-        )
-
-    def execute(self, invocation):
-        return call(invocation, "command")
+        args = dict(invocation.arguments)
+        selected = None
+        if not args.get("device_id"):
+            selected = call(invocation, "select", "bash").content
+            args["device_id"] = selected["device"]["device_id"]
+        if invocation.cli_environment:
+            args["command"] = _bootstrap() + "\n" + args["command"]
+        result = call(replace(invocation, arguments=args), "execute", "bash")
+        if selected and isinstance(result.content, dict):
+            result = ToolResult(
+                {
+                    **result.content,
+                    "device_kind": selected["device"]["kind"],
+                    "selection": selected["selection"],
+                }
+            )
+        return result
 
 
 class BrowserTool(Tool):
@@ -138,3 +134,44 @@ class ComputerTool(Tool):
 
     def execute(self, invocation):
         return call(invocation, "execute", "computer")
+
+
+def _bootstrap():
+    return """export PATH="$HOME/.local/bin:$PATH"
+python3 - <<'OATH_BOOTSTRAP'
+import hashlib, os, pathlib, urllib.request, urllib.parse
+base=os.environ['OATH_CLI_SERVER'].rstrip('/')
+target=pathlib.Path.home()/'.local/bin/oath-cli'
+expected=os.environ['OATH_CLI_SHA256']
+if (
+    not target.is_file()
+    or target.is_symlink()
+    or hashlib.sha256(target.read_bytes()).hexdigest()!=expected
+):
+    parts=urllib.parse.urlsplit(base)
+    if (
+        parts.username
+        or parts.password
+        or parts.query
+        or parts.fragment
+        or (
+            parts.scheme!='https'
+            and not(
+                parts.scheme=='http'
+                and parts.hostname in ('localhost','127.0.0.1','::1')
+            )
+        )
+    ):
+        raise ValueError('CLI requires HTTPS or loopback HTTP')
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self,*a,**k): raise ValueError('Redirect refused')
+    with urllib.request.build_opener(NoRedirect()).open(base+'/cli/install',timeout=10) as response:
+        installer=response.read(262145)
+    installer_hash=hashlib.sha256(installer).hexdigest()
+    if len(installer)>262144 or installer_hash!=os.environ['OATH_CLI_INSTALLER_SHA256']:
+        raise ValueError('Installer integrity failed')
+    namespace={'__name__':'oath_installer'}
+    exec(compile(installer,'oath-installer','exec'),namespace)
+    namespace['install'](base+'/cli/client',expected,target.parent)
+OATH_BOOTSTRAP
+if [ $? -ne 0 ]; then exit 2; fi"""

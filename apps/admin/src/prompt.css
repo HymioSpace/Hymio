@@ -1,0 +1,235 @@
+.prompt-workspace {
+  max-width: 1500px;
+  margin-inline: auto;
+  width: 100%;
+}
+.prompt-intro {
+  color: #747d90;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+.prompt-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.prompt-actions select {
+  background: #fff;
+  border: 1px solid #dfe4ee;
+  border-radius: 9px;
+  padding: 9px 14px;
+  color: #4b5770;
+  font-size: 13px;
+}
+.prompt-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 850px;
+  margin: 24px 0;
+  color: #7a8498;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.prompt-notice p {
+  margin: 0;
+}
+.prompt-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: #6576c0;
+}
+.prompt-reader {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+.prompt-outline {
+  position: sticky;
+  top: 24px;
+  padding: 14px 0;
+}
+.prompt-outline > span,
+.prompt-fingerprint span {
+  font-size: 11px;
+  color: #8b94a4;
+}
+.prompt-outline p {
+  font-size: 12px;
+  color: #4f5e79;
+  line-height: 1.5;
+  margin: 16px 0;
+}
+.prompt-outline p.subsection {
+  padding-left: 12px;
+  border-left: 1px solid #e0e5ef;
+  color: #7a859a;
+  margin: 12px 0;
+}
+.prompt-fingerprint {
+  border-top: 1px solid #e1e6ef;
+  margin-top: 28px;
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prompt-fingerprint code {
+  font-size: 11px;
+  color: #758097;
+  overflow-wrap: anywhere;
+}
+.prompt-document {
+  border: 1px solid #e0e5ee;
+  background: #fff;
+  border-radius: 14px;
+  overflow: hidden;
+  min-width: 0;
+}
+.prompt-document > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid #edf0f5;
+  background: #fcfcfe;
+}
+.prompt-document > header > div {
+  display: flex;
+  gap: 4px;
+}
+.prompt-document button {
+  border: 0;
+  background: none;
+  color: #8590a3;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 6px;
+}
+.prompt-document button.selected {
+  background: #edf0fb;
+  color: #4b60aa;
+}
+.prompt-document button:hover {
+  background: #f0f2f7;
+}
+.prompt-document button:focus-visible {
+  outline: 2px solid #6579d7;
+  outline-offset: 2px;
+}
+.prompt-markdown {
+  padding: 32px 44px 48px;
+  max-width: 760px;
+  color: #414e65;
+  font-size: 14px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+}
+.prompt-markdown h1 {
+  font-size: 27px;
+  letter-spacing: -0.5px;
+  line-height: 1.3;
+  color: #26324c;
+  margin: 0 0 24px;
+}
+.prompt-markdown h2 {
+  font-size: 18px;
+  line-height: 1.4;
+  margin: 32px 0 12px;
+  padding-top: 24px;
+  border-top: 1px solid #edf0f5;
+  color: #2d3e5d;
+}
+.prompt-markdown h3 {
+  font-size: 15px;
+  color: #3a4c6d;
+  margin: 24px 0 8px;
+}
+.prompt-markdown p {
+  margin: 10px 0;
+}
+.prompt-markdown ul,
+.prompt-markdown ol {
+  padding-left: 22px;
+}
+.prompt-markdown li {
+  padding-left: 3px;
+  margin: 8px 0;
+}
+.prompt-markdown strong {
+  color: #304361;
+  font-weight: 600;
+}
+.prompt-markdown code {
+  font-size: 12px;
+  background: #f2f4f9;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #5a638e;
+}
+.prompt-markdown pre {
+  overflow: auto;
+  padding: 18px;
+  background: #f6f7fb;
+  border: 1px solid #e9edf5;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.prompt-markdown pre code {
+  background: none;
+  padding: 0;
+}
+.prompt-markdown blockquote {
+  margin: 18px 0;
+  border-left: 2px solid #b8c3e6;
+  padding: 0 18px;
+  color: #7a87a1;
+}
+.prompt-link {
+  color: #6177b4;
+}
+.prompt-source {
+  margin: 0;
+  padding: 28px 36px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #52617b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.prompt-loading {
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  color: #8792a5;
+  font-size: 13px;
+}
+@media (min-width: 1600px) {
+  .prompt-reader {
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 44px;
+  }
+  .prompt-markdown {
+    padding-inline: 54px;
+  }
+}
+@media (max-width: 900px) {
+  .prompt-reader {
+    grid-template-columns: 1fr;
+  }
+  .prompt-outline {
+    display: none;
+  }
+  .prompt-markdown {
+    padding: 24px;
+  }
+  .prompt-source {
+    padding: 24px;
+  }
+}

@@ -17,7 +17,6 @@ import {
   Plug,
   ArrowRight,
   Square,
-  ShieldCheck,
   LoaderCircle,
   Terminal,
   X,
@@ -40,6 +39,7 @@ import { TracePage } from './TracePage';
 import { desktop, bizGet } from './platform';
 import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
+import { ApprovalCard } from './ApprovalCard';
 const client = new OathClient();
 client.channelKind = desktop ? 'desk' : 'web';
 export default function App() {
@@ -770,51 +770,21 @@ export default function App() {
                 </div>
               )}
               {model.approvals.map((a) => (
-                <section key={a.id} className="approval-card">
-                  <div>
-                    <ShieldCheck size={20} />
-                    <strong>这一步，需要你点头</strong>
-                  </div>
-                  <p>
-                    <b>{a.tool}</b>
-                    <span>
-                      {a.status === 'pending'
-                        ? a.expiresAt * 1000 <= clock
-                          ? '已过期'
-                          : '等待授权'
-                        : a.status === 'approved'
-                          ? '已批准'
-                          : a.status === 'denied'
-                            ? '已拒绝'
-                            : a.status}
-                    </span>
-                  </p>
-                  <pre>{JSON.stringify(a.arguments, null, 2)}</pre>
-                  {a.status === 'pending' && a.expiresAt * 1000 > clock && (
-                    <div className="approval-actions">
-                      <button
-                        className="secondary-button"
-                        disabled={
-                          !connected ||
-                          state.pending.some((p) => p.command.payload.invocation_id === a.id)
-                        }
-                        onClick={() => void act(() => client.decide(a.id, 'denied'))}
-                      >
-                        拒绝
-                      </button>
-                      <button
-                        className="primary-button"
-                        disabled={
-                          !connected ||
-                          state.pending.some((p) => p.command.payload.invocation_id === a.id)
-                        }
-                        onClick={() => void act(() => client.decide(a.id, 'approved'))}
-                      >
-                        允许这次操作
-                      </button>
-                    </div>
-                  )}
-                </section>
+                <ApprovalCard
+                  key={a.id}
+                  approval={a}
+                  connected={connected}
+                  clock={clock}
+                  pending={state.pending.some((p) => p.command.payload.invocation_id === a.id)}
+                  onDecide={(id, decision, scope, actionDigest) =>
+                    act(() =>
+                      client.decide(id, decision, {
+                        scope,
+                        actionDigest,
+                      }),
+                    )
+                  }
+                />
               ))}
               {(busy || streaming || awaitingReply) && !compacting && (
                 <div className="message working-indicator">

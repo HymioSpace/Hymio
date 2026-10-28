@@ -18,12 +18,28 @@ public struct ChatMessage: Identifiable, Equatable {
   public var delivery: String?
   public var reactions: [String: String] = [:]
 }
+public struct ApprovalTarget: Equatable {
+  public var kind: String
+  public var id: String
+  public var label: String
+}
 public struct Approval: Identifiable, Equatable {
   public var id: String
   public var tool: String
   public var arguments: JSON
   public var status: String
   public var expires: Double
+  public var title: String
+  public var summary: String
+  public var risk: String
+  public var effects: [String]
+  public var target: ApprovalTarget
+  public var scopeOptions: [String]
+  public var actionDigest: String
+  public var decidedAt: Double?
+  public var decidedBy: String
+  public var decisionChannel: String
+  public var reason: String
 }
 public struct Conversation {
   public var messages: [ChatMessage] = []
@@ -176,9 +192,20 @@ public struct Conversation {
       if messages[i].calls.isEmpty { working = false }
     case "tool.terminal": terminals[p["invocation_id"].text] = p
     case "permission.requested":
+      let target = p["target"]
       let approval = Approval(
         id: p["invocation_id"].text, tool: p["tool"].text, arguments: p["arguments"],
-        status: "pending", expires: p["expires_at"].double)
+        status: "pending", expires: p["expires_at"].double,
+        title: p["title"].text.isEmpty ? "允许运行 \(p["tool"].text)？" : p["title"].text,
+        summary: p["summary"].text, risk: p["risk"].text.isEmpty ? "medium" : p["risk"].text,
+        effects: p["effects"].items.map(\.text),
+        target: ApprovalTarget(
+          kind: target["kind"].text, id: target["id"].text, label: target["label"].text),
+        scopeOptions: p["scope_options"].items.map(\.text).filter {
+          ["once", "run", "exact_rule"].contains($0)
+        },
+        actionDigest: p["action_digest"].text, decidedAt: nil, decidedBy: "",
+        decisionChannel: "", reason: "")
       if let i = approvals.firstIndex(where: { $0.id == approval.id }) {
         approvals[i] = approval
       } else {
@@ -187,6 +214,10 @@ public struct Conversation {
     case "permission.resolved":
       if let i = approvals.firstIndex(where: { $0.id == p["invocation_id"].text }) {
         approvals[i].status = p["status"].text
+        approvals[i].decidedAt = p["decided_at"].double
+        approvals[i].decidedBy = p["client_id"].text
+        approvals[i].decisionChannel = p["channel"].text
+        approvals[i].reason = p["reason"].text
       }
     case "agent.paused" where p["reason"].text == "tool_only_budget":
       working = false

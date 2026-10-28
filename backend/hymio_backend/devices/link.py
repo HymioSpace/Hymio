@@ -39,9 +39,11 @@ class DeviceLink:
     def report(frame, kind="personal_mac"):
         caps = frame.get("capabilities", [])
         permissions = frame.get("permissions", {})
-        if not isinstance(caps, list) or any(c not in {"bash", "computer"} for c in caps):
+        if not isinstance(caps, list) or any(
+            c not in {"bash", "computer", "browser"} for c in caps
+        ):
             raise ValueError("invalid_capabilities")
-        if kind == "personal_android" and "bash" in caps:
+        if kind == "personal_android" and any(c in caps for c in ("bash", "browser")):
             raise ValueError("invalid_android_capability")
         if (
             not isinstance(permissions, dict)
@@ -168,6 +170,9 @@ class DeviceLink:
         device_id, invocation = data["device_id"], data["invocation_id"]
         device = self.store.get(user_id, device_id)
         request = {"capability": data["capability"], "arguments": data["arguments"]}
+        parent = data.get("parent_invocation_id")
+        if parent:
+            request["parent_invocation_id"] = parent
         timeout = data.get("timeout", 25)
         _, known = self.store.claim(user_id, device_id, invocation, request, timeout + 5)
         if known is not None:
@@ -200,6 +205,7 @@ class DeviceLink:
                 "invocation_id": invocation,
                 "expires_at": time.time() + timeout,
                 **request,
+                "execution_environment": data.get("execution_environment", {}),
             }
             sent = asyncio.run_coroutine_threadsafe(
                 connection["socket"].send_json(frame), connection["loop"]

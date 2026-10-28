@@ -162,6 +162,14 @@ function Gallery() {
                         arguments: {},
                         status: 'pending',
                         expiresAt: 4102444800,
+                        title: '允许操作浏览器页面？',
+                        summary: 'Hymio 将填写并提交当前页面。',
+                        risk: 'high',
+                        effects: ['browser_control'],
+                        target: { kind: 'origin', id: 'example.com', label: 'example.com' },
+                        scopeOptions: ['once', 'run'],
+                        actionDigest: '0'.repeat(64),
+                        grantKey: 'synthetic-grant',
                       },
                     ]
                   : []

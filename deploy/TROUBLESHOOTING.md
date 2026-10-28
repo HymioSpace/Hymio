@@ -72,8 +72,8 @@ workbench exec -i INSTANCE_ID -r cn-hongkong -c \
 The public entry should report:
 
 ```sh
-curl --fail https://agent.hymio.top/health
-curl --fail https://agent.hymio.top/auth/options
+curl --fail https://your-deployment.example/health
+curl --fail https://your-deployment.example/auth/options
 ```
 
 Then send one short message from a real client. Health checks do not replace an end-to-end model

@@ -350,12 +350,37 @@ class DeviceStore:
             lock = db.execute(
                 "SELECT * FROM device_locks WHERE device_id=?", (device_id,)
             ).fetchone()
+            parent = request.get("parent_invocation_id")
             if lock:
-                raise DeviceConflict("device_busy_or_requires_recovery")
-            db.execute(
-                "INSERT INTO device_locks VALUES(?,?,?,?)",
-                (device_id, user_id, invocation_id, deadline),
-            )
+                record = db.execute(
+                    "SELECT * FROM device_commands WHERE user_id=? AND device_id=? "
+                    "AND invocation_id=?",
+                    (user_id, device_id, parent or ""),
+                ).fetchone()
+                nested = (
+                    record
+                    and record["status"] == "running"
+                    and lock["invocation_id"] == parent
+                    and lock["deadline"] > time.time()
+                    and json.loads(record["request_json"])["capability"] == "bash"
+                    and request["capability"] in {"browser", "computer"}
+                )
+                if not nested:
+                    raise DeviceConflict("device_busy_or_requires_recovery")
+                if db.execute(
+                    "SELECT 1 FROM device_commands WHERE device_id=? AND status='running' "
+                    "AND json_extract(request_json,'$.parent_invocation_id')=? LIMIT 1",
+                    (device_id, parent),
+                ).fetchone():
+                    raise DeviceConflict("nested_device_action_busy")
+                deadline = min(deadline, lock["deadline"])
+            else:
+                if parent:
+                    raise DeviceConflict("parent_device_execution_not_running")
+                db.execute(
+                    "INSERT INTO device_locks VALUES(?,?,?,?)",
+                    (device_id, user_id, invocation_id, deadline),
+                )
             db.execute(
                 "INSERT INTO device_commands(user_id,invocation_id,device_id,generation,"
                 "fingerprint,deadline,status,result,request_json,submitted_at) "
@@ -387,10 +412,23 @@ class DeviceStore:
                 ).fetchone()
                 return json.loads(known[0]) if known and known[0] else result
             if release:
-                db.execute(
-                    "DELETE FROM device_locks WHERE user_id=? AND invocation_id=?",
+                child = db.execute(
+                    "SELECT invocation_id,deadline FROM device_commands WHERE user_id=? "
+                    "AND status='running' "
+                    "AND json_extract(request_json,'$.parent_invocation_id')=? LIMIT 1",
                     (user_id, invocation_id),
-                )
+                ).fetchone()
+                if child:
+                    db.execute(
+                        "UPDATE device_locks SET invocation_id=?,deadline=? "
+                        "WHERE user_id=? AND invocation_id=?",
+                        (child["invocation_id"], child["deadline"], user_id, invocation_id),
+                    )
+                else:
+                    db.execute(
+                        "DELETE FROM device_locks WHERE user_id=? AND invocation_id=?",
+                        (user_id, invocation_id),
+                    )
             return result
 
     def media(self, user_id, device_id, content):

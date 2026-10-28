@@ -18,6 +18,7 @@ from starlette.routing import Route, WebSocketRoute
 from .agent_gateway import relay_agent
 from .browser_callback import browser_callback
 from .casdoor_accounts import AccountRejected, CasdoorAccounts
+from .cli_gateway import cli_routes
 from .connectors.routes import connector_routes
 from .connectors.service import ConnectorService
 from .context.routes import context_routes
@@ -41,6 +42,7 @@ from .tasks.credentials import verify as verify_service
 from .tasks.routes import task_routes
 from .tasks.service import TaskService
 from .tasks.store import TaskStore
+from .tool_authorization import ToolAuthorizationService, tool_authorization_routes
 
 _log = logging.getLogger(__name__)
 
@@ -78,6 +80,7 @@ def build_app(settings, *, provider=None):
     accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
     kits = KitsService(settings, upstream)
+    tool_authorization = ToolAuthorizationService(settings, store)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -314,6 +317,10 @@ def build_app(settings, *, provider=None):
         + device_routes(settings, store, bearer, body, link=device_link)
         + admin_routes(settings, store, bearer, body)
         + monitoring_routes(settings, store, upstream, bearer, body)
+        + tool_authorization_routes(
+            settings, store, tool_authorization, bearer, body
+        )
+        + cli_routes(settings, upstream)
         + reaction_routes(settings, bearer, body)
         + [
             WebSocketRoute("/agent/ws", agent_socket),

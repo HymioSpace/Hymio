@@ -16,6 +16,10 @@ struct AccountScreen: View {
   @State private var contextWindows: [Int] = []
   @State private var modelBusy = false
   @State private var modelError = ""
+  @State private var authorizationMode = "guided"
+  @State private var authorizationModes = ["read_only", "guided", "autonomous"]
+  @State private var authorizationBusy = false
+  @State private var authorizationError = ""
   @State private var pairingPresented = false
   @State private var revokeTarget: JSON?
   @State private var revokePresented = false
@@ -46,6 +50,27 @@ struct AccountScreen: View {
     }
     .task { await loadModels() }
   }
+  private var authorizationSection: some View {
+    Section {
+      Picker(
+        selection: Binding(
+          get: { authorizationMode },
+          set: { saveAuthorizationMode($0) }
+        )
+      ) {
+        ForEach(authorizationModes, id: \.self) { mode in
+          Text(authorizationModeLabel(mode)).tag(mode)
+        }
+      } label: {
+        Label("工具授权", systemImage: "shield.checkered")
+      }.pickerStyle(.menu).disabled(authorizationBusy)
+      if !authorizationError.isEmpty {
+        Text(authorizationError).font(.caption).foregroundStyle(.secondary)
+      }
+    } footer: {
+      Text(authorizationModeDetail(authorizationMode))
+    }.task { await loadAuthorizationMode() }
+  }
   private func loadModels() async {
     do {
       let value = try await account.request("settings/models")
@@ -75,6 +100,41 @@ struct AccountScreen: View {
     contextWindow = value["context_window"].int
     effectiveWindow = value["effective_context_window"].int
     contextWindows = value["context_windows"].items.map { $0.int }
+  }
+  private func loadAuthorizationMode() async {
+    do {
+      applyAuthorization(try await account.request("settings/tool-authorization"))
+      authorizationError = ""
+    } catch { authorizationError = "暂时无法读取工具授权设置" }
+  }
+  private func applyAuthorization(_ value: JSON) {
+    let modes = value["modes"].items.map(\.text).filter { !$0.isEmpty }
+    if !modes.isEmpty { authorizationModes = modes }
+    let mode = value["mode"].text
+    authorizationMode = authorizationModes.contains(mode) ? mode : "guided"
+  }
+  private func saveAuthorizationMode(_ mode: String) {
+    guard !authorizationBusy, mode != authorizationMode else { return }
+    authorizationBusy = true
+    Task {
+      defer { authorizationBusy = false }
+      do {
+        applyAuthorization(
+          try await account.request(
+            "settings/tool-authorization", body: .object(["mode": .string(mode)])))
+        authorizationError = ""
+      } catch { authorizationError = "授权模式未更改，请稍后重试。" }
+    }
+  }
+  private func authorizationModeLabel(_ mode: String) -> String {
+    ["read_only": "只读", "guided": "按需授权", "autonomous": "自动执行"][mode] ?? mode
+  }
+  private func authorizationModeDetail(_ mode: String) -> String {
+    [
+      "read_only": "只读取已授权来源，不修改文件、浏览器或外部数据。",
+      "guided": "低风险操作自动执行，命令、设备控制和外部写入先询问你。",
+      "autonomous": "精确规则和任务授权自动执行，未知或高风险操作仍会询问。",
+    ][mode] ?? "选择 Hymio 何时可以自动执行工具。"
   }
   private func saveWindow(_ size: Int) {
     guard !modelBusy, size != contextWindow else { return }
@@ -107,6 +167,7 @@ struct AccountScreen: View {
           }.accessibilityIdentifier("account.connectors")
         } footer: { Text("邮件、清单和来自 iPhone 的日常，由你选择分享。") }
         modelSection
+        authorizationSection
         Section {
           Button {
             pairingPresented = true

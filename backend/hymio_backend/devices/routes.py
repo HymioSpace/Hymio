@@ -64,14 +64,39 @@ def device_routes(settings, sessions, bearer, body, *, link=None):
             binding = None
             if path.endswith("/ensure"):
                 return JSONResponse(await ensure(user_id))
-            if internal and path.endswith("/list"):
-                try:
-                    binding = await ensure(user_id, wake=True)
-                except DeviceConflict:
-                    binding = {
-                        "action": "blocked",
-                        "notice": "Computer requires recovery; do not repeat commands.",
-                    }
+            if internal and path.endswith("/select"):
+                capability = data.get("capability", "bash")
+                if capability not in {"bash", "browser", "computer"}:
+                    raise ValueError("invalid_capability")
+                personal = [
+                    service.describe(d)
+                    for d in service.store.list(user_id)
+                    if d["kind"] == "personal_mac"
+                ]
+                usable = sorted(
+                    (
+                        d
+                        for d in personal
+                        if d["state"] == "online" and capability in d["capabilities"]
+                    ),
+                    key=lambda d: d["device_id"],
+                )
+                if usable:
+                    return JSONResponse({"device": usable[0], "selection": "personal_mac"})
+                binding = await ensure(user_id, wake=True)
+                for device in service.store.list(user_id):
+                    if device["kind"] == "cloud_desktop":
+                        described = service.describe(device)
+                        if (
+                            described["state"] == "online"
+                            and capability in described["capabilities"]
+                        ):
+                            return JSONResponse(
+                                {"device": described, "selection": "cloud_fallback"}
+                            )
+                return JSONResponse(
+                    {"error": "no_available_execution_device", "binding": binding}, 409
+                )
             if "/commands" in path or path.endswith("/command"):
                 device_id = data["device_id"] if internal else request.path_params["device_id"]
                 invocation_id = (
@@ -186,6 +211,7 @@ def device_routes(settings, sessions, bearer, body, *, link=None):
         Route("/devices/{device_id}/revoke", endpoint, methods=["POST"]),
         Route("/devices/media/{media_id}", endpoint),
         Route("/internal/devices/list", endpoint, methods=["POST"]),
+        Route("/internal/devices/select", endpoint, methods=["POST"]),
         Route("/internal/devices/execute", endpoint, methods=["POST"]),
         Route("/internal/devices/command", endpoint, methods=["POST"]),
     ]

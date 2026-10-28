@@ -10,17 +10,19 @@ from core.protocol.error import ToolExecutionError
 
 def call(invocation, operation, capability=None):
     config = json.loads(Path(__file__).with_name("_connection.local").read_text())
-    budget = 110 if operation == "list" else 25
+    budget = 110 if operation in {"list", "select"} else 25
     timeout = min(budget, invocation.deadline - time.monotonic()) if invocation.deadline else budget
     if timeout <= 0:
         raise ToolExecutionError("Device request deadline expired")
     data = {"user_id": invocation.user.user_id}
+    if operation == "select":
+        data["capability"] = capability or "bash"
     if operation == "command":
         data.update(
             device_id=invocation.arguments["device_id"],
             invocation_id=invocation.arguments["invocation_id"],
         )
-    if capability:
+    if capability and operation == "execute":
         args = dict(invocation.arguments)
         data.update(
             device_id=args.pop("device_id"),
@@ -28,6 +30,8 @@ def call(invocation, operation, capability=None):
             capability=capability,
             arguments=args,
             timeout=max(0.1, timeout - 5),
+            execution_environment=invocation.cli_environment if capability == "bash" else {},
+            parent_invocation_id=invocation.parent_invocation_id,
         )
     request = Request(
         config["url"] + "/internal/devices/" + operation,
@@ -53,20 +57,20 @@ def call(invocation, operation, capability=None):
             failure = {}
         if failure.get("error") == "not_a_device_invocation":
             raise ToolExecutionError(
-                "Invocation is not a device command. Do not query multimodal, media, task, "
-                "skill or subagent results through device_command; wait for their tool event."
+                "This call is not a device operation. Inspect its ToolSystem state with "
+                "oath-cli status."
             ) from error
         raise ToolExecutionError("Device service rejected request: " + str(error.code)) from error
     except (URLError, TimeoutError) as error:
         if operation == "list":
             raise ToolExecutionError(
-                "Computer preparation is pending or unavailable. Backend owns recovery. "
-                "Report the condition and wait for new input; do not poll or repeat commands."
+                "Device discovery is unavailable. Report the condition and wait for new input; "
+                "do not poll or repeat commands."
             ) from error
         raise ToolExecutionError(
             f"Result unavailable for device_id={invocation.arguments.get('device_id')}, "
             f"invocation_id={invocation.invocation_id}. "
-            "Query device_command; do not repeat effects."
+            "Inspect this invocation with oath-cli status; do not repeat effects."
         ) from error
 
 

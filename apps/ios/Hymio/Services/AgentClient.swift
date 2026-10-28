@@ -636,11 +636,19 @@ import UIKit
       try? await Task.sleep(for: .seconds(1))
     }
   }
-  func decide(_ id: String, _ approved: Bool) async {
+  func decide(
+    _ id: String, _ approved: Bool, scope: String = "once", actionDigest: String = "",
+    reason: String = ""
+  ) async {
     do {
       try await command(
         "permission.decide",
-        ["invocation_id": .string(id), "status": .string(approved ? "approved" : "denied")])
+        [
+          "invocation_id": .string(id),
+          "status": .string(approved ? "approved" : "denied"),
+          "scope": .string(scope), "action_digest": .string(actionDigest),
+          "reason": .string(reason),
+        ])
     } catch { self.error = error.localizedDescription }
   }
   func loadHistory() async {

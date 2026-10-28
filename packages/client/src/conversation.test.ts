@@ -74,8 +74,23 @@ test('approval resolution and tool terminal update their original identities', (
       tool: 'bash',
       arguments: { command: 'pwd' },
       expires_at: 1,
+      title: 'Run a command?',
+      summary: 'Read the current directory.',
+      risk: 'high',
+      effects: ['execute'],
+      target: { kind: 'device', id: 'mac', label: 'Mac mini' },
+      scope_options: ['once', 'run'],
+      action_digest: 'a'.repeat(64),
+      grant_key: 'synthetic',
     }),
-    event(3, 'permission.resolved', { invocation_id: 'a-0', status: 'approved' }),
+    event(3, 'permission.resolved', {
+      invocation_id: 'a-0',
+      status: 'approved',
+      scope: 'run',
+      client_id: 'iphone',
+      channel: 'ios',
+      decided_at: 2,
+    }),
     event(4, 'tool.terminal', {
       invocation_id: 'a-0',
       tool: 'bash',
@@ -84,6 +99,9 @@ test('approval resolution and tool terminal update their original identities', (
     }),
   ]);
   assert.equal(result.approvals[0].status, 'approved');
+  assert.equal(result.approvals[0].title, 'Run a command?');
+  assert.deepEqual(result.approvals[0].scopeOptions, ['once', 'run']);
+  assert.equal(result.approvals[0].decidedBy, 'iphone');
   assert.equal(result.tools.length, 1);
   assert.equal(result.tools[0].outcome, 'succeeded');
   assert.equal(result.tools[0].result, '/workspace');

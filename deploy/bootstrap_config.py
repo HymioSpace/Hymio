@@ -269,7 +269,12 @@ def prepare(path):
         toml({"data_root": oath["data_root"]})
         + "\n[services]\n"
         + toml(oath["services"])
-        + "\n[agent]\nmax_output_tokens = 8192\n\n[agent.provider]\n"
+        + "\n[agent]\nmax_output_tokens = 8192\n"
+        + 'exposed_tools = ["bash", "cli", "skill"]\ncli_public_url = '
+        + json.dumps(backend["public_url"].rstrip("/") + "/agent")
+        + "\npermission_policy_url = "
+        + json.dumps("http://host.docker.internal:8080/internal/tool-authorization/check")
+        + "\n\n[agent.provider]\n"
         + toml(oath["agent"]["provider"]),
     )
     private_write(runtime / "network.toml", toml({"lan_host": settings["lan_host"]}))
