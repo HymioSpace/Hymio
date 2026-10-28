@@ -65,7 +65,7 @@ private func isFinal(_ message: ChatMessage) -> Bool {
 }
 
 /// 按 trace 切分消息。缺 trace_id 的老消息退回「用户消息即分界」，免得整段历史塌成一条。
-public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
+public func buildTurns(_ messages: [ChatMessage], paused: Bool = false) -> [Turn] {
   struct Draft {
     var trace = ""
     var items: [ChatMessage] = []
@@ -116,8 +116,9 @@ public func buildTurns(_ messages: [ChatMessage]) -> [Turn] {
     let last = items.last
     // 没有最终回复的 trace，只有在它后面又开了新 trace、且自己不再流式时才算结束。
     let settled =
-      finalAt >= 0
-      ? finalAt == items.count - 1 && !streaming : index < drafts.count - 1 && !streaming
+      (paused && index == drafts.count - 1 && !streaming)
+      || (finalAt >= 0
+        ? finalAt == items.count - 1 && !streaming : index < drafts.count - 1 && !streaming)
     let head = finalAt < 0 ? items.count : finalAt
     var final: ChatMessage? = finalAt >= 0 ? items[finalAt] : nil
     var activity = items[0..<head].filter { $0.role == "assistant" }

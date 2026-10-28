@@ -16,7 +16,6 @@ import {
   MoreHorizontal,
   UserRound,
 } from 'lucide-react';
-import { MemoryGraph } from './MemoryGraph';
 import { Companion } from '@hymio/ui';
 import type { LoginState } from './useLogin';
 import {
@@ -35,7 +34,7 @@ type Layer = 'artifacts' | 'records';
 type PageState = { items: ContextItem[]; cursor: string | null; partial: boolean };
 const emptyPage = (): PageState => ({ items: [], cursor: null, partial: false });
 type Evidence = { id: string; item?: ContextItem; error?: string };
-type ReaderHistory = { item: ContextItem; graph: boolean };
+type ReaderHistory = { item: ContextItem };
 
 function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: ContextItem) => void }) {
   const text = readable(item.preview);
@@ -62,6 +61,11 @@ function MemoryCard({ item, onOpen }: { item: ContextItem; onOpen: (item: Contex
       </span>
       <span className="memory-card-writing">
         <span className="memory-card-copy">{title || '打开查看内容'}</span>
+        {text && text !== title && (
+          <span className="memory-card-excerpt">
+            {text.startsWith(title) ? text.slice(title.length).trim() : text}
+          </span>
+        )}
       </span>
       <span className="memory-card-bottom">
         <span className="memory-card-provenance">
@@ -82,7 +86,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
   const [category, setCategory] = useState('all');
   const [source, setSource] = useState('all');
   const draftCategory = 'uncategorized';
-  const [network, setNetwork] = useState(false);
   const [correction, setCorrection] = useState<ContextItem | null>(null);
   const [overview, setOverview] = useState<{
     stable?: { content: string };
@@ -102,22 +105,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
   const [detailError, setDetailError] = useState('');
   const [detailLoading, setDetailLoading] = useState(false);
   const [evidenceLimit, setEvidenceLimit] = useState(12);
-  const [graph, setGraph] = useState(false);
-  const [graphColumns, setGraphColumns] = useState(2);
-  useEffect(() => {
-    const resize = () =>
-      setGraphColumns(
-        window.innerWidth <= 700
-          ? 2
-          : Math.max(
-              2,
-              Math.min(6, Math.floor((Math.min(window.innerWidth - 40, 1000) - 68) / 130)),
-            ),
-      );
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, []);
   const [draft, setDraft] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -241,11 +228,10 @@ export function MomentsPanel({ login }: { login: LoginState }) {
   function showReader() {
     if (!reader.current?.open) reader.current?.showModal();
   }
-  async function open(item: ContextItem, asGraph = false, backStack: ReaderHistory[] = []) {
+  async function open(item: ContextItem, backStack: ReaderHistory[] = []) {
     const current = ++detailGeneration.current;
     setSelected(item);
     setHistory(backStack);
-    setGraph(asGraph);
     setDetail(null);
     setEvidence([]);
     setEvidenceLimit(12);
@@ -316,9 +302,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
     setEvidenceLimit(nextLimit);
     setDetailLoading(false);
   }
-  function openGraph() {
-    setNetwork(true);
-  }
   async function save() {
     const text = draft.trim();
     if (!text || saving) return;
@@ -377,7 +360,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
       setSaving(false);
     }
   }
-  const graphItems = evidence.slice(0, graphColumns);
   const page = pages[layer];
   const hasAny = pages.artifacts.items.length + pages.records.items.length > 0;
   const emptyTitle =
@@ -473,16 +455,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
               {label}
             </button>
           ))}
-          {layer === 'artifacts' && (
-            <button
-              className="memory-graph-button"
-              onClick={openGraph}
-              disabled={loading || (!!error && !pages.artifacts.items.length)}
-            >
-              <Sparkles size={17} className="memory-star-icon" />
-              星图
-            </button>
-          )}
         </div>
         {notice && (
           <p className="memory-notice" role="status">
@@ -639,7 +611,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
       </dialog>
       <dialog
         ref={reader}
-        className={`memory-dialog memory-reader ${graph ? 'memory-reader-graph' : ''}`}
+        className="memory-dialog memory-reader"
         aria-labelledby="memory-reader-title"
         onClose={() => {
           detailGeneration.current++;
@@ -652,59 +624,23 @@ export function MomentsPanel({ login }: { login: LoginState }) {
               aria-label="返回理解"
               onClick={() => {
                 const previous = history[history.length - 1];
-                void open(previous.item, previous.graph, history.slice(0, -1));
+                void open(previous.item, history.slice(0, -1));
               }}
             >
               <ArrowLeft size={19} />
             </button>
           )}
           <h2 id="memory-reader-title">
-            {graph
-              ? '记忆星图'
-              : selected?.title || (selected?.kind === 'artifact' ? 'Hymio 的理解' : '原始足迹')}
+            {selected?.title || (selected?.kind === 'artifact' ? 'Hymio 的理解' : '原始足迹')}
           </h2>
           <button aria-label="关闭详情" onClick={() => reader.current?.close()}>
             <X size={20} />
           </button>
         </header>
-        {graph && (
-          <div className="memory-graph-toolbar">
-            <label>
-              聚焦理解
-              <select
-                aria-label="选择星图中心"
-                value={selected?.kind === 'artifact' ? selected.id : ''}
-                onChange={(event) => {
-                  const item = pages.artifacts.items.find(
-                    (value) => value.id === event.target.value,
-                  );
-                  if (item) void open(item, true);
-                }}
-              >
-                <option value="" disabled>
-                  选择一条理解
-                </option>
-                {pages.artifacts.items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {readable(item.preview).slice(0, 50)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {pages.artifacts.cursor && (
-              <button disabled={moreBusy || loading} onClick={() => void more('artifacts')}>
-                更多理解
-              </button>
-            )}
-            <p>只展示当前理解与原始依据的引用关系。</p>
-          </div>
-        )}
         {detailError ? (
           <div className="memory-failure" role="alert">
             <p>{detailError}</p>
-            <button onClick={() => selected && void open(selected, graph, history)}>
-              重新读取
-            </button>
+            <button onClick={() => selected && void open(selected, history)}>重新读取</button>
           </div>
         ) : !selected ? (
           <div className="memory-empty">
@@ -714,62 +650,22 @@ export function MomentsPanel({ login }: { login: LoginState }) {
           </div>
         ) : (
           <>
-            {graph && detail && (
-              <div className="memory-constellation">
-                <svg viewBox="0 0 900 300" preserveAspectRatio="none" aria-hidden="true">
-                  {graphItems.map((ref, index, refs) => (
-                    <path
-                      key={ref.id}
-                      d={`M450 48 C450 180 ${((index + 0.5) * 900) / refs.length} 140 ${((index + 0.5) * 900) / refs.length} 285`}
-                    />
-                  ))}
-                </svg>
-                <button className="memory-star-center" onClick={() => setGraph(false)}>
-                  <Sparkles size={17} />
-                  <span>{contextText(detail)}</span>
-                  <small>理解 · 点击阅读全文</small>
-                </button>
-                <div
-                  className="memory-star-sources"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.min(graphColumns, evidence.length) || 1}, minmax(0, 1fr))`,
-                  }}
-                >
-                  {graphItems.map((ref) => (
-                    <button
-                      key={ref.id}
-                      disabled={!ref.item}
-                      onClick={() =>
-                        ref.item &&
-                        void open(ref.item, false, [...history, { item: selected, graph: true }])
-                      }
-                    >
-                      <FileText size={17} />
-                      <strong>{ref.item ? sourceTitle(ref.item.source) : '依据暂不可用'}</strong>
-                      <span>{ref.item?.preview || ref.error}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             {detail && (
               <div className="memory-detail-content">
-                {!graph && (
-                  <>
-                    <p className="memory-detail-label">
-                      {selected.kind === 'artifact'
-                        ? selected.topics?.[0] || '当前理解'
-                        : sourceTitle(detail.source)}
-                      <time>{memoryDate(detail.updated_at || detail.created_at)}</time>
-                    </p>
-                    {selected.kind === 'artifact' && (
-                      <h3 className="memory-understanding-label">当前理解</h3>
-                    )}
-                    <p className="memory-fulltext">
-                      {contextText(detail) || '这条记录没有文字内容。'}
-                    </p>
-                  </>
-                )}
+                <>
+                  <p className="memory-detail-label">
+                    {selected.kind === 'artifact'
+                      ? selected.topics?.[0] || '当前理解'
+                      : sourceTitle(detail.source)}
+                    <time>{memoryDate(detail.updated_at || detail.created_at)}</time>
+                  </p>
+                  {selected.kind === 'artifact' && (
+                    <h3 className="memory-understanding-label">当前理解</h3>
+                  )}
+                  <p className="memory-fulltext">
+                    {contextText(detail) || '这条记录没有文字内容。'}
+                  </p>
+                </>
                 {selected.kind === 'record' && memoryProposal(detail) && (
                   <section className="memory-proposal">
                     <span className="memory-card-meta">
@@ -784,16 +680,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                   <>
                     <div className="memory-evidence-heading">
                       <h3>原始依据（{detail.references?.length || 0}）</h3>
-                      {!graph && (
-                        <button onClick={() => setGraph(true)}>
-                          <GitFork size={16} />
-                          查看关联
-                        </button>
-                      )}
                     </div>
-                    {graph && evidence.length > graphColumns && (
-                      <p className="memory-muted">图中展示前 {graphColumns} 条，完整依据见下方。</p>
-                    )}
                     {!detailLoading && !evidence.length && (
                       <p className="memory-muted">这条理解暂时没有可展示的原始关联。</p>
                     )}
@@ -801,9 +688,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                       <div className="memory-evidence" key={ref.id}>
                         {ref.item ? (
                           <button
-                            onClick={() =>
-                              void open(ref.item!, false, [...history, { item: selected, graph }])
-                            }
+                            onClick={() => void open(ref.item!, [...history, { item: selected }])}
                           >
                             <span className="memory-card-meta">
                               <FileText size={14} />
@@ -821,9 +706,7 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                         ) : (
                           <p>
                             {ref.error}
-                            <button onClick={() => void open(selected, graph, history)}>
-                              重试依据
-                            </button>
+                            <button onClick={() => void open(selected, history)}>重试依据</button>
                           </p>
                         )}
                       </div>
@@ -868,16 +751,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
           </>
         )}
       </dialog>
-      {network && (
-        <MemoryGraph
-          request={request}
-          onClose={() => setNetwork(false)}
-          onRead={(item) => {
-            setNetwork(false);
-            void open(item);
-          }}
-        />
-      )}
     </main>
   );
 }

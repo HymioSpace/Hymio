@@ -33,7 +33,7 @@
     --subtle: #202530;
     --pale: #28314a;
     --danger: #ffabb3;
-    --shadow-panel: 0 24px 80px #0006;
+    --shadow-panel: 0 24px 80px #18202a66;
   }
 }
 @media (prefers-contrast: more) {

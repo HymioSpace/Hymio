@@ -79,9 +79,12 @@ private struct ConversationInlineImages: InlineImageProvider {
   func image(with url: URL, label: String) async throws -> Image {
     let data = try await account.image(url.absoluteString)
     guard
-      let image = await Task.detached(priority: .userInitiated, operation: {
-        ImagePipeline.display(data, maxPixel: 2048)
-      }).value
+      let image = await Task.detached(
+        priority: .userInitiated,
+        operation: {
+          ImagePipeline.display(data, maxPixel: 2048)
+        }
+      ).value
     else { throw ServiceError.message("图片格式无效") }
     return Image(uiImage: image)
   }
@@ -120,11 +123,7 @@ extension Theme {
         HStack {
           Text(configuration.language ?? "代码").font(.caption).foregroundStyle(.secondary)
           Spacer()
-          Button {
-            UIPasteboard.general.string = configuration.content
-          } label: {
-            Label("复制", systemImage: "doc.on.doc").font(.caption)
-          }.accessibilityLabel("复制代码")
+          CopyFeedbackButton(content: configuration.content)
         }
         ScrollView(.horizontal) {
           configuration.label

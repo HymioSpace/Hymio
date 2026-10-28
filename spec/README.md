@@ -1,5 +1,9 @@
 # Hymio 设计
 
+- [展示层精修参数](feature41-interaction-finish.md)：十条Web细节规则、原生适配范围与验证。
+
+- [Client UI refinement](feature40-client-ui-refinement.md)：附件换行、预算暂停恢复入口、撤下星图和跨端UI规划。
+
 - [Personal device Link](feature35-personal-device-link.md)：个人 Mac 的出站连接、配对与原生操作。
 
 [整体架构](overview.md) 是入口，每个 feature 使用递增的 `featureNN-short-name.md`。

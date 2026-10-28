@@ -7,10 +7,12 @@ export function MessageImage({
   src,
   alt,
   login,
+  thumbnail = false,
 }: {
   src?: string;
   alt?: string;
   login: LoginState;
+  thumbnail?: boolean;
 }) {
   const [image, setImage] = useState('');
   const [error, setError] = useState('');
@@ -52,11 +54,25 @@ export function MessageImage({
   if (!src?.trim()) return null;
   if (error)
     return (
-      <span className="message-image-error" role="status">
-        {error} <button onClick={() => setAttempt((a) => a + 1)}>重试</button>
+      <span
+        className={`message-image-error ${thumbnail ? 'attachment-placeholder' : ''}`}
+        role="status"
+        title={error}
+      >
+        {thumbnail ? '图片未能加载' : error}{' '}
+        <button onClick={() => setAttempt((a) => a + 1)}>重试</button>
       </span>
     );
-  if (!image) return <span className="message-image-loading">正在加载图片…</span>;
+  if (!image)
+    return (
+      <span
+        className={`message-image-loading ${thumbnail ? 'attachment-placeholder' : ''}`}
+        role="status"
+        aria-label="正在加载图片"
+      >
+        {thumbnail ? '加载中…' : '正在加载图片…'}
+      </span>
+    );
   return (
     <>
       <img

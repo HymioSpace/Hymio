@@ -63,9 +63,11 @@ struct ChatScreen: View {
                 }.accessibilityHint("点击标记为已读")
               }
               TraceRow(
-                turn: turn, tools: Dictionary(uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
-                  client.model.terminals[id].map { (id, $0) }
-                }), approvals: client.model.approvals,
+                turn: turn,
+                tools: Dictionary(
+                  uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
+                    client.model.terminals[id].map { (id, $0) }
+                  }), approvals: client.model.approvals,
                 onAction: {
                   try await client.message($0)
                 }, onRetry: { client.retryDelivery($0) },
@@ -93,8 +95,23 @@ struct ChatScreen: View {
                 .foregroundStyle(.secondary)
             }
             if !client.model.pauseNotice.isEmpty {
-              Label(client.model.pauseNotice, systemImage: "pause.circle")
-                .font(.footnote).foregroundStyle(.secondary)
+              VStack(alignment: .leading, spacing: 8) {
+                Label(client.model.pauseNotice, systemImage: "pause.circle")
+                  .font(.footnote).foregroundStyle(.secondary)
+                Button(sendBusy ? "正在继续…" : "继续处理") {
+                  guard !sendBusy else { return }
+                  sendBusy = true
+                  Task {
+                    defer { sendBusy = false }
+                    do { try await client.message("继续处理") } catch {
+                      client.error = error.localizedDescription
+                    }
+                  }
+                }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+                  .fixedSize(horizontal: false, vertical: true)
+                  .disabled(sendBusy || uploading || !client.connected)
+                  .accessibilityIdentifier("chat.continue")
+              }
             }
             Color.clear.frame(height: 1).id("bottom")
           }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
@@ -354,6 +371,10 @@ struct ChatScreen: View {
             }.padding(.horizontal, 4)
           }
         }
+        TextField("接着说，我在听…", text: $draft, axis: .vertical)
+          .lineLimit(1...6).padding(.vertical, 6).padding(.horizontal, 8).focused($typing)
+          .accessibilityIdentifier(
+            "chat.input")
         HStack(alignment: .bottom, spacing: 8) {
           Menu {
             Button {
@@ -379,16 +400,14 @@ struct ChatScreen: View {
             ).frame(width: 44, height: 44)
           }.disabled(uploading || attachments.count >= AttachmentLimits.maxCount)
             .accessibilityLabel("添加附件")
-          TextField("接着说，我在听…", text: $draft, axis: .vertical)
-            .lineLimit(1...6).padding(.vertical, 9).focused($typing).accessibilityIdentifier(
-              "chat.input")
+          Spacer(minLength: 8)
           Button {
             send()
           } label: {
             Image(systemName: "arrow.up").font(.system(size: 16, weight: .semibold))
               .foregroundStyle(
                 Brand.onAccent
-              ).symbolEffect(.bounce, value: reduceMotion ? 0 : sentCount)
+              )
               .frame(width: 36, height: 36).background(
                 canSend ? Brand.blue : Color.secondary.opacity(0.18), in: Circle()
               )
@@ -398,7 +417,7 @@ struct ChatScreen: View {
         }
       }
       .padding(8)
-      .modifier(ComposerSurface())
+      .modifier(ComposerSurface(focused: typing))
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }
   private var canSend: Bool {

@@ -6,8 +6,11 @@ enum Brand {
   static let ink = adaptive(0x202536, dark: 0xEFF1F7)
   static let blue = adaptive(0x425DE8, dark: 0xA2B0FF)
   static let muted = adaptive(0x626B7D, dark: 0xA7AFC1)
-  static let mist = adaptive(0xF6F7FA, dark: 0x202530)
-  static let surface = Color(uiColor: .systemBackground)
+  static let mist = base
+  static let canvas = adaptive(0xF0F2F4, dark: 0x0F1215)
+  static let base = adaptive(0xF5F7F9, dark: 0x13161A)
+  static let surface = adaptive(0xFAFCFE, dark: 0x181B1E)
+  static let raised = adaptive(0xFEFFFF, dark: 0x1C2023)
   static let paper = adaptive(0xF8F6F0, dark: 0x26252A)
   static let paperLine = adaptive(0xEAE4D8, dark: 0x3C3940)
   static let notePaper = adaptive(0xFFF1CF, dark: 0x3A3121)
@@ -30,14 +33,40 @@ enum Brand {
 }
 
 struct ComposerSurface: ViewModifier {
-  @Environment(\.accessibilityReduceTransparency) private var opaque
-  @Environment(\.colorSchemeContrast) private var contrast
+  var focused = false
   func body(content: Content) -> some View {
-    if #available(iOS 26, *), !opaque, contrast != .increased {
-      content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28))
-    } else {
-      content.background(Brand.mist, in: RoundedRectangle(cornerRadius: 28))
-        .overlay(RoundedRectangle(cornerRadius: 28).stroke(.secondary.opacity(0.2), lineWidth: 1))
+    content
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 28))
+      .shadow(color: Brand.blue.opacity(focused ? 0.16 : 0), radius: 3)
+      .shadow(color: Brand.blue.opacity(focused ? 0.09 : 0), radius: 8)
+      .animation(.easeOut(duration: 0.12), value: focused)
+  }
+}
+
+/// Available only for existing interactive surfaces; these constants do not create gestures.
+enum InteractionSpring {
+  static let drag = Animation.interpolatingSpring(mass: 1, stiffness: 1200, damping: 80)
+  static let like = Animation.interpolatingSpring(mass: 1, stiffness: 380, damping: 18)
+}
+
+struct CopyFeedbackButton: View {
+  let content: String
+  @State private var copied = false
+  @State private var generation = 0
+  var body: some View {
+    Button {
+      UIPasteboard.general.string = content
+      copied = true
+      generation += 1
+    } label: {
+      Label(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc")
+        .font(.caption)
+    }
+    .accessibilityLabel(copied ? "已复制代码" : "复制代码")
+    .task(id: generation) {
+      guard generation > 0 else { return }
+      do { try await Task.sleep(for: .milliseconds(2500)) } catch { return }
+      copied = false
     }
   }
 }
@@ -83,8 +112,6 @@ struct AccountButton: View {
     Button(action: action) {
       Companion(size: 31, mood: .greeting)
         .padding(5)
-        .background(Brand.softBlue, in: Circle())
-        .overlay(Circle().stroke(Brand.blue.opacity(0.14), lineWidth: 1))
         .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())

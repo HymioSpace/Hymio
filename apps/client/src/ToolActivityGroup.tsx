@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { Approval, Message, ToolActivity } from '@hymio/client';
 import { obj, str } from '@hymio/protocol';
+import { Disclosure } from './Disclosure';
 import { JsonView } from './JsonView';
 
 const names: Record<string, string> = {
@@ -87,14 +88,19 @@ export function ToolCalls({
                 ? str(args.query) || str(args.name)
                 : str(args.action);
         return (
-          <details key={i} className="tool-call-detail">
-            <summary>
-              <ToolIcon size={13} />
-              <strong>{names[name] || name}</strong>
-              {hint && <span className="tool-call-hint">{hint}</span>}
-              <span>{states[state] || state}</span>
-              <ChevronRight size={12} className="tool-chevron" />
-            </summary>
+          <Disclosure
+            key={i}
+            className="tool-call-detail"
+            summary={
+              <>
+                <ToolIcon size={13} />
+                <strong>{names[name] || name}</strong>
+                {hint && <span className="tool-call-hint">{hint}</span>}
+                <span>{states[state] || state}</span>
+                <ChevronRight size={12} className="tool-chevron" />
+              </>
+            }
+          >
             <div className="tool-call-content">
               <p>工具：{name}</p>
               <JsonView value={args} />
@@ -105,7 +111,7 @@ export function ToolCalls({
                 </>
               )}
             </div>
-          </details>
+          </Disclosure>
         );
       })}
     </div>
@@ -144,27 +150,32 @@ export function ToolActivityGroup({
         ? '工具活动 · 有结果需要查看'
         : '已完成工具活动';
   return (
-    <details className="activity-group" data-testid="tool-activity-group">
-      <summary>
-        {running ? (
-          <LoaderCircle size={14} className="spin" />
-        ) : waiting ? (
-          <Clock3 size={14} />
-        ) : failed ? (
-          <CircleAlert size={14} />
-        ) : (
-          <Check size={14} />
-        )}
-        <span aria-live="polite">{label}</span>
-        <span className="activity-count">{calls.length} 次调用</span>
-        <ChevronRight size={13} className="activity-chevron" />
-      </summary>
+    <Disclosure
+      className="activity-group"
+      data-testid="tool-activity-group"
+      summary={
+        <>
+          {running ? (
+            <LoaderCircle size={14} className="spin" />
+          ) : waiting ? (
+            <Clock3 size={14} />
+          ) : failed ? (
+            <CircleAlert size={14} />
+          ) : (
+            <Check size={14} />
+          )}
+          <span aria-live="polite">{label}</span>
+          <span className="activity-count">{calls.length} 次调用</span>
+          <ChevronRight size={13} className="activity-chevron" />
+        </>
+      }
+    >
       <div className="activity-items">
         {messages.map((m) => (
           <ToolCalls key={m.id} message={m} tools={tools} approvals={approvals} />
         ))}
       </div>
-    </details>
+    </Disclosure>
   );
 }
 

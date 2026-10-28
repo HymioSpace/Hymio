@@ -181,7 +181,7 @@ struct HomeScreen: View {
     var id: String { rawValue }
     var title: String {
       switch self {
-      case .attention: return "需要你看看"
+      case .attention: return "需要你确认"
       case .updates: return "最近进展"
       case .ongoing: return "正在推进"
       case .upcoming: return "接下来的安排"
@@ -203,8 +203,8 @@ struct HomeScreen: View {
     }
     let upcoming = board.items.filter { taskStatus($0) == "scheduled" }
     return [
-      (.attention, attention), (.updates, updates),
-      (.ongoing, ongoing), (.upcoming, upcoming),
+      (.attention, attention), (.ongoing, ongoing),
+      (.updates, updates), (.upcoming, upcoming),
     ]
     .filter { !$0.1.isEmpty }
   }
@@ -212,22 +212,16 @@ struct HomeScreen: View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: 28) {
-          HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(Date.now.formatted(.dateTime.month().day().weekday(.wide)))
-                .font(.caption).foregroundStyle(Brand.muted)
-              Text(firstVisit ? "嗨，我是 Hymio。" : "今天，继续向前。").font(
-                .system(.title, design: .rounded, weight: .semibold)
-              ).tracking(
-                -0.8)
-              Text(
-                client.connected
-                  ? (firstVisit ? "从一个想法，或一件小事开始。" : "进展、安排和重要的事，都在这里。") : "正在连接，已有进展仍可查看。"
-              )
-              .font(.subheadline).foregroundStyle(Brand.muted)
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Companion(size: 78, mood: ongoing.isEmpty ? .idle : .working)
-          }.padding(.top, 16)
+          VStack(alignment: .leading, spacing: 7) {
+            Text(Date.now.formatted(.dateTime.month().day().weekday(.wide)))
+              .font(.caption).foregroundStyle(Brand.muted)
+            Text(firstVisit ? "嗨，我是 Hymio。" : "此刻")
+              .font(.title2.weight(.semibold))
+            if !client.connected {
+              Text("正在连接，已有进展仍可查看。")
+                .font(.subheadline).foregroundStyle(Brand.muted)
+            }
+          }.padding(.top, 12)
           ForEach(modules, id: \.kind) { module in
             homeSection(
               module.kind == .updates && board.hasBaseline ? "新的进展" : module.kind.title,
@@ -322,23 +316,13 @@ struct HomeScreen: View {
   ) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       HStack(spacing: 9) {
-        Image(systemName: symbol).font(.system(size: 13, weight: .medium))
-          .foregroundStyle(tint).frame(width: 26, height: 26)
-          .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-          .accessibilityHidden(true)
+        Circle().fill(tint).frame(width: 6, height: 6).accessibilityHidden(true)
         Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
           .layoutPriority(1)
         if let count {
           Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(Brand.muted)
         }
-        Rectangle()
-          .fill(
-            LinearGradient(
-              colors: [Brand.line, Brand.line.opacity(0.15)], startPoint: .leading,
-              endPoint: .trailing)
-          )
-          .frame(minWidth: 18, maxWidth: .infinity).frame(height: 1)
-          .padding(.leading, 3).accessibilityHidden(true)
+        Spacer(minLength: 0)
       }
       .accessibilityElement(children: .combine)
       .accessibilityAddTraits(.isHeader)
@@ -376,13 +360,9 @@ struct TaskSummaryCard: View {
         Label(taskSchedule(item["schedule"]), systemImage: "calendar").font(.caption)
           .foregroundStyle(Brand.muted)
       }
-    }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
-      .background(
-        attention ? Brand.attentionSurface : Brand.surface, in: RoundedRectangle(cornerRadius: 18)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 18).stroke(
-          attention ? Brand.attention.opacity(0.15) : Brand.line))
+    }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14)
+      .overlay(alignment: .bottom) { Rectangle().fill(Brand.base).frame(height: 1) }
+
   }
 }
 

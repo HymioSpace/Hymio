@@ -66,6 +66,7 @@ struct TraceRow: View, Equatable {
     }
     .onAppear { anchored = Date() }
     .onChange(of: turn.latestAt) { _, _ in anchored = Date() }
+    .onChange(of: turn.settled) { _, settled in if settled { expanded = false } }
   }
 
   private func row(_ message: ChatMessage, compact: Bool = false) -> some View {

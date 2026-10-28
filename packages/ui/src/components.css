@@ -17,7 +17,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: calc(600 - var(--weight-adjust, 0));
   color: var(--ink);
   background: var(--surface);
 }

@@ -124,9 +124,9 @@ export function HomePanel({
   const upcoming = tasks.filter((t) => workState(t) === 'scheduled');
   const firstVisit = loaded && conversationReady && !tasks.length && !hasConversation;
   const modules = [
-    { kind: 'attention' as const, title: '需要你看看', items: attention },
-    { kind: 'updates' as const, title: baseline ? '新的进展' : '最近进展', items: updates },
+    { kind: 'attention' as const, title: '需要你确认', items: attention },
     { kind: 'ongoing' as const, title: '正在推进', items: ongoing },
+    { kind: 'updates' as const, title: baseline ? '新的进展' : '最近进展', items: updates },
     { kind: 'upcoming' as const, title: '接下来的安排', items: upcoming },
   ].filter((module) => module.items.length);
   function markSeen(task: Work) {
@@ -205,10 +205,10 @@ export function HomePanel({
               })}
             </span>
           </div>
-          <h1>{firstVisit ? '嗨，我是 Hymio。' : '今天，继续向前。'}</h1>
-          <p>{firstVisit ? '从一个想法，或一件小事开始。' : '进展、安排和重要的事，都在这里。'}</p>
+          <h1>{firstVisit ? '嗨，我是 Hymio。' : '此刻'}</h1>
+          {firstVisit && <p>从一个想法，或一件小事开始。</p>}
         </div>
-        <Companion mood={mood} />
+        <Companion compact mood={mood} />
       </header>
       <div className="home-columns">
         <div className="home-feed">

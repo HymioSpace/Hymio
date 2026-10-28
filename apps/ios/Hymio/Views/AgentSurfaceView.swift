@@ -63,6 +63,8 @@ struct BufferedProse: View {
   @ObservedObject var account: AccountService
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.scenePhase) private var scene
+  @State private var copyGeneration = 0
+  @State private var copied = false
   @StateObject private var presentation: ProsePresenter
   init(source: String, streaming: Bool, account: AccountService, plain: Bool = false) {
     self.plain = plain
@@ -101,7 +103,11 @@ struct BufferedProse: View {
       }
     }
     .contextMenu {
-      Button("复制回复", systemImage: "doc.on.doc") { UIPasteboard.general.string = source }
+      Button("复制回复", systemImage: "doc.on.doc") {
+        UIPasteboard.general.string = source
+        copied = true
+        copyGeneration += 1
+      }
     }
     .overlay(alignment: .bottomTrailing) {
       if frame.pending && !reduceMotion {
@@ -111,9 +117,22 @@ struct BufferedProse: View {
         .frame(width: 28, height: 22).allowsHitTesting(false).accessibilityHidden(true)
       }
     }
+    .overlay(alignment: .bottomTrailing) {
+      if copied {
+        Label("已复制", systemImage: "checkmark").font(.caption)
+          .padding(8).background(Brand.raised, in: Capsule())
+          .accessibilityLabel("回复已复制")
+      }
+    }
+    .task(id: copyGeneration) {
+      guard copyGeneration > 0 else { return }
+      do { try await Task.sleep(for: .milliseconds(2500)) } catch { return }
+      copied = false
+    }
     .onChange(of: source, initial: true) { _, value in
-      presentation.receive(value, immediate: reduceMotion || (!streaming && frame.text == value),
-                           complete: !streaming)
+      presentation.receive(
+        value, immediate: reduceMotion || (!streaming && frame.text == value),
+        complete: !streaming)
     }
     .onChange(of: streaming) { _, value in
       presentation.receive(source, immediate: reduceMotion, complete: !value)
