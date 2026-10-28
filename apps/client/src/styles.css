@@ -2629,28 +2629,6 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-/* Progressive presentation: animate the new edge, never the settled transcript. */
-.prose-release {
-  position: relative;
-}
-.prose-release::after {
-  content: '';
-  display: inline-block;
-  width: 16px;
-  height: 1em;
-  vertical-align: bottom;
-  background: linear-gradient(90deg, transparent, var(--surface, #fff));
-  animation: release-edge 0.8s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-@keyframes release-edge {
-  from {
-    opacity: 0.3;
-  }
-  to {
-    opacity: 0.8;
-  }
-}
 .reasoning-panel .disclosure-toggle {
   display: flex;
   align-items: center;
@@ -2831,6 +2809,14 @@ a {
   border-radius: 12px;
   animation: release-edge 0.8s infinite alternate;
 }
+@keyframes release-edge {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 0.8;
+  }
+}
 .surface-pulse {
   width: 4px;
   height: 4px;
@@ -2886,8 +2872,7 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .surface-node,
   .surface-slot,
-  .surface-pulse,
-  .prose-release::after {
+  .surface-pulse {
     animation: none !important;
     filter: none !important;
     transform: none !important;
@@ -2904,38 +2889,6 @@ a {
   flex: 1;
   width: 0;
   min-width: 0;
-}
-
-.prose-release::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
-}
-.text-resolve {
-  display: inline-block;
-  white-space: pre-wrap;
-  transform-origin: 0 0.65em;
-  animation: text-resolve 120ms cubic-bezier(0.22, 1, 0.36, 1) both;
-  will-change: opacity, transform, filter;
-}
-@keyframes text-resolve {
-  from {
-    opacity: 0;
-    transform: none;
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .text-resolve {
-    animation: none !important;
-    filter: none !important;
-  }
 }
 
 .surface-frame {

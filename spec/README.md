@@ -2,6 +2,8 @@
 
 - [Tool authorization and approvals](feature44-tool-authorization.md)：能力边界、行动审批、授权范围和客户端交互。
 
+- [对话气泡与流畅流式文字](feature42-chat-bubbles-native-streaming.md)：附件右对齐、助手气泡与自适应流式节奏。
+
 - [展示层精修参数](feature41-interaction-finish.md)：十条Web细节规则、原生适配范围与验证。
 
 - [Client UI refinement](feature40-client-ui-refinement.md)：附件换行、预算暂停恢复入口、撤下星图和跨端UI规划。

@@ -6,7 +6,7 @@ import '../craft.css';
 import craftSource from '../craft.css?raw';
 import tokenSource from '../../../../packages/ui/src/tokens.css?raw';
 import { Disclosure } from '../Disclosure';
-import { ProgressiveContent, MotionText } from '../ProgressiveContent';
+import { ProgressiveContent } from '../ProgressiveContent';
 import { MessageView } from '../MessageView';
 import { MessageImage } from '../MessageImage';
 import type { LoginState } from '../useLogin';
@@ -114,11 +114,7 @@ function Review() {
             content={target}
             streaming={target.length < text.length}
             onAction={async () => {}}
-            render={(value) => (
-              <p>
-                <MotionText>{value}</MotionText>
-              </p>
-            )}
+            render={(value) => <p>{value}</p>}
           />
         )}
         <MessageView
