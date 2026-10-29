@@ -120,13 +120,11 @@ struct AccountButton: View {
   var body: some View {
     Button(action: { Haptics.selection(); action() }) {
       Image(systemName: "line.3.horizontal")
-        .font(.system(size: 19, weight: .medium)).foregroundStyle(Brand.ink)
+        .font(.system(size: 17, weight: .regular)).foregroundStyle(Brand.ink)
         .frame(width: 44, height: 44)
-        .background(.regularMaterial, in: Circle())
-        .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.7))
     }
     .buttonStyle(AccountAvatarStyle())
-    .contentShape(Circle())
+    .contentShape(Rectangle())
     .accessibilityLabel("账号与设置")
     .accessibilityHint("打开个人资料、设备和偏好设置")
   }
