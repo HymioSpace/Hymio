@@ -31,6 +31,7 @@ def initialize(db):
             "source": "TEXT NOT NULL DEFAULT 'manual'",
             "intent_key": "TEXT",
             "kind": "TEXT NOT NULL DEFAULT 'task'",
+            "for_user": "INTEGER NOT NULL DEFAULT 0",
         },
         "task_runs": {
             "expires_at": "REAL",

@@ -162,6 +162,7 @@ private enum KitVisual {
 struct KitsScreen: View {
   @ObservedObject var account: AccountService
   let onAccount: () -> Void
+  var showAccountButton = true
   @StateObject private var store = KitCatalogStore()
   @State private var installing = ""
 
@@ -219,7 +220,7 @@ struct KitsScreen: View {
       .navigationTitle("应用").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItemGroup(placement: .topBarLeading) {
-          AccountButton(account: account, action: onAccount)
+          if showAccountButton { AccountButton(account: account, action: onAccount) }
         }.accountUnframed()
       }
       .refreshable { await store.load(account) }
@@ -358,7 +359,7 @@ private struct KitCatalogCard: View {
   }
 }
 
-private struct KitAppScreen: View {
+struct KitAppScreen: View {
   @ObservedObject var account: AccountService
   let item: JSON
   @State private var app: JSON = .null

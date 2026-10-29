@@ -20,8 +20,9 @@ OS permissions and Android screen-sharing consent remain explicit; Android expos
 
 ## iOS preview
 
-Start with Now for task progress, continue the shared conversation, or open Tasks, Memory and real
-applications. iOS uses five native tabs; account settings live behind the leading three-line menu.
+Start with Now for decisions, personal schedules and recent results, continue the shared conversation,
+or revisit Recollections. iOS uses three native tabs; Tasks, Applications and grouped settings live
+behind the leading three-line My menu.
 Web uses a labelled sidebar and a wider task inspector and does not expose Kits. iOS applications
 may be generated as versioned React + bounded Python projects with a dedicated Oath coding context.
 

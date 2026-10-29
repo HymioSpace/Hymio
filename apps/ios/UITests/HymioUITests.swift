@@ -1,6 +1,99 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testThreeTabsAndGroupedMyNavigation() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioExperiencePreview"]
+    app.launch()
+    XCTAssertTrue(app.tabBars.buttons["此刻"].waitForExistence(timeout: 10))
+    XCTAssertEqual(app.tabBars.buttons.count, 3)
+    XCTAssertTrue(app.tabBars.buttons["回忆"].exists)
+    app.buttons["账号与设置"].tap()
+    XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["模型与上下文"].exists)
+    app.buttons["模型与上下文"].tap()
+    XCTAssertTrue(app.navigationBars["模型设置"].waitForExistence(timeout: 5))
+    app.navigationBars.buttons.firstMatch.tap()
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "my-grouped-navigation"; shot.lifetime = .keepAlways; add(shot)
+    app.buttons["关闭账号设置"].tap()
+    app.tabBars.buttons["回忆"].tap()
+    XCTAssertTrue(app.staticTexts["回忆"].waitForExistence(timeout: 5))
+  }
+
+  @MainActor func testRecollectionSourceLabelsAndDensity() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioContextPreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["context.collect"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["苹果日历"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "recollections-source-icons"; shot.lifetime = .keepAlways; add(shot)
+    app.segmentedControls.buttons["记住的事"].tap()
+    XCTAssertTrue(app.buttons["context.collect"].exists)
+  }
+
+  @MainActor func testActualChatStreamingAnchor() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioActualChatPreview"]
+    app.launch()
+    XCTAssertTrue(app.staticTexts["chat.stress.complete"].waitForExistence(timeout: 35))
+    let final = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "最终结果已整理好。")).firstMatch
+    XCTAssertTrue(final.isHittable, app.debugDescription)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "actual-chat-final-anchor"; shot.lifetime = .keepAlways; add(shot)
+    app.scrollViews.firstMatch.swipeDown()
+    XCTAssertTrue(app.buttons["最新消息"].waitForExistence(timeout: 5))
+    app.buttons["最新消息"].tap()
+    XCTAssertTrue(final.isHittable)
+  }
+
+  @MainActor func testHomeLargeTextAndDarkAppearance() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioHomePreview", "-HymioHomeDarkPreview", "-HymioHomeLargePreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["home.focus"].waitForExistence(timeout: 10))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "home-large-dark"; shot.lifetime = .keepAlways; add(shot)
+    app.scrollViews.firstMatch.swipeUp()
+    XCTAssertTrue(app.staticTexts["Hymio"].exists)
+  }
+
+  @MainActor func testHomePrioritizesAttention() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioHomePreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["home.focus"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["确认周五住哪家酒店"].exists)
+    XCTAssertTrue(app.staticTexts["接下来"].exists)
+    XCTAssertTrue(app.staticTexts["正在推进"].exists)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "home-attention-hierarchy"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
+  @MainActor func testTasksSwitchCalendarAndStatusViews() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioCalendarPreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["状态"].waitForExistence(timeout: 10))
+    app.buttons["状态"].tap()
+    XCTAssertTrue(app.staticTexts["等你决定"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["正在进行"].exists)
+    XCTAssertTrue(app.staticTexts["接下来的安排"].exists)
+    app.buttons["周"].tap()
+    XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
+    app.buttons["日"].tap()
+    XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
+    app.buttons["月"].tap()
+    XCTAssertTrue(app.buttons["状态"].waitForExistence(timeout: 5))
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "tasks-status-view"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   @MainActor func testConnectorCatalogAndHealthConsent() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioConnectorsPreview"]

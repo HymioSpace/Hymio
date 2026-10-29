@@ -7,6 +7,7 @@ struct AccountScreen: View {
   @ObservedObject var client: AgentClient
   @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
+  @StateObject private var taskBoard = TaskBoard()
   @State private var loggingOut = false
   @State private var diagnostics = false
   @State private var modelOptions: [String] = []
@@ -175,8 +176,28 @@ struct AccountScreen: View {
             Label("连接来源", systemImage: "link")
           }.accessibilityIdentifier("account.connectors")
         } footer: { Text("邮件、清单和来自 iPhone 的日常，由你选择分享。") }
-        modelSection
-        authorizationSection
+        Section("Hymio") {
+          NavigationLink { TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
+            .task { taskBoard.bind(account); await taskBoard.refresh(account) } } label: {
+            Label("任务与日程", systemImage: "calendar")
+          }
+          NavigationLink { KitsScreen(account: account, onAccount: {}, showAccountButton: false) } label: {
+            Label("我的应用", systemImage: "square.grid.2x2")
+          }
+        }
+        Section("偏好与安全") {
+          NavigationLink { Form { modelSection }.navigationTitle("模型设置").navigationBarTitleDisplayMode(.inline) } label: {
+            Label("模型与上下文", systemImage: "slider.horizontal.3")
+          }
+          NavigationLink { Form { authorizationSection }.navigationTitle("隐私与授权").navigationBarTitleDisplayMode(.inline) } label: {
+            Label("隐私与工具授权", systemImage: "hand.raised")
+          }
+          NavigationLink { NotificationSettingsScreen(account: account) } label: {
+            Label("通知与实时活动", systemImage: "bell.badge")
+          }
+        }
+        Section("设备与连接") {
+          NavigationLink { List {
         Section {
           Button {
             pairingPresented = true
@@ -267,10 +288,16 @@ struct AccountScreen: View {
         } footer: {
           Text("Mac 和 Android 经 HymioDevice 接入。iPhone 用于对话、记忆和应用。")
         }
-        Section {
-          NavigationLink { NotificationSettingsScreen(account: account) } label: {
-            Label("通知与实时活动", systemImage: "bell.badge")
-          }
+          }.navigationTitle("我的设备").navigationBarTitleDisplayMode(.inline)
+            .task {
+              while !Task.isCancelled {
+                await client.loadDevices()
+                do { try await Task.sleep(for: .seconds(20)) } catch { return }
+              }
+            }
+          } label: { Label("我的设备", systemImage: "desktopcomputer") }
+        }
+        Section("调试与诊断") {
           NavigationLink {
             TraceScreen(account: account, client: client)
           } label: {
@@ -281,6 +308,8 @@ struct AccountScreen: View {
           } label: {
             Label("连接诊断", systemImage: "waveform.path.ecg")
           }
+        }
+        Section {
           Button(role: .destructive) {
             loggingOut = true
           } label: {
@@ -288,7 +317,7 @@ struct AccountScreen: View {
           }.accessibilityIdentifier("account.logout")
         }
       }
-      .navigationTitle("账号").navigationBarTitleDisplayMode(.inline)
+      .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button {
@@ -297,12 +326,6 @@ struct AccountScreen: View {
             Image(systemName: "xmark")
           }
           .accessibilityLabel("关闭账号设置")
-        }
-      }
-      .task {
-        while !Task.isCancelled {
-          await client.loadDevices()
-          do { try await Task.sleep(for: .seconds(15)) } catch { return }
         }
       }
       .refreshable { await client.loadDevices() }

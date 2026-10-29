@@ -4,8 +4,8 @@ private let memoryCategories: [(key: String, label: String)] = [
   ("all", "全部"), ("work", "工作"), ("learning", "学习"), ("life", "生活"), ("uncategorized", "未分类"),
 ]
 private let memorySources: [(key: String, label: String)] = [
-  ("all", "全部"), ("conversation", "对话"), ("user", "手记"), ("connector", "连接来源"),
-  ("kit", "应用"), ("legacy", "其他"),
+  ("all", "日常足迹"), ("conversation", "对话"), ("user", "手记"), ("gmail", "Gmail"),
+  ("dida", "滴答清单"), ("apple_calendar", "苹果日历"), ("apple_health", "苹果健康"), ("kit", "应用"), ("legacy", "其他"),
 ]
 
 /// A user-facing view of the context Hymio has assembled, with each synthesized
@@ -322,7 +322,7 @@ final class ContextStore: ObservableObject {
       title: "你", subtitle: "和 Hymio 的对话",
       date: "2026-10-22T15:12:00Z")
     let calendar = previewRecord(
-      id: "preview-calendar", kind: "connector", namespace: "calendar",
+      id: "preview-calendar", kind: "connector", namespace: "apple_calendar.preview",
       content: "产品体验复盘",
       title: "产品体验复盘", subtitle: "今天 15:30 · 设计团队",
       date: "2026-10-23T07:30:00Z")
@@ -386,11 +386,10 @@ struct ContextPreviewScreen: View {
       Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
         Color.clear
       }
-      Tab("任务", systemImage: "checklist", value: ProductTab.tasks) { Color.clear }
-      Tab("记忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
+      Tab("回忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
         NavigationStack { ContextPage(store: store, onAccount: {}) }
       }
-      Tab("应用", systemImage: "square.grid.2x2.fill", value: ProductTab.kits) { Color.clear }
+
     }.tint(Brand.blue)
   }
 }
@@ -404,7 +403,9 @@ private struct ContextPage: View {
   @State private var selectedEntry: ContextEntry?
   @State private var lastOpenedID = ""
   @Environment(\.dynamicTypeSize) private var typeSize
-  private var items: [ContextEntry] { insights ? store.insights : store.records }
+  private var items: [ContextEntry] {
+    insights ? store.insights : store.records.filter { store.source != "all" || !$0.namespace.hasPrefix("apple_health") }
+  }
   private var cursor: String { insights ? store.insightCursor : store.recordCursor }
 
   var body: some View {
@@ -505,15 +506,10 @@ private struct ContextPage: View {
         AccountButton(account: store.accountService, action: onAccount)
       }.memoryUnframed()
       ToolbarItem(placement: .principal) {
-        Text("记忆").font(.headline).foregroundStyle(Brand.ink)
+        Text("回忆").font(.headline).foregroundStyle(Brand.ink)
       }
       ToolbarItem(placement: .topBarTrailing) {
-        Button {
-          showCollect = true
-        } label: {
-          Image(systemName: "plus").font(.title2.weight(.medium))
-            .foregroundStyle(Brand.blue).frame(minWidth: 44, minHeight: 44)
-        }.buttonStyle(.plain).accessibilityLabel("添加记忆")
+        AddActionButton(title: "添加回忆") { showCollect = true }
           .accessibilityIdentifier("context.collect")
       }.memoryUnframed()
     }
@@ -551,6 +547,7 @@ private struct ContextPage: View {
       HStack(spacing: 9) {
         ForEach(insights ? understandingLabels : memorySources, id: \.key) { option in
           Button {
+            Haptics.selection()
             Task {
               if insights {
                 await store.load(category: option.key)
@@ -563,7 +560,7 @@ private struct ContextPage: View {
               .subheadline.weight(
                 (insights ? store.category : store.source) == option.key ? .semibold : .regular)
             )
-            .padding(.horizontal, 17).frame(minHeight: 36)
+            .padding(.horizontal, 12).frame(minHeight: 32)
             .foregroundStyle(
               (insights ? store.category : store.source) == option.key ? Brand.onAccent : Brand.ink
             )
@@ -595,7 +592,7 @@ private struct ContextPage: View {
   private var layerPicker: some View {
     Picker("记忆类型", selection: $insights) {
       Text("足迹").tag(false)
-      Text("记忆").tag(true)
+      Text("记住的事").tag(true)
     }.pickerStyle(.segmented).frame(maxWidth: .infinity).accessibilityIdentifier("context.tabs")
   }
   private var searchField: some View {
@@ -678,20 +675,21 @@ private struct ContextCard: View {
     Group {
       if entry.isInsight { understanding } else { footprint }
     }
-    .padding(.horizontal, 2).padding(.vertical, 14)
+    .padding(.horizontal, 0).padding(.vertical, 12)
     .overlay(alignment: .bottom) { Rectangle().fill(Brand.base).frame(height: 1) }
     .contentShape(Rectangle())
   }
   private var understanding: some View { cardContent }
   private var footprint: some View { cardContent }
   private var cardContent: some View {
-    HStack(spacing: 12) {
+    HStack(alignment: .top, spacing: 12) {
+      ContextSourceIcon(entry: entry)
       VStack(alignment: .leading, spacing: 5) {
         Text(copy.title.isEmpty ? "查看内容" : copy.title)
-          .font(.body.weight(.medium)).foregroundStyle(Brand.ink)
+          .font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
           .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
         if !copy.summary.isEmpty {
-          Text(copy.summary).font(.subheadline).foregroundStyle(Brand.muted)
+          Text(copy.summary).font(.caption).foregroundStyle(Brand.muted)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 2)
         }
         ViewThatFits(in: .horizontal) {
@@ -707,8 +705,29 @@ private struct ContextCard: View {
         }.font(.caption).foregroundStyle(Brand.muted)
           .fixedSize(horizontal: false, vertical: true)
       }.frame(maxWidth: .infinity, alignment: .leading)
-      Spacer().frame(width: 24)
     }.frame(minHeight: 44)
+  }
+}
+
+private struct ContextSourceIcon: View {
+  let entry: ContextEntry
+  private var insightSymbol: String {
+    let domains = entry.value["domains"].items.map(\.text).joined(separator: " ")
+    if domains.contains("health") { return "heart.text.clipboard" }
+    if domains.contains("routine") { return "sun.horizon" }
+    if entry.category == "work" { return "briefcase" }
+    if entry.category == "learning" { return "book" }
+    return "bookmark"
+  }
+  var body: some View {
+    Group {
+      if !entry.isInsight && entry.namespace.hasPrefix("gmail") { Image("GmailBrand").resizable().scaledToFit().padding(7) }
+      else if !entry.isInsight && entry.namespace.hasPrefix("dida") { Image("DidaBrand").resizable().scaledToFit().padding(7) }
+      else { Image(systemName: entry.isInsight ? insightSymbol : entry.sourceSymbol)
+          .font(.system(size: 16, weight: .regular))
+          .foregroundStyle(entry.namespace.hasPrefix("apple_health") ? Color.pink : Brand.blue) }
+    }.frame(width: 34, height: 34).background(Brand.base, in: RoundedRectangle(cornerRadius: 10))
+      .accessibilityHidden(true)
   }
 }
 
@@ -930,6 +949,13 @@ private let relationNames = [
 }
 
 private func contextContent(_ value: JSON) -> String {
+  if value["source"]["namespace"].text.hasPrefix("apple_health") {
+    let context = value["context"]
+    var lines = ["苹果健康 · " + context["day"].text]
+    if context["steps"] != .null { lines.append("步数：\(Int(context["steps"].double)) 步") }
+    if context["active_kcal"] != .null { lines.append("活动能量：\(Int(context["active_kcal"].double)) 千卡") }
+    return lines.joined(separator: "\n")
+  }
   if !value["content"].text.isEmpty { return value["content"].text }
   for key in ["text", "content", "title"] {
     if !value["context"][key].text.isEmpty { return value["context"][key].text }
@@ -940,16 +966,22 @@ private func contextContent(_ value: JSON) -> String {
 }
 private func connectorName(_ namespace: String) -> String {
   let lower = namespace.lowercased()
+  if lower.contains("apple_calendar") { return "苹果日历" }
   if lower.contains("calendar") { return "日历" }
+  if lower.contains("gmail") { return "Gmail" }
   if lower.contains("mail") { return "邮件" }
   if lower.contains("figma") { return "Figma" }
   if lower.contains("notion") { return "Notion" }
   if lower.contains("github") { return "GitHub" }
-  return namespace.replacingOccurrences(of: "_", with: " ").capitalized
+  if lower.hasPrefix("apple_health") { return "苹果健康" }
+  if lower.hasPrefix("dida") { return "滴答清单" }
+  return "其他来源"
 }
 
 private func connectorSymbol(_ namespace: String) -> String {
   let lower = namespace.lowercased()
+  if lower.contains("apple_health") { return "heart.fill" }
+  if lower.contains("dida") { return "checkmark.circle.fill" }
   if lower.contains("calendar") { return "calendar" }
   if lower.contains("mail") { return "envelope.fill" }
   if lower.contains("file") || lower.contains("drive") { return "doc.text.fill" }

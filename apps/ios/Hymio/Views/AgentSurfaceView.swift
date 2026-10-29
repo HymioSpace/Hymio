@@ -38,7 +38,7 @@ private final class ProsePresenter: ObservableObject {
     guard task == nil, buffer.pending else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
+        do { try await Task.sleep(for: .milliseconds(33)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
@@ -421,7 +421,51 @@ struct AgentSurfaceView: View {
     }
   }
 
-  @MainActor private final class StreamFrameProbe: NSObject {
+  struct ActualChatPerformancePreview: View {
+    let account: AccountService
+    @StateObject private var client: AgentClient
+    @State private var complete = false
+    init(account: AccountService) {
+      self.account = account
+      _client = StateObject(wrappedValue: AgentClient(account: account, previewConnected: true))
+    }
+    var body: some View {
+      ChatScreen(account: account, client: client, onAccount: {})
+        .overlay(alignment: .topTrailing) {
+          if complete { Text("验收完成").font(.caption2).padding(6).background(Brand.base).accessibilityIdentifier("chat.stress.complete") }
+        }
+        .task { @MainActor in
+          var seq = 0
+          @MainActor func emit(_ type: String, _ body: [String: JSON]) {
+            seq += 1
+            client.injectSynthetic(Event(user_id: "synthetic", event_seq: seq, event_type: type,
+              payload: .object(body), occur_dt: "2026-01-01T00:00:00Z"))
+          }
+          for i in 0..<16 {
+            emit("user.message", ["content": .string("整理第 \(i + 1) 件事")])
+            emit("assistant.message", ["step_id": .string("history-\(i)"), "content": .string("已整理好。保留清楚的结果与下一步。")])
+          }
+          emit("user.message", ["content": .string("继续整理，给我最终结果。")])
+          let clock = StreamFrameProbe(); clock.start()
+          let answer = String(repeating: "文字逐渐到达，已读内容留在原位。中英文 09:58 与 🦦 保持完整。", count: 18) + "\n\n最终结果已整理好。"
+          let characters = Array(answer)
+          for index in stride(from: 0, to: characters.count, by: 10) {
+            guard !Task.isCancelled else { clock.stop(); return }
+            emit("assistant.delta", ["step_id": .string("live"), "channel": .string("content"), "attempt": .number(0),
+              "text": .string(String(characters[index..<min(index + 10, characters.count)]))])
+            try? await Task.sleep(for: .milliseconds(index % 70 == 0 ? 180 : 50))
+          }
+          emit("assistant.message", ["step_id": .string("live"), "content": .string(answer)])
+          try? await Task.sleep(for: .seconds(8))
+          let metrics = clock.stop()
+          let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("actual-chat-metrics.txt")
+          try? metrics.write(to: path, atomically: true, encoding: .utf8)
+          complete = true
+        }
+    }
+  }
+
+  @MainActor final class StreamFrameProbe: NSObject {
     private var link: CADisplayLink?
     private var previous = 0.0
     private var frames = 0

@@ -118,10 +118,12 @@ struct AccountButton: View {
   let action: () -> Void
 
   var body: some View {
-    Button(action: action) {
-      Companion(size: 31, mood: .greeting)
-        .padding(5)
+    Button(action: { Haptics.selection(); action() }) {
+      Image(systemName: "line.3.horizontal")
+        .font(.system(size: 19, weight: .medium)).foregroundStyle(Brand.ink)
         .frame(width: 44, height: 44)
+        .background(.regularMaterial, in: Circle())
+        .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.7))
     }
     .buttonStyle(AccountAvatarStyle())
     .contentShape(Circle())
@@ -163,4 +165,22 @@ struct ToolOutcomeLabel: View {
     ][outcome] ?? outcome
   }
   var body: some View { Text(label).font(.caption).foregroundStyle(Brand.muted) }
+}
+
+@MainActor enum Haptics {
+  static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+  static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+}
+
+struct AddActionButton: View {
+  let title: String
+  let action: () -> Void
+  var body: some View {
+    Button { Haptics.selection(); action() } label: {
+      Image(systemName: "plus").font(.system(size: 19, weight: .medium))
+        .frame(width: 44, height: 44).foregroundStyle(Brand.ink)
+        .background(.regularMaterial, in: Circle())
+        .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.7))
+    }.buttonStyle(.plain).accessibilityLabel(title)
+  }
 }

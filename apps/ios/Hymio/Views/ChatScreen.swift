@@ -26,6 +26,12 @@ struct ChatScreen: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
   @State private var followTask: Task<Void, Never>?
+  private var visibleTurns: [Turn] {
+    if client.turns.isEmpty, !client.model.messages.isEmpty {
+      return client.model.turns
+    }
+    return client.turns
+  }
   var body: some View {
     NavigationStack {
       ScrollViewReader { proxy in
@@ -53,7 +59,7 @@ struct ChatScreen: View {
                 }
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
-            ForEach(client.turns) { turn in
+            ForEach(visibleTurns) { turn in
               if let unread = client.unread, unread.turnID == turn.id {
                 HStack(spacing: 12) {
                   Rectangle().fill(Brand.line).frame(height: 1)
@@ -91,7 +97,7 @@ struct ChatScreen: View {
               }
             }
             if !client.model.failure.isEmpty {
-              Label(client.model.failure, systemImage: "exclamationmark.circle").font(.footnote)
+              Label(userFacingError(client.model.failure), systemImage: "exclamationmark.circle").font(.footnote)
                 .foregroundStyle(.secondary)
             }
             if !client.model.pauseNotice.isEmpty {
@@ -116,16 +122,11 @@ struct ChatScreen: View {
             Color.clear.frame(height: 1).id("bottom")
           }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
-            .animation(
-              reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
-              value: client.model.messages.count)
         }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { typing = false })
         .scrollDismissesKeyboard(.interactively)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
-        .defaultScrollAnchor(.top, for: .sizeChanges)
         .onScrollGeometryChange(for: Bool.self) { geometry in
           geometry.contentSize.height - geometry.visibleRect.maxY < 12
         } action: { _, near in
@@ -149,7 +150,7 @@ struct ChatScreen: View {
         .onChange(of: client.model.messages.count) { _, _ in
           if client.model.messages.last?.role == "user" {
             following = true
-            if let last = client.turns.last { proxy.scrollTo(last.id, anchor: .top) }
+            scheduleFollow(proxy)
           } else if !positioned && !client.model.messages.isEmpty {
             proxy.scrollTo("bottom", anchor: .bottom)
           }
@@ -211,6 +212,8 @@ struct ChatScreen: View {
         }
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
+      .toolbarBackground(.regularMaterial, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItemGroup(placement: .topBarLeading) {
@@ -338,7 +341,8 @@ struct ChatScreen: View {
       guard !Task.isCancelled else { return }
       followTask = nil
       guard following, !client.loadingHistory else { return }
-      proxy.scrollTo("bottom", anchor: .bottom)
+      var transaction = Transaction(); transaction.disablesAnimations = true
+      withTransaction(transaction) { proxy.scrollTo("bottom", anchor: .bottom) }
       atBottom = true
     }
   }
@@ -352,9 +356,9 @@ struct ChatScreen: View {
             maxWidth: .infinity, alignment: .leading
           ).padding(.horizontal, 8)
       }
-      if !client.error.isEmpty {
+      if !client.error.isEmpty && (client.connected || ["需要登录", "消息大小超限", "已在其他设备连接"].contains(client.phase)) {
         HStack(alignment: .top) {
-          Text(client.error).font(.caption).foregroundStyle(.secondary)
+          Text(userFacingError(client.error, phase: client.phase)).font(.caption).foregroundStyle(.secondary)
           Spacer()
           Button(client.phase == "需要登录" ? "重新登录" : "重连") {
             if client.phase == "需要登录" {
