@@ -30,6 +30,10 @@ struct ContextEntry: Identifiable, Hashable, Sendable {
 
   var compositeID: String { "\(entity.rawValue):\(id)" }
   var isInsight: Bool { entity == .artifact }
+  var sourceProvider: String {
+    let provider = namespace.split(separator: ".").first.map(String.init) ?? ""
+    return ["apple_health", "apple_calendar", "gmail", "dida"].contains(provider) ? provider : sourceKind
+  }
   var sourceTitle: String {
     switch sourceKind {
     case "conversation": return "对话原话"
@@ -116,6 +120,10 @@ final class ContextStore: ObservableObject {
     self.preview = preview
     if preview {
       if installFixtures { installPreview() } else { loading = false }
+      #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-HymioContextRecordsOnly") { insights = [] }
+        if ProcessInfo.processInfo.arguments.contains("-HymioContextInsightsOnly") { records = [] }
+      #endif
       allPreviewInsights = insights
       allPreviewRecords = records
     }
@@ -161,7 +169,7 @@ final class ContextStore: ObservableObject {
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
       records = allPreviewRecords.filter {
-        (source == "all" || $0.sourceKind == source)
+        (source == "all" || $0.sourceProvider == source)
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
       loading = false
@@ -175,7 +183,7 @@ final class ContextStore: ObservableObject {
       insights = a["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
       let fetched = r["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
       let recent = confirmedSaves.filter {
-        (source == "all" || $0.sourceKind == source)
+        (source == "all" || $0.sourceProvider == source)
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
       let recentIDs = Set(recent.map(\.compositeID))
@@ -617,40 +625,41 @@ private struct ContextPage: View {
       .background(Brand.mist, in: RoundedRectangle(cornerRadius: 12))
       .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
   }
+  private var hasVisibleFilter: Bool {
+    !store.query.isEmpty || (insights ? store.category != "all" : store.source != "all")
+  }
+  private var canViewFootprints: Bool {
+    insights && store.records.contains { !$0.namespace.hasPrefix("apple_health") }
+  }
+  private var emptyActionTitle: String {
+    if hasVisibleFilter { return store.query.isEmpty ? "查看全部" : "清除搜索与筛选" }
+    return canViewFootprints ? "查看足迹" : "记一笔"
+  }
   private var emptyState: some View {
     VStack(spacing: 16) {
-      Image(systemName: "bookmark").font(.title2).foregroundStyle(Brand.blue)
-      Text(
-        store.category != "all"
-          ? "这个分类还没有\(insights ? "理解" : "足迹")"
-          : !store.query.isEmpty ? "暂时没找到相关记忆" : store.isEmpty ? "留下第一条足迹" : "已收好，理解会慢慢形成"
-      )
-      .font(.title3.weight(.semibold))
-      Text(
-        store.category != "all"
-          ? "试试其他分类，或收集一条相关的原始内容。"
-          : !store.query.isEmpty
-            ? "换个关键词试试，或清除搜索。"
-            : store.isEmpty ? "想法、偏好，或一段值得保留的话，都可以从这里开始。" : "原文已保存在足迹中，不必等待整理就能查看。"
-      )
-      .font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
-      Button(
-        store.category != "all"
-          ? "查看全部" : !store.query.isEmpty ? "清除搜索" : store.isEmpty ? "记一笔" : "查看足迹"
-      ) {
-        if store.category != "all" {
-          Task { await store.load(category: "all") }
-        } else if !store.query.isEmpty {
+      Image(systemName: insights ? "sparkle.magnifyingglass" : "bookmark")
+        .font(.title2).foregroundStyle(Brand.blue)
+      Text(hasVisibleFilter ? "这里暂时没有匹配的内容" : insights ? "理解会慢慢形成" : "留下第一条足迹")
+        .font(.title3.weight(.semibold))
+      Text(hasVisibleFilter ? "清除筛选，看看其他已经留下的内容。" :
+        canViewFootprints ? "原文已保存在足迹中，不必等待整理就能查看。" :
+        "想法、偏好，或一段值得保留的话，都可以从这里开始。")
+        .font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
+      Button(emptyActionTitle) {
+        Haptics.selection()
+        if hasVisibleFilter {
           searchText = ""
-          Task { await store.load(query: "") }
-        } else if store.isEmpty {
-          showCollect = true
-        } else {
+          Task { await store.load(query: "", category: "all", source: "all") }
+        } else if canViewFootprints {
           insights = false
+        } else {
+          showCollect = true
         }
       }.buttonStyle(.borderedProminent).frame(minHeight: 44)
+        .accessibilityIdentifier("context.empty.action")
     }.multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.vertical, 65)
   }
+
 }
 
 private struct ContextCard: View {

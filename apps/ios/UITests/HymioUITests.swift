@@ -1,6 +1,35 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testRecollectionEmptyActionsAlwaysChangeDestination() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioContextPreview", "-HymioContextRecordsOnly"]
+    app.launch()
+    app.segmentedControls.buttons["记住的事"].tap()
+    XCTAssertTrue(app.buttons["context.empty.action"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.buttons["context.empty.action"].label, "查看足迹")
+    app.buttons["context.empty.action"].tap()
+    XCTAssertTrue(app.staticTexts["产品体验复盘"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["产品体验复盘"].isHittable)
+    XCTAssertFalse(app.buttons["context.empty.action"].exists)
+    let footprints = XCTAttachment(screenshot: app.screenshot())
+    footprints.name = "view-footprints-opens-visible-records"; footprints.lifetime = .keepAlways; add(footprints)
+    app.buttons["来源，Gmail"].tap()
+    XCTAssertTrue(app.buttons["context.empty.action"].waitForExistence(timeout: 5))
+    app.buttons["context.empty.action"].tap()
+    XCTAssertTrue(app.staticTexts["产品体验复盘"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["产品体验复盘"].isHittable)
+    app.terminate()
+    app.launchArguments = ["-HymioContextPreview", "-HymioContextInsightsOnly"]
+    app.launch()
+    XCTAssertTrue(app.buttons["context.empty.action"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.buttons["context.empty.action"].label, "记一笔")
+    app.buttons["context.empty.action"].tap()
+    XCTAssertTrue(app.buttons["保存到足迹"].waitForExistence(timeout: 5))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "recollection-empty-action-opens-editor"; shot.lifetime = .keepAlways; add(shot)
+  }
+
   @MainActor func testHomeDecisionCarouselAndEmptySchedule() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioHomePreview", "-HymioHomeManyDecisions"]

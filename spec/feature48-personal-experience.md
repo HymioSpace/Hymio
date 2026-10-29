@@ -30,4 +30,6 @@ Toolbar symbols have a balanced visible footprint inside a 44-point hit target. 
 
 ## Validation
 
+Empty-state actions depend on the visible layer and its active filters, rather than whether any data exists elsewhere in the store. Only an empty understanding layer with available footprints offers “View footprints”; an empty footprints layer opens collection. Clear-filter actions reset source, category and query together. Regression checks must tap each action and verify the destination or visible records, including the source-filter recovery path.
+
 Native preview fixtures use synthetic source labels and health examples. Capture interaction recordings, inspect frames and measure main-thread scheduling stalls in debug performance previews, explicitly distinguishing simulator measurements from device performance. Verify empty/populated/dark/large-text cases, navigation, keyboard, task audience and connector classification. Deploy backend and Web only after checks; iOS changes require a new signed/TestFlight build.

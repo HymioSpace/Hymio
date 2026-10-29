@@ -1,3 +1,10 @@
+export function contextEmptyAction(state: {
+  layer: 'records' | 'artifacts'; category: string; source: string; query: string; recordCount: number;
+}): 'clear' | 'records' | 'collect' {
+  if (state.query || (state.layer === 'records' ? state.source : state.category) !== 'all') return 'clear';
+  return state.layer === 'artifacts' && state.recordCount > 0 ? 'records' : 'collect';
+}
+
 export type ContextItem = {
   id: string;
   kind: 'record' | 'artifact';
