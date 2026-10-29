@@ -54,6 +54,7 @@ class TaskStore:
     def _view(self, db, row, *, summary=False):
         task = dict(row)
         task["schedule"] = json.loads(task["schedule"])
+        task["for_user"] = bool(task.get("for_user", False))
         if summary:
             task["objective"] = task["objective"][:300]
             task["success_criteria"] = task["success_criteria"][:300]
@@ -127,6 +128,9 @@ class TaskStore:
         fields = {k: v.strip() for k, v in fields.items()}
         if any(not v or len(v) > 10000 for v in fields.values()) or len(fields["title"]) > 160:
             raise ValueError("Title, objective and success criteria required")
+        for_user = data.get("for_user", False)
+        if type(for_user) is not bool:
+            raise ValueError("for_user must be boolean")
         kind = data.get("kind", "task")
         if kind not in {"task", "reminder"}:
             raise ValueError("Invalid task kind")
@@ -190,7 +194,7 @@ class TaskStore:
                     key,
                 ),
             )
-            db.execute("UPDATE tasks SET kind=? WHERE id=?", (kind, tid))
+            db.execute("UPDATE tasks SET kind=?,for_user=? WHERE id=?", (kind, int(for_user), tid))
             if captured:
                 rid = uuid.uuid4().hex
                 db.execute(
@@ -244,6 +248,9 @@ class TaskStore:
             if "schedule" in data:
                 task["schedule"] = json.dumps(normalize(data["schedule"]))
             task["kind"] = data.get("kind", task["kind"])
+            if "for_user" in data and type(data["for_user"]) is not bool:
+                raise ValueError("for_user must be boolean")
+            task["for_user"] = data.get("for_user", bool(task["for_user"]))
             # Editing active work must be explicit: cancel it before changing its contract.
             if db.execute(
                 "SELECT 1 FROM task_runs WHERE task_id=? AND status IN ('running','blocked')",
@@ -268,7 +275,10 @@ class TaskStore:
                     tid,
                 ),
             )
-            db.execute("UPDATE tasks SET kind=? WHERE id=?", (task["kind"], tid))
+            db.execute(
+                "UPDATE tasks SET kind=?,for_user=? WHERE id=?",
+                (task["kind"], int(task["for_user"]), tid),
+            )
             row = self._task(db, uid, tid)
             if row["state"] == "active":
                 self._plan(db, row)
@@ -633,4 +643,124 @@ class TaskStore:
                 "UPDATE task_runs SET notice_sent=1,intervention_count=1 "
                 "WHERE id=? AND notice_version=?",
                 (rid, version),
+            )
+
+    def wait(self, uid, rid, reason, content, next_step, resume_at, note_id):
+        if reason not in {"user", "time", "external", "device", "retry"}:
+            raise ValueError("A concrete waiting reason is required")
+        if not isinstance(next_step, str) or not next_step.strip():
+            raise ValueError("State the next action")
+        if resume_at is not None and (
+            type(resume_at) not in {int, float}
+            or not time.time() + 60 <= resume_at <= time.time() + 31536000
+        ):
+            raise ValueError("Follow-up time must be at least one minute in the future")
+        if reason == "user" and resume_at is not None:
+            raise ValueError("Human decisions resume explicitly")
+        if reason != "user" and resume_at is None:
+            raise ValueError("A non-human wait requires a bounded follow-up time")
+        self._milestone({"phase": "", "next_step": next_step})
+        if not isinstance(content, str) or not content.strip() or len(content) > 16000:
+            raise ValueError("A bounded waiting explanation is required")
+        if not isinstance(note_id, str) or not 1 <= len(note_id) <= 256:
+            raise ValueError("Invalid update identity")
+        with self.transaction() as db:
+            run = self._run(db, uid, rid)
+            task = self._task(db, uid, run["task_id"])
+            old = db.execute(
+                "SELECT content FROM task_updates WHERE run_id=? AND note_id=?", (rid, note_id)
+            ).fetchone()
+            if old:
+                if old[0] != content:
+                    raise ValueError("Update identity conflict")
+                return self._view(db, task)
+            if task["state"] != "active" or run["status"] not in {"running", "blocked"}:
+                raise ValueError("Task is not active")
+            if resume_at is not None and run["followup_version"] >= 5:
+                raise ValueError("Automatic follow-up budget exhausted; ask for a decision")
+            db.execute(
+                "UPDATE task_runs SET status='blocked',progress=?,next_step=?,"
+                "wait_reason=?,resume_at=?,followup_sent=0,heartbeat_at=?,"
+                "followup_version=followup_version+1 WHERE id=?",
+                (content, next_step, reason, resume_at, time.time(), rid),
+            )
+            db.execute(
+                "INSERT INTO task_updates(run_id,note_id,content,created_at,status,phase) "
+                "VALUES(?,?,?,?,'blocked',?)",
+                (rid, note_id, content, time.time(), reason),
+            )
+            db.execute("UPDATE tasks SET updated_at=? WHERE id=?", (time.time(), task["id"]))
+            return self._view(db, self._task(db, uid, task["id"]))
+
+    def followups(self):
+        with self.transaction() as db:
+            return [
+                dict(r)
+                for r in db.execute(
+                    "SELECT r.*,t.title,t.objective,t.success_criteria FROM task_runs r "
+                    "JOIN tasks t ON t.id=r.task_id WHERE r.status='blocked' AND t.state='active' "
+                    "AND r.resume_at<=? AND r.followup_sent=0 AND r.wait_reason!='user' "
+                    "ORDER BY r.resume_at LIMIT 12",
+                    (time.time(),),
+                )
+            ]
+
+    def followed_up(self, uid, rid, version):
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE task_runs SET followup_sent=1 WHERE user_id=? AND id=? "
+                "AND followup_version=?",
+                (uid, rid, version),
+            )
+
+    def executing_children(self, uid):
+        with self.transaction() as db:
+            return db.execute(
+                "SELECT COUNT(*) FROM task_runs WHERE user_id=? AND status='running' "
+                "AND agent_id IS NOT NULL AND agent_id!='pending' AND reconciled=0",
+                (uid,),
+            ).fetchone()[0]
+
+    def request_continuation(self, uid, tid, request_id, content=""):
+        if not isinstance(content, str) or len(content) > 4000:
+            raise ValueError("Bounded continuation instruction required")
+        with self.transaction() as db:
+            task = self._task(db, uid, tid)
+            run = db.execute(
+                "SELECT * FROM task_runs WHERE task_id=? ORDER BY created_at DESC LIMIT 1", (tid,)
+            ).fetchone()
+            if task["state"] != "active" or not run or run["status"] != "blocked":
+                raise ValueError("Only an active waiting task can continue")
+            db.execute(
+                "UPDATE task_runs SET resume_request_id=?,resume_note=?,resume_at=NULL,"
+                "heartbeat_at=? WHERE id=?",
+                (
+                    run["resume_request_id"] or request_id,
+                    run["resume_note"] if run["resume_request_id"] else content,
+                    time.time(),
+                    run["id"],
+                ),
+            )
+            return self._view(db, task)
+
+    def continuations(self):
+        with self.transaction() as db:
+            return [
+                dict(r)
+                for r in db.execute(
+                    "SELECT r.*,t.title,t.objective,t.success_criteria FROM task_runs r "
+                    "JOIN tasks t ON t.id=r.task_id WHERE r.resume_request_id!='' "
+                    "AND t.state='active' "
+                    "AND r.status='blocked' ORDER BY r.created_at LIMIT 12"
+                )
+            ]
+
+    def continued(self, uid, rid, request_id):
+        with self.transaction() as db:
+            db.execute(
+                "UPDATE task_runs SET status='running',resume_request_id='',reconciled=0,"
+                "wait_reason='',heartbeat_at=? WHERE user_id=? AND id=? "
+                "AND resume_request_id=? AND status='blocked' "
+                "AND EXISTS(SELECT 1 FROM tasks WHERE id=task_runs.task_id AND state='active')",
+                (time.time(), uid, rid, request_id),
             )

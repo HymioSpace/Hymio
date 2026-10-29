@@ -27,12 +27,28 @@ import SwiftUI
                 ProcessInfo.processInfo.arguments.contains("-HymioApprovalLargePreview")
                   ? .accessibility3 : .large
               )
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioExperiencePreview") {
+            PersonalExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskStorePreview") {
+            TaskStoreValidationPreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioArtworkPreview") {
+            ArtworkAlignmentPreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioHomePreview") {
+            HomeExperiencePreview(account: account)
+              .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioHomeDarkPreview") ? .dark : nil)
+              .environment(\.dynamicTypeSize, ProcessInfo.processInfo.arguments.contains("-HymioHomeLargePreview") ? .accessibility3 : .large)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioCalendarPreview") {
+            CalendarWorkspacePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
+            TaskExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
           } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
             ChatBubblePreview(account: account)
               .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioBubbleDarkPreview") ? .dark : nil)
               .environment(\.dynamicTypeSize, ProcessInfo.processInfo.arguments.contains("-HymioBubbleLargePreview") ? .accessibility3 : .large)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioActualChatPreview") {
+            ActualChatPerformancePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
             StreamingPerformancePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
@@ -54,13 +70,13 @@ import SwiftUI
             .preferredColorScheme(
               ProcessInfo.processInfo.arguments.contains("-HymioContextDarkPreview") ? .dark : nil)
           } else if account.session != nil {
-            ProductShell(account: account, client: client).id(account.session?.user_id)
+            ProductShell(account: account, client: client).equatable().id(account.session?.user_id)
           } else {
             LoginScreen(account: account)
           }
         #else
           if account.session != nil {
-            ProductShell(account: account, client: client).id(account.session?.user_id)
+            ProductShell(account: account, client: client).equatable().id(account.session?.user_id)
           } else {
             LoginScreen(account: account)
           }
@@ -86,7 +102,7 @@ import SwiftUI
           Task { await healthSync.activate() }
           Task { await notifications.updatePresence(account, active: true) }
         } else if phase == .background {
-          client.suspend()
+          client.enterBackground()
           Task { await notifications.updatePresence(account, active: false) }
         }
       }

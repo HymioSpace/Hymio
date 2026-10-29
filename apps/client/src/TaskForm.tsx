@@ -6,11 +6,13 @@ import type { Work } from './taskModels';
 
 export function TaskForm({
   task,
+  initialDate,
   busy,
   onCancel,
   onSave,
 }: {
   task?: Work;
+  initialDate?: Date;
   busy: boolean;
   onCancel: () => void;
   onSave: (data: object) => void;
@@ -18,17 +20,22 @@ export function TaskForm({
   const [title, setTitle] = useState(task?.title || ''),
     [objective, setObjective] = useState(task?.objective || ''),
     [criteria, setCriteria] = useState(task?.success_criteria || '');
-  const [mode, setMode] = useState(task?.schedule.mode || 'now'),
+  const [mode, setMode] = useState(task?.schedule.mode || (initialDate ? 'once' : 'now')),
     [at, setAt] = useState(
       task?.schedule.at
         ? new Date(new Date(task.schedule.at).getTime() - new Date().getTimezoneOffset() * 60000)
             .toISOString()
             .slice(0, 16)
-        : '',
+        : initialDate
+          ? new Date(initialDate.getTime() - initialDate.getTimezoneOffset() * 60000)
+              .toISOString()
+              .slice(0, 16)
+          : '',
     ),
     [time, setTime] = useState(task?.schedule.time || '09:00'),
     [day, setDay] = useState(task?.schedule.weekday || 0);
   const [kind, setKind] = useState(task?.kind || 'task');
+  const [forUser, setForUser] = useState(task?.for_user ?? false);
   const [grace, setGrace] = useState(task?.schedule.grace_seconds ?? 900);
   const [requestId] = useState(createIdentity);
   const zone = task?.schedule.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -43,6 +50,7 @@ export function TaskForm({
           ...(task ? { task_id: task.id } : {}),
           title,
           kind,
+          for_user: forUser,
           objective,
           success_criteria:
             criteria.trim() ||
@@ -63,6 +71,12 @@ export function TaskForm({
         <ArrowLeft size={15} />
         返回任务
       </button>
+      {mode !== 'now' && (
+        <label>
+          <input type="checkbox" checked={forUser} onChange={(e) => setForUser(e.target.checked)} />
+          显示为我的安排（出现在此刻）
+        </label>
+      )}
       <h3>{task ? '调整这件事' : '想让 Hymio 做什么？'}</h3>
       <label>
         类型
@@ -70,7 +84,10 @@ export function TaskForm({
           value={kind}
           onChange={(e) => {
             setKind(e.target.value as 'task' | 'reminder');
-            if (!task && e.target.value === 'reminder' && mode === 'now') setMode('once');
+            if (!task && e.target.value === 'reminder') {
+              if (mode === 'now') setMode('once');
+              setForUser(true);
+            }
           }}
         >
           <option value="task">推进一件事</option>

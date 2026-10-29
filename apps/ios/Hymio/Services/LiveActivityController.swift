@@ -108,7 +108,9 @@ final class LiveActivityController: ObservableObject {
         taskID: chatApproval != nil
           ? "" : active.first?.0["id"].text ?? waiting.first?.0["id"].text ?? ""
       )
-      guard next != current else { return }
+      if let current, current.title == next.title, current.phase == next.phase,
+        current.status == next.status, current.activeCount == next.activeCount,
+        current.taskID == next.taskID { return }
       await activity?.update(
         ActivityContent(state: next, staleDate: Date().addingTimeInterval(8 * 3600)))
     } else if let current {

@@ -19,13 +19,18 @@ struct ChatScreen: View {
   @State private var cameraOpen = false
   @State private var photosOpen = false
   @State private var following = true
-  @State private var positioned = false
   @State private var atBottom = true
   @State private var sendBusy = false
   @FocusState private var typing: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
-  @State private var followTask: Task<Void, Never>?
+  @State private var scrollPosition = ScrollPosition(edge: .bottom)
+  private var visibleTurns: [Turn] {
+    if client.turns.isEmpty, !client.model.messages.isEmpty {
+      return client.model.turns
+    }
+    return client.turns
+  }
   var body: some View {
     NavigationStack {
       ScrollViewReader { proxy in
@@ -34,6 +39,7 @@ struct ChatScreen: View {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.turns.first?.id
+                following = false
                 Task {
                   await client.loadHistory()
                   if let first { proxy.scrollTo(first, anchor: .top) }
@@ -53,7 +59,7 @@ struct ChatScreen: View {
                 }
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
             }
-            ForEach(client.turns) { turn in
+            ForEach(visibleTurns) { turn in
               if let unread = client.unread, unread.turnID == turn.id {
                 HStack(spacing: 12) {
                   Rectangle().fill(Brand.line).frame(height: 1)
@@ -91,7 +97,7 @@ struct ChatScreen: View {
               }
             }
             if !client.model.failure.isEmpty {
-              Label(client.model.failure, systemImage: "exclamationmark.circle").font(.footnote)
+              Label(userFacingError(client.model.failure), systemImage: "exclamationmark.circle").font(.footnote)
                 .foregroundStyle(.secondary)
             }
             if !client.model.pauseNotice.isEmpty {
@@ -114,46 +120,32 @@ struct ChatScreen: View {
               }
             }
             Color.clear.frame(height: 1).id("bottom")
-          }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
+          }.scrollTargetLayout().padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
-            .animation(
-              reduceMotion ? nil : .spring(duration: 0.32, bounce: 0.08),
-              value: client.model.messages.count)
         }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { typing = false })
         .scrollDismissesKeyboard(.interactively)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.top, for: .alignment)
-        .defaultScrollAnchor(.top, for: .sizeChanges)
+        .scrollPosition($scrollPosition)
+        .trackStreamGeometry()
+        .padding(.horizontal, 18)
         .onScrollGeometryChange(for: Bool.self) { geometry in
           geometry.contentSize.height - geometry.visibleRect.maxY < 12
         } action: { _, near in
           atBottom = near
         }
         .onScrollPhaseChange { _, phase in
-          if phase == .interacting {
-            following = false
-            followTask?.cancel()
-            followTask = nil
-          }
-          if phase == .idle && atBottom { following = true }
-        }
-        .onScrollGeometryChange(for: CGFloat.self) {
-          $0.contentSize.height
-        } action: { before, after in
-          if after > before + 0.5 && following && !client.loadingHistory && positioned {
-            scheduleFollow(proxy)
+          if phase == .interacting { following = false }
+          if phase == .idle && atBottom && !following {
+            following = true
+            scrollPosition.scrollTo(edge: .bottom)
           }
         }
         .onChange(of: client.model.messages.count) { _, _ in
           if client.model.messages.last?.role == "user" {
             following = true
-            if let last = client.turns.last { proxy.scrollTo(last.id, anchor: .top) }
-          } else if !positioned && !client.model.messages.isEmpty {
-            proxy.scrollTo("bottom", anchor: .bottom)
+            scrollPosition.scrollTo(edge: .bottom)
           }
-          positioned = !client.model.messages.isEmpty
         }
         .overlay(alignment: .bottomTrailing) {
           if client.model.approvals.contains(where: { $0.status == "pending" }) {
@@ -163,14 +155,7 @@ struct ChatScreen: View {
                 Button {
                   following = true
                   atBottom = true
-                  withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                  }
-                  Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(180))
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                    atBottom = true
-                  }
+                  scrollPosition.scrollTo(edge: .bottom)
                 } label: {
                   if pending > 0 {
                     Label("\(pending) 个待确认", systemImage: "hand.raised")
@@ -194,14 +179,7 @@ struct ChatScreen: View {
             Button {
               following = true
               atBottom = true
-              withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                proxy.scrollTo("bottom", anchor: .bottom)
-              }
-              Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(180))
-                proxy.scrollTo("bottom", anchor: .bottom)
-                atBottom = true
-              }
+              scrollPosition.scrollTo(edge: .bottom)
             } label: {
               Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())
                 .shadow(color: .black.opacity(0.05), radius: 8)
@@ -211,6 +189,8 @@ struct ChatScreen: View {
         }
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
+      .toolbarBackground(.regularMaterial, for: .navigationBar)
+      .toolbarBackground(.visible, for: .navigationBar)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItemGroup(placement: .topBarLeading) {
@@ -324,24 +304,9 @@ struct ChatScreen: View {
       )
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
       .sensoryFeedback(.selection, trigger: sentCount)
-      .onDisappear {
-        followTask?.cancel()
-        followTask = nil
-      }
     }
   }
 
-  private func scheduleFollow(_ proxy: ScrollViewProxy) {
-    guard followTask == nil else { return }
-    followTask = Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(100))
-      guard !Task.isCancelled else { return }
-      followTask = nil
-      guard following, !client.loadingHistory else { return }
-      proxy.scrollTo("bottom", anchor: .bottom)
-      atBottom = true
-    }
-  }
 
   private var composer: some View {
     VStack(spacing: 8) {
@@ -352,9 +317,9 @@ struct ChatScreen: View {
             maxWidth: .infinity, alignment: .leading
           ).padding(.horizontal, 8)
       }
-      if !client.error.isEmpty {
+      if !client.error.isEmpty && (client.connected || ["需要登录", "消息大小超限", "已在其他设备连接"].contains(client.phase)) {
         HStack(alignment: .top) {
-          Text(client.error).font(.caption).foregroundStyle(.secondary)
+          Text(userFacingError(client.error, phase: client.phase)).font(.caption).foregroundStyle(.secondary)
           Spacer()
           Button(client.phase == "需要登录" ? "重新登录" : "重连") {
             if client.phase == "需要登录" {
@@ -405,11 +370,7 @@ struct ChatScreen: View {
             }.padding(.horizontal, 4)
           }
         }
-        TextField("接着说，我在听…", text: $draft, axis: .vertical)
-          .lineLimit(1...6).padding(.vertical, 6).padding(.horizontal, 8).focused($typing)
-          .accessibilityIdentifier(
-            "chat.input")
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 0) {
           Menu {
             Button {
               photosOpen = true
@@ -434,7 +395,10 @@ struct ChatScreen: View {
             ).frame(width: 44, height: 44)
           }.disabled(uploading || attachments.count >= AttachmentLimits.maxCount)
             .accessibilityLabel("添加附件")
-          Spacer(minLength: 8)
+          TextField("接着说，我在听…", text: $draft, axis: .vertical)
+            .lineLimit(1...5).padding(.vertical, 11).padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .focused($typing).accessibilityIdentifier("chat.input")
           Button {
             send()
           } label: {
@@ -450,7 +414,9 @@ struct ChatScreen: View {
             .accessibilityIdentifier("chat.send")
         }
       }
-      .padding(8)
+      .padding(5)
+      .contentShape(RoundedRectangle(cornerRadius: 28))
+      .onTapGesture { typing = true }
       .modifier(ComposerSurface(focused: typing))
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }

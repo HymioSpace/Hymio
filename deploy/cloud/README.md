@@ -294,3 +294,30 @@ using the default provider's credential. Set Oath `tool_timeout_seconds = 150` f
 Backend media calls reuse the main provider's Vault alias. Set `media_api_base`, `media_credential`, `vision_model`, `vault_url`, `vault_role_id_file` and `vault_secret_id_file` in the private Backend configuration. Place AppRole identity files under the private configuration directory already mounted at `/config`; use container paths in TOML. Do not publish them in the image or repository, and do not put the model key in an environment variable.
 
 Use `runtime_network` to join Oath's existing private Docker network and reach Vault by its internal service name. Never publish Vault publicly. Preserve the installed dependency license notices when distributing the image. Attachments and generated images use the persistent Backend SQLite volume and require its normal backup policy.
+
+### Tasks, delegated activity and context discovery
+
+Update Oath, Nostalgia and Hymio together when enabling context-originated task discovery.
+Oath must provide `POST /subagents/activity`; Nostalgia must publish evidence-validated
+`opportunity.proposed` events and expose `/v1/operations/status`. Existing private context bindings
+and dreaming-provider credentials are reused; do not place them in frontend configuration.
+Back up each SQLite database with its online backup API before replacing images. Keep Nostalgia's
+persistent data mount and private network. No new public port is required.
+
+Backend consumes context events at least once with a persistent per-user cursor. A stable opportunity
+ID prevents duplicate delivery from creating duplicate work. Acceptance uses an idempotent task
+request; ignored suggestions remain recorded. Inspect this pipeline under Admin → Nostalgia:
+Runtime shows recent dreaming outcomes, Data browses original/derived records and appends corrections,
+Prompt shows the effective proposal instructions, and Discovery tracks suggested/accepted work.
+Records and private tokens are fetched server-side, under administrator authorization.
+
+`task_parallelism = 2` in the private Backend configuration controls concurrent task-owned children
+(1–8). Oath's global worker capacity and subagent limit still apply; leave capacity for conversation.
+New independent work starts in a bound subagent. Existing conversational work is captured without
+executing it twice. A waiting task can record its reason, next action and a follow-up time. Human
+waits resume explicitly; automatic follow-ups have a five-check budget per run. Cancelled or paused
+work cannot be resumed by a stale timer. External effects with uncertain outcomes require inspection.
+
+After rollout, check public health, an authorized task list, child activity and an authorized
+Nostalgia status request. Verify cross-owner requests are rejected. New iOS UI requires a new app
+build; server deployment does not update TestFlight binaries.

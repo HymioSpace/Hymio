@@ -19,6 +19,7 @@ import {
 import { Companion } from '@hymio/ui';
 import type { LoginState } from './useLogin';
 import {
+  contextEmptyAction,
   contextText,
   memoryProposal,
   memoryDate,
@@ -362,16 +363,13 @@ export function MomentsPanel({ login }: { login: LoginState }) {
   }
   const page = pages[layer];
   const hasAny = pages.artifacts.items.length + pages.records.items.length > 0;
+  const emptyAction = contextEmptyAction({ layer, category, source, query, recordCount: pages.records.items.length });
   const emptyTitle =
     page.cursor && !page.items.length
       ? '这批内容里暂时没有匹配项'
-      : category !== 'all'
-        ? `这个分类还没有${layer === 'artifacts' ? '理解' : '足迹'}`
-        : query
-          ? '暂时没找到相关记忆'
-          : layer === 'artifacts' && pages.records.items.length
-            ? '已收好，理解会慢慢形成'
-            : '留下第一条足迹';
+      : emptyAction === 'clear'
+        ? '这里暂时没有匹配的内容'
+        : layer === 'artifacts' ? '理解会慢慢形成' : '留下第一条足迹';
 
   return (
     <main className="memory-page">
@@ -531,29 +529,26 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                 <Bookmark size={28} aria-hidden="true" />
                 <h2>{emptyTitle}</h2>
                 <p>
-                  {category !== 'all'
-                    ? '试试其他分类，或收集一条相关的原始内容。'
-                    : query
-                      ? '换个关键词试试，或清除搜索。'
-                      : hasAny
+                  {emptyAction === 'clear'
+                    ? '清除筛选，看看其他已经留下的内容。'
+                    : emptyAction === 'records'
                         ? '原文已保存在足迹中，不必等待整理就能查看。'
                         : '想法、偏好，或一段值得保留的话，都可以从这里开始。'}
                 </p>
                 <button
                   onClick={() => {
-                    if (category !== 'all') setCategory('all');
-                    else if (query) {
+                    if (emptyAction === 'clear') {
+                      setCategory('all');
+                      setSource('all');
                       setInput('');
                       setQuery('');
-                    } else if (hasAny) setLayer('records');
+                    } else if (emptyAction === 'records') setLayer('records');
                     else composer.current?.showModal();
                   }}
                 >
-                  {category !== 'all'
+                  {emptyAction === 'clear'
                     ? '查看全部'
-                    : query
-                      ? '清除搜索'
-                      : hasAny
+                    : emptyAction === 'records'
                         ? '查看足迹'
                         : '记一笔'}
                 </button>

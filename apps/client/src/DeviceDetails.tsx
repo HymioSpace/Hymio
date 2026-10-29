@@ -73,7 +73,6 @@ export function DeviceDetails({
   return (
     <section className="device-details" aria-label="设备详情">
       <h4>{device.name}</h4>
-      <code>{device.device_id}</code>
       <p className="dialog-note">
         {device.provider === 'link'
           ? '个人设备由本机 HymioDevice 控制。暂停会阻止新操作，解除连接会保留本机数据；已开始的操作不能撤销。'

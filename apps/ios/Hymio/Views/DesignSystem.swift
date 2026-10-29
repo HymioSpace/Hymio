@@ -34,10 +34,15 @@ enum Brand {
 }
 
 struct ComposerSurface: ViewModifier {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   var focused = false
   func body(content: Content) -> some View {
     content
-      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 28))
+      .background {
+        RoundedRectangle(cornerRadius: 28)
+          .fill(reduceTransparency ? AnyShapeStyle(Brand.raised) : AnyShapeStyle(.regularMaterial))
+      }
+      .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(Brand.line.opacity(0.6), lineWidth: 0.5) }
       .shadow(color: Brand.blue.opacity(focused ? 0.16 : 0), radius: 3)
       .shadow(color: Brand.blue.opacity(focused ? 0.09 : 0), radius: 8)
       .animation(.easeOut(duration: 0.12), value: focused)
@@ -113,13 +118,13 @@ struct AccountButton: View {
   let action: () -> Void
 
   var body: some View {
-    Button(action: action) {
-      Companion(size: 31, mood: .greeting)
-        .padding(5)
+    Button(action: { Haptics.selection(); action() }) {
+      Image(systemName: "sidebar.left")
+        .font(.system(size: 18, weight: .regular)).foregroundStyle(Brand.ink)
         .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())
-    .contentShape(Circle())
+    .contentShape(Rectangle())
     .accessibilityLabel("账号与设置")
     .accessibilityHint("打开个人资料、设备和偏好设置")
   }
@@ -159,3 +164,91 @@ struct ToolOutcomeLabel: View {
   }
   var body: some View { Text(label).font(.caption).foregroundStyle(Brand.muted) }
 }
+
+@MainActor enum Haptics {
+  static func selection() { UISelectionFeedbackGenerator().selectionChanged() }
+  static func success() { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+}
+
+struct AddActionButton: View {
+  let title: String
+  let action: () -> Void
+  var body: some View {
+    Button { Haptics.selection(); action() } label: {
+      Image(systemName: "plus").font(.system(size: 17, weight: .regular))
+        .frame(width: 36, height: 36).foregroundStyle(Brand.ink)
+        .background(.regularMaterial, in: Circle())
+        .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.7))
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+    }.buttonStyle(.plain).accessibilityLabel(title)
+  }
+}
+
+/// One locally bundled artwork atlas; no remote image fetches during navigation.
+struct FeatureArtwork: View {
+  enum Kind { case notebook, health, calendar, mail, chat, archive
+    // Optical centers in the source artwork; its six subjects are not on a uniform grid.
+    var center: CGPoint {
+      switch self {
+      case .notebook: CGPoint(x: 317, y: 310)
+      case .health: CGPoint(x: 770, y: 315)
+      case .calendar: CGPoint(x: 1230, y: 310)
+      case .mail: CGPoint(x: 318, y: 715)
+      case .chat: CGPoint(x: 780, y: 715)
+      case .archive: CGPoint(x: 1225, y: 715)
+      }
+    }
+  }
+  let kind: Kind
+  var size: CGFloat = 72
+  var body: some View {
+    let center = kind.center
+    let scale = size / 480
+    Image("FeatureArtwork").resizable()
+      .frame(width: 1536 * scale, height: 1024 * scale)
+      .offset(x: -(center.x - 240) * scale, y: -(center.y - 240) * scale)
+      .frame(width: size, height: size, alignment: .topLeading)
+      .clipped().clipShape(RoundedRectangle(cornerRadius: size * 0.24))
+      .accessibilityHidden(true)
+  }
+}
+
+/// Measure both columns first, then give each the same row height.
+struct EqualHeightColumns: Layout {
+  var spacing: CGFloat = 12
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let gaps = spacing * CGFloat(max(0, subviews.count - 1))
+    let width = proposal.width ?? subviews.reduce(gaps) { $0 + $1.sizeThatFits(.unspecified).width }
+    let column = max(0, width - gaps) / CGFloat(max(1, subviews.count))
+    let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: column, height: nil)).height }.max() ?? 0
+    return CGSize(width: width, height: height)
+  }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let column = max(0, bounds.width - spacing * CGFloat(max(0, subviews.count - 1))) / CGFloat(max(1, subviews.count))
+    for (index, view) in subviews.enumerated() {
+      view.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (column + spacing), y: bounds.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(width: column, height: bounds.height))
+    }
+  }
+}
+
+#if DEBUG
+struct ArtworkAlignmentPreview: View {
+  private let kinds: [(FeatureArtwork.Kind, String)] = [(.notebook, "Notebook"), (.health, "Health"),
+    (.calendar, "Calendar"), (.mail, "Mail"), (.chat, "Chat"), (.archive, "Archive")]
+  var body: some View {
+    NavigationStack {
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 28) {
+        ForEach(kinds.indices, id: \.self) { index in
+          VStack(spacing: 8) {
+            FeatureArtwork(kind: kinds[index].0, size: 112)
+              .overlay(RoundedRectangle(cornerRadius: 22).stroke(Brand.line))
+            Text(kinds[index].1).font(.caption)
+          }
+        }
+      }.padding(24).navigationTitle("Artwork alignment")
+    }
+  }
+}
+#endif

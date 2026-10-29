@@ -101,3 +101,14 @@ final class StreamingPipelineTests: XCTestCase {
     XCTAssertEqual(buffer.value, "Hello wor")
   }
 }
+
+final class ProductErrorTests: XCTestCase {
+  func testTransportAndCodeErrorsNeverBecomeProductCopy() {
+    for raw in ["NSURLErrorDomain -1005", "The operation couldn’t be completed", "HTTP 503", "{" + "error: traceback" + "}"] {
+      let shown = userFacingError(raw)
+      XCTAssertFalse(shown.contains(raw))
+      XCTAssertTrue(shown.contains("重试"))
+    }
+    XCTAssertTrue(userFacingError("expired", phase: "需要登录").contains("登录"))
+  }
+}

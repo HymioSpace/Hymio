@@ -29,7 +29,7 @@ import UIKit
     presentationEvents.append(event)
     guard presentationTask == nil else { return }
     presentationTask = Task { [weak self] in
-      do { try await Task.sleep(for: .milliseconds(50)) } catch { return }
+      do { try await Task.sleep(for: .milliseconds(70)) } catch { return }
       self?.flushPresentation()
     }
   }
@@ -42,21 +42,31 @@ import UIKit
   }
   private var cache: ConversationCache?
   private var loop: Task<Void, Never>?
+  private var backgroundSuspension: Task<Void, Never>?
+  private var resumeProbe: Task<Void, Never>?
+  private var backgroundedAt: Date?
   private var persistence: Task<Void, Never>?
   private var persistenceDirty = false
   private var socket: URLSessionWebSocketTask?
+  private var lastReceivedAt = Date()
   private var replayAfter: Int?
   private var sent: Set<String> = []
   private var generation = UUID()
   private var owner = ""
   private var sourceDevice = ""
   private var replaced = false
-  private var ready = false
+  @Published private(set) var ready = false
   private var turnTiming: TurnTiming?
   private var telemetryUploading = false
   private var telemetryFlushAgain = false
   private let account: AccountService
-  init(account: AccountService) { self.account = account }
+  init(account: AccountService, previewConnected: Bool = false) {
+    self.account = account
+    if previewConnected {
+      ready = true
+      phase = "随时在这里"
+    }
+  }
   var connected: Bool { ready }
   var user: String { account.session?.user_id ?? "" }
   var installationID: String {
@@ -67,12 +77,45 @@ import UIKit
     return value
   }
   func activate() {
-    guard account.session != nil, loop == nil, !replaced else { return }
+    backgroundSuspension?.cancel()
+    backgroundSuspension = nil
+    if let backgroundedAt {
+      self.backgroundedAt = nil
+      if Date().timeIntervalSince(backgroundedAt) >= 8, loop != nil, ready {
+        probeConnection()
+        return
+      }
+    }
+    guard account.session != nil, !replaced else { return }
+    if loop != nil {
+      if ready, socket?.state != .running { reconnect() }
+      return
+    }
     let token = UUID()
     generation = token
     loop = Task { [weak self] in await self?.run(token) }
   }
+  /// Keep a healthy socket across quick app switches. If iOS actually suspends the app,
+  /// the delayed teardown cannot run and the existing connection is reused on return.
+  func enterBackground() {
+    guard account.session != nil, loop != nil, !replaced else { return }
+    backgroundedAt = Date()
+    resumeProbe?.cancel()
+    resumeProbe = nil
+    backgroundSuspension?.cancel()
+    backgroundSuspension = Task { [weak self] in
+      do { try await Task.sleep(for: .seconds(25)) } catch { return }
+      guard let self, !Task.isCancelled else { return }
+      self.backgroundSuspension = nil
+      self.suspend()
+    }
+  }
   func suspend() {
+    backgroundSuspension?.cancel()
+    backgroundSuspension = nil
+    resumeProbe?.cancel()
+    resumeProbe = nil
+    backgroundedAt = nil
     flushPresentation()
     persistence?.cancel()
     persistence = nil
@@ -104,6 +147,9 @@ import UIKit
       }
     #endif
   }
+  #if DEBUG
+  func injectSynthetic(_ event: Event) { model.apply([event]) }
+  #endif
   func reset() {
     replaced = false
     suspend()
@@ -157,6 +203,7 @@ import UIKit
         let ws = URLSession.shared.webSocketTask(with: endpoint)
         ws.maximumMessageSize = 32 * 1024 * 1024
         socket = ws
+        lastReceivedAt = Date()
         sent = []
         ready = false
         replayAfter = state.cursor > 0 ? state.cursor : nil
@@ -190,6 +237,7 @@ import UIKit
         // A receive timeout also covers attachment/snapshot stalls, not just TCP failures.
         while !Task.isCancelled && token == generation {
           let message = try await receive(ws)
+          lastReceivedAt = Date()
           guard token == generation else { return }
           let data: Data
           switch message {
@@ -243,9 +291,33 @@ import UIKit
       }
       heartbeat?.cancel()
       attempts += 1
-      try? await Task.sleep(for: .seconds(min(pow(2, Double(min(attempts, 5))), 30)))
+      let delay = min(0.75 * pow(2, Double(max(0, attempts - 1))), 15)
+      try? await Task.sleep(for: .seconds(delay))
     }
     if token == generation { loop = nil }
+  }
+  private func probeConnection() {
+    resumeProbe?.cancel()
+    let token = generation
+    let started = Date()
+    guard let ws = socket else {
+      reconnect()
+      return
+    }
+    resumeProbe = Task { [weak self] in
+      guard let self else { return }
+      do {
+        try await self.send(Command(type: "ping", payload: .object([:])), socket: ws)
+        try await Task.sleep(for: .seconds(8))
+      } catch {
+        guard !Task.isCancelled, token == self.generation else { return }
+        self.reconnect()
+        return
+      }
+      guard !Task.isCancelled, token == self.generation else { return }
+      self.resumeProbe = nil
+      if self.lastReceivedAt < started { self.reconnect() }
+    }
   }
   private func receive(_ ws: URLSessionWebSocketTask) async throws
     -> URLSessionWebSocketTask.Message
@@ -340,7 +412,7 @@ import UIKit
       }
       try await ack(ws)
       try await flush(ws)
-      Task { await register() }
+      if sourceDevice.isEmpty { Task { await register() } }
     case "error":
       if ["unauthorized", "auth_failed"].contains(f["code"].text) {
         throw ServiceError.unauthorized

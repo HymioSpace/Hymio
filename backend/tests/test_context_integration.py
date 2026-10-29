@@ -99,6 +99,7 @@ def stack(tmp_path):
                     url=backend_url,
                     tmp=tmp_path,
                     context=NostalgiaClient(settings),
+                    nostalgia=app,
                 )
 
 

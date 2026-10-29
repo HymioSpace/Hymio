@@ -1,3 +1,10 @@
+export function contextEmptyAction(state: {
+  layer: 'records' | 'artifacts'; category: string; source: string; query: string; recordCount: number;
+}): 'clear' | 'records' | 'collect' {
+  if (state.query || (state.layer === 'records' ? state.source : state.category) !== 'all') return 'clear';
+  return state.layer === 'artifacts' && state.recordCount > 0 ? 'records' : 'collect';
+}
+
 export type ContextItem = {
   id: string;
   kind: 'record' | 'artifact';
@@ -31,7 +38,7 @@ export function contextText(value: ContextDetail): string {
   for (const key of ['text', 'content', 'title']) {
     if (typeof context?.[key] === 'string' && context[key]) return context[key] as string;
   }
-  return context || value.command ? JSON.stringify(context || value.command, null, 2) : '';
+  return ''; // Internal metadata is not user-facing content.
 }
 export function readable(text: string): string {
   try {
