@@ -29,6 +29,10 @@ import SwiftUI
               )
           } else if ProcessInfo.processInfo.arguments.contains("-HymioExperiencePreview") {
             PersonalExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskStorePreview") {
+            TaskStoreValidationPreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioArtworkPreview") {
+            ArtworkAlignmentPreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioHomePreview") {
             HomeExperiencePreview(account: account)
               .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioHomeDarkPreview") ? .dark : nil)

@@ -7,7 +7,7 @@ struct AccountScreen: View {
   @ObservedObject var client: AgentClient
   @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
-  @StateObject private var taskBoard = TaskBoard()
+  @ObservedObject var taskBoard: TaskBoard
   @State private var loggingOut = false
   @State private var diagnostics = false
   @State private var modelOptions: [String] = []

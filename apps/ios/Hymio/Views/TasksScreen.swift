@@ -140,7 +140,7 @@ struct TasksScreen: View {
     }
     .sheet(isPresented: $creating, onDismiss: {
       if !previewMode { Task { await board.refresh(account) } }
-    }) { TaskEditor(account: account, initialDate: calendar.date(bySettingHour: 9, minute: 0, second: 0, of: focus)) }
+    }) { TaskEditor(account: account, board: board, initialDate: calendar.date(bySettingHour: 9, minute: 0, second: 0, of: focus)) }
   }
   private var calendarHeader: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -270,7 +270,7 @@ struct TasksScreen: View {
             ForEach(items, id: \.self) { item in
               NavigationLink {
                 TaskDetailScreen(
-                  account: account, taskID: item["id"].text, initial: item,
+                  account: account, taskID: item["id"].text, initial: item, board: board,
                   previewMode: previewMode, onViewed: { board.markSeen($0) })
               } label: {
                 TaskStatusRow(item: item)
@@ -378,7 +378,7 @@ struct TasksScreen: View {
       }
       ForEach(values) { event in
         NavigationLink {
-          TaskDetailScreen(account: account, taskID: event.task["id"].text, initial: event.task,
+          TaskDetailScreen(account: account, taskID: event.task["id"].text, initial: event.task, board: board,
             previewMode: previewMode, onViewed: { board.markSeen($0) })
         } label: { CalendarAgendaRow(event: event) }.buttonStyle(.plain)
       }
@@ -393,7 +393,7 @@ struct TasksScreen: View {
         Text("没有指定时间的事情留在这里，正在进行的工作也不会被挪到今天。").font(.subheadline).foregroundStyle(Brand.muted)
         if unscheduled.isEmpty { Text("暂时没有待安排的事。").foregroundStyle(Brand.muted).padding(.vertical, 30) }
         ForEach(unscheduled, id: \.self) { item in
-          NavigationLink { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, previewMode: previewMode) }
+          NavigationLink { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, board: board, previewMode: previewMode) }
           label: { TaskSummaryCard(item: item) }.buttonStyle(.plain)
         }
       }.padding(22)
@@ -623,7 +623,7 @@ private struct CalendarTimeGrid: View {
         let lane = placement.0
         let cardWidth = (width - 8) / CGFloat(placement.1)
         NavigationLink {
-          TaskDetailScreen(account: account, taskID: event.task["id"].text, initial: event.task,
+          TaskDetailScreen(account: account, taskID: event.task["id"].text, initial: event.task, board: board,
             previewMode: previewMode, onViewed: { board.markSeen($0) })
         } label: {
           VStack(alignment: .leading, spacing: 4) {
@@ -651,6 +651,7 @@ struct TaskDetailScreen: View {
   @ObservedObject var account: AccountService
   let taskID: String
   let initial: JSON
+  var board: TaskBoard? = nil
   var previewMode = false
   var onViewed: (JSON) -> Void = { _ in }
   @Environment(\.dismiss) private var dismiss
@@ -799,19 +800,14 @@ struct TaskDetailScreen: View {
             Button("删除任务", systemImage: "trash", role: .destructive) { deleting = true }
           } label: {
             Image(systemName: "ellipsis").frame(width: 30, height: 30)
-          }.disabled(busy)
+          }.disabled(busy).accessibilityLabel("任务操作")
         }
       }
       .confirmationDialog("删除任务并取消尚未完成的工作？", isPresented: $deleting, titleVisibility: .visible) {
-        Button("删除任务", role: .destructive) {
-          Task {
-            await action("delete")
-            if error.isEmpty { dismiss() }
-          }
-        }
+        Button("删除任务", role: .destructive) { deleteImmediately() }
       }
       .sheet(isPresented: $editing, onDismiss: { Task { await load() } }) {
-        TaskEditor(account: account, existing: item)
+        TaskEditor(account: account, board: board, existing: item)
       }
       .task(id: scene) {
         guard !previewMode, scene == .active else { return }
@@ -826,21 +822,47 @@ struct TaskDetailScreen: View {
       let next = try await account.request(
         "tasks", body: .object(["action": .string("get"), "task_id": .string(taskID)]))
       guard !Task.isCancelled else { return }
-      if value != next { value = next; onViewed(next) }
+      if value != next { value = next; board?.apply(next); onViewed(next) }
       if !error.isEmpty { error = "" }
     } catch is CancellationError {
     } catch { self.error = "暂时无法读取最新进展。" }
+  }
+  private func deleteImmediately() {
+    let store = board
+    let removed = store?.hide(taskID)
+    let id = taskID
+    dismiss()
+    Task { @MainActor in
+      do {
+        #if DEBUG
+          if previewMode && ProcessInfo.processInfo.arguments.contains("-HymioSlowDelete") {
+            try await Task.sleep(for: .seconds(5))
+          }
+        #endif
+        if !previewMode {
+          _ = try await account.request("tasks", body: .object(["action": .string("delete"), "task_id": .string(id)]))
+        }
+        store?.finishRemoval(id)
+      } catch {
+        if let removed { store?.restore(removed) }
+      }
+    }
   }
   private func action(_ action: String) async {
     busy = true
     defer { busy = false }
     do {
-      _ = try await account.request(
-        "tasks", body: .object(["action": .string(action), "task_id": .string(taskID), "content": .string(continuation)]))
+      if !previewMode {
+        _ = try await account.request("tasks", body: .object(["action": .string(action),
+          "task_id": .string(taskID), "content": .string(continuation)]))
+      }
       error = ""
-      await load()
-    } catch { self.error = "操作未完成，请稍后再试。" }
+      if !previewMode { await load() }
+    } catch {
+      self.error = "操作未完成，请稍后再试。"
+    }
   }
+
 }
 
 private struct TaskNotePreview: View {
@@ -860,6 +882,7 @@ private struct TaskNotePreview: View {
 
 private struct TaskEditor: View {
   @ObservedObject var account: AccountService
+  var board: TaskBoard? = nil
   @EnvironmentObject private var notifications: PushNotificationManager
   var existing: JSON = .null
   var initialDate: Date? = nil
@@ -1024,7 +1047,8 @@ private struct TaskEditor: View {
     ]
     if existing != .null { body["task_id"] = existing["id"] }
     do {
-      _ = try await account.request("tasks", body: .object(body))
+      let saved = try await account.request("tasks", body: .object(body))
+      board?.apply(saved)
       if mode != "now" {
         await notifications.requestForBackgroundWork(account)
       }

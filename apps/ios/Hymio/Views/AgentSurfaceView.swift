@@ -23,8 +23,8 @@ private struct DiffuseTextRenderer: TextRenderer, Animatable {
           let diffuse = min(1, max(0, (Double(index + 1) - frontier) / 4))
           var glyphContext = context
           if diffuse > 0 {
-            glyphContext.opacity = 1 - diffuse * 0.7
-            glyphContext.addFilter(.blur(radius: diffuse * 2.8))
+            glyphContext.opacity = 1 - diffuse * 0.25
+            glyphContext.addFilter(.blur(radius: diffuse * 0.65))
           }
           glyphContext.draw(slice)
           index += 1
@@ -60,7 +60,7 @@ private struct DiffuseStreamingText: View {
             var reset = Transaction(); reset.disablesAnimations = true
             withTransaction(reset) { revealed = 0 }
           }
-          withAnimation(.linear(duration: 0.24)) { revealed = Double(value.count) }
+          withAnimation(.linear(duration: 0.16)) { revealed = Double(value.count) }
         }
         previous = value
       }

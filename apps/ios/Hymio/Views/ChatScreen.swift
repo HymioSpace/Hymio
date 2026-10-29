@@ -337,12 +337,12 @@ struct ChatScreen: View {
   private func scheduleFollow(_ proxy: ScrollViewProxy) {
     guard followTask == nil else { return }
     followTask = Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(100))
+      try? await Task.sleep(for: .milliseconds(60))
       guard !Task.isCancelled else { return }
       followTask = nil
       guard following, !client.loadingHistory else { return }
-      var transaction = Transaction(); transaction.disablesAnimations = true
-      withTransaction(transaction) { proxy.scrollTo("bottom", anchor: .bottom) }
+      if reduceMotion { proxy.scrollTo("bottom", anchor: .bottom) }
+      else { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo("bottom", anchor: .bottom) } }
       atBottom = true
     }
   }

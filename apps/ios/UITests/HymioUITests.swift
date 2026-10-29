@@ -1,6 +1,42 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testArtworkAlignmentGallery() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioArtworkPreview"]
+    app.launch()
+    XCTAssertTrue(app.staticTexts["Archive"].waitForExistence(timeout: 10))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "artwork-optical-centers"; shot.lifetime = .keepAlways; add(shot)
+  }
+
+  @MainActor func testTaskSnapshotRestoresAndFailedMutationRollsBack() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioTaskStorePreview"]
+    app.launch()
+    let status = app.staticTexts["task-store.validation"]
+    XCTAssertTrue(status.waitForExistence(timeout: 10))
+    expectation(for: NSPredicate(format: "label == %@", "Cache and rollback verified"), evaluatedWith: status)
+    waitForExpectations(timeout: 10)
+  }
+
+  @MainActor func testDeleteTaskImmediatelyRemovesHomeDecision() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioHomePreview", "-HymioHomeManyDecisions", "-HymioSlowDelete"]
+    app.launch()
+    XCTAssertTrue(app.buttons["home.focus"].firstMatch.waitForExistence(timeout: 10))
+    app.buttons["home.focus"].firstMatch.tap()
+    XCTAssertTrue(app.buttons["任务操作"].waitForExistence(timeout: 5))
+    app.buttons["任务操作"].tap()
+    app.buttons["删除任务"].tap()
+    app.buttons["删除任务"].tap()
+    XCTAssertTrue(app.buttons["home.decisions.all"].waitForExistence(timeout: 2))
+    XCTAssertFalse(app.staticTexts["确认周五住哪家酒店"].exists)
+    XCTAssertEqual(app.buttons["home.decisions.all"].label, "查看全部 · 4")
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "home-delete-immediate"; shot.lifetime = .keepAlways; add(shot)
+  }
+
   @MainActor func testRecollectionEmptyActionsAlwaysChangeDestination() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioContextPreview", "-HymioContextRecordsOnly"]
@@ -43,6 +79,11 @@ final class HymioUITests: XCTestCase {
     shot.name = "home-decisions-second-page"; shot.lifetime = .keepAlways; add(shot)
     app.buttons["home.decisions.all"].tap()
     XCTAssertTrue(app.navigationBars["等你决定"].waitForExistence(timeout: 5))
+    let lastDecision = app.descendants(matching: .any).matching(identifier: "home.decision.row.decision-4").firstMatch
+    XCTAssertTrue(lastDecision.isHittable)
+    XCTAssertLessThanOrEqual(lastDecision.frame.height, 100)
+    let listShot = XCTAttachment(screenshot: app.screenshot())
+    listShot.name = "home-decisions-compact-list"; listShot.lifetime = .keepAlways; add(listShot)
     app.scrollViews.firstMatch.swipeUp()
     XCTAssertTrue(app.staticTexts["确认要保留的应用"].exists)
     app.terminate()

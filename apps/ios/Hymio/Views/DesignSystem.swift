@@ -119,11 +119,8 @@ struct AccountButton: View {
 
   var body: some View {
     Button(action: { Haptics.selection(); action() }) {
-      VStack(spacing: 4.5) {
-        ForEach(0..<3) { _ in
-          Capsule().fill(Brand.ink).frame(width: 16, height: 1.5)
-        }
-      }
+      Image(systemName: "sidebar.left")
+        .font(.system(size: 18, weight: .regular)).foregroundStyle(Brand.ink)
         .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())
@@ -191,24 +188,26 @@ struct AddActionButton: View {
 /// One locally bundled artwork atlas; no remote image fetches during navigation.
 struct FeatureArtwork: View {
   enum Kind { case notebook, health, calendar, mail, chat, archive
-    var cell: (Int, Int) {
+    // Optical centers in the source artwork; its six subjects are not on a uniform grid.
+    var center: CGPoint {
       switch self {
-      case .notebook: (0, 0)
-      case .health: (1, 0)
-      case .calendar: (2, 0)
-      case .mail: (0, 1)
-      case .chat: (1, 1)
-      case .archive: (2, 1)
+      case .notebook: CGPoint(x: 317, y: 310)
+      case .health: CGPoint(x: 770, y: 315)
+      case .calendar: CGPoint(x: 1230, y: 310)
+      case .mail: CGPoint(x: 318, y: 715)
+      case .chat: CGPoint(x: 780, y: 715)
+      case .archive: CGPoint(x: 1225, y: 715)
       }
     }
   }
   let kind: Kind
   var size: CGFloat = 72
   var body: some View {
-    let cell = kind.cell
+    let center = kind.center
+    let scale = size / 480
     Image("FeatureArtwork").resizable()
-      .frame(width: size * 3, height: size * 2)
-      .offset(x: -CGFloat(cell.0) * size, y: -CGFloat(cell.1) * size)
+      .frame(width: 1536 * scale, height: 1024 * scale)
+      .offset(x: -(center.x - 240) * scale, y: -(center.y - 240) * scale)
       .frame(width: size, height: size, alignment: .topLeading)
       .clipped().clipShape(RoundedRectangle(cornerRadius: size * 0.24))
       .accessibilityHidden(true)
@@ -233,3 +232,23 @@ struct EqualHeightColumns: Layout {
     }
   }
 }
+
+#if DEBUG
+struct ArtworkAlignmentPreview: View {
+  private let kinds: [(FeatureArtwork.Kind, String)] = [(.notebook, "Notebook"), (.health, "Health"),
+    (.calendar, "Calendar"), (.mail, "Mail"), (.chat, "Chat"), (.archive, "Archive")]
+  var body: some View {
+    NavigationStack {
+      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 28) {
+        ForEach(kinds.indices, id: \.self) { index in
+          VStack(spacing: 8) {
+            FeatureArtwork(kind: kinds[index].0, size: 112)
+              .overlay(RoundedRectangle(cornerRadius: 22).stroke(Brand.line))
+            Text(kinds[index].1).font(.caption)
+          }
+        }
+      }.padding(24).navigationTitle("Artwork alignment")
+    }
+  }
+}
+#endif

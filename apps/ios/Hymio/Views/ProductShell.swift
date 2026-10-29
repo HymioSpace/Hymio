@@ -9,21 +9,113 @@ import SwiftUI
   @Published var error = ""
   @Published private(set) var changes: [JSON] = []
   private var loading = false
+  private var revision = 0
+  private let cacheQueue = DispatchQueue(label: "hymio.task-cache", qos: .utility)
+  private var pendingSuggestions: Set<String> = []
+  private var removals: Set<String> = []
+  private var deletedIDs: Set<String> = []
+  private var cacheURL: URL? {
+    guard !owner.isEmpty, !owner.hasSuffix("|") else { return nil }
+    let name = SHA256.hash(data: Data(owner.utf8)).map { String(format: "%02x", $0) }.joined()
+    return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+      .appendingPathComponent("HymioTaskBoard", isDirectory: true).appendingPathComponent(name + ".json")
+  }
+  private func persistSnapshot() {
+    guard let url = cacheURL else { return }
+    let snapshot = JSON.object(["tasks": .array(items), "suggestions": .array(suggestions)])
+    cacheQueue.async {
+      guard let data = try? JSONEncoder().encode(snapshot) else { return }
+      try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try? data.write(to: url, options: .atomic)
+      try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+        .posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+  }
+  func hideSuggestion(_ id: String) -> (JSON, Int)? {
+    guard let index = suggestions.firstIndex(where: { $0["id"].text == id }) else { return nil }
+    revision += 1; pendingSuggestions.insert(id)
+    let removed = suggestions.remove(at: index); persistSnapshot()
+    return (removed, index)
+  }
+  func finishSuggestion(_ id: String) {
+    revision += 1; pendingSuggestions.remove(id); persistSnapshot()
+  }
+  func restoreSuggestion(_ removed: (JSON, Int)) {
+    revision += 1; pendingSuggestions.remove(removed.0["id"].text)
+    if !suggestions.contains(where: { $0["id"] == removed.0["id"] }) {
+      suggestions.insert(removed.0, at: min(removed.1, suggestions.count))
+    }
+    error = "未能移除，灵感已恢复。"; persistSnapshot()
+  }
+  func apply(_ item: JSON) {
+    guard !item["id"].text.isEmpty, !removals.contains(item["id"].text), !deletedIDs.contains(item["id"].text) else { return }
+    revision += 1
+    if let index = items.firstIndex(where: { $0["id"] == item["id"] }) { items[index] = item }
+    else { items.insert(item, at: 0) }
+    rebuildChanges(); persistSnapshot()
+  }
+  func hide(_ id: String) -> (JSON, Int)? {
+    guard let index = items.firstIndex(where: { $0["id"].text == id }) else { return nil }
+    revision += 1; removals.insert(id)
+    let removed = items.remove(at: index)
+    rebuildChanges(); persistSnapshot()
+    return (removed, index)
+  }
+  func finishRemoval(_ id: String) {
+    revision += 1; removals.remove(id); deletedIDs.insert(id); persistSnapshot()
+  }
+  func restore(_ removed: (JSON, Int)) {
+    revision += 1; removals.remove(removed.0["id"].text)
+    if !items.contains(where: { $0["id"] == removed.0["id"] }) {
+      items.insert(removed.0, at: min(removed.1, items.count))
+    }
+    error = "未能删除，卡片已恢复。请稍后重试。"
+    rebuildChanges(); persistSnapshot()
+  }
   @Published private var baseline: [String: String]?
   private var owner = ""
   private var key: String { "hymio.task-baseline." + owner }
   func bind(_ account: AccountService) {
-    let next = account.backend.absoluteString + "|" + (account.session?.user_id ?? "")
+    bindIdentity(account.backend.absoluteString + "|" + (account.session?.user_id ?? ""))
+  }
+  private func bindIdentity(_ next: String) {
     guard next != owner else { return }
     owner = next
+    revision += 1; removals = []; deletedIDs = []; pendingSuggestions = []
     items = []
     suggestions = []
     loaded = false
     error = ""
     changes = []
     baseline = UserDefaults.standard.dictionary(forKey: key) as? [String: String]
+    if let url = cacheURL, let data = try? Data(contentsOf: url),
+      let snapshot = try? JSONDecoder().decode(JSON.self, from: data) {
+      items = snapshot["tasks"].items; suggestions = snapshot["suggestions"].items; loaded = true
+    }
     rebuildChanges()
   }
+  #if DEBUG
+  static func validateLocalSnapshot() async -> Bool {
+    let identity = "preview://task-cache|" + UUID().uuidString
+    let source = TaskBoard(); source.bindIdentity(identity)
+    let item = JSON.object(["id": .string("synthetic-cache-item"), "title": .string("Local snapshot"), "state": .string("active")])
+    source.apply(item)
+    guard let removed = source.hide("synthetic-cache-item"), source.items.isEmpty else { return false }
+    source.restore(removed)
+    guard source.items == [item] else { return false }
+    await withCheckedContinuation { continuation in source.cacheQueue.async { continuation.resume() } }
+    let restored = TaskBoard(); restored.bindIdentity(identity)
+    let other = TaskBoard(); other.bindIdentity(identity + "-other")
+    var valid = restored.loaded && restored.items == [item] && other.items.isEmpty
+    _ = restored.hide("synthetic-cache-item")
+    restored.finishRemoval("synthetic-cache-item")
+    restored.apply(item) // A late detail response must not resurrect a deleted card.
+    valid = valid && restored.items.isEmpty
+    await withCheckedContinuation { continuation in restored.cacheQueue.async { continuation.resume() } }
+    if let url = source.cacheURL { try? FileManager.default.removeItem(at: url) }
+    return valid
+  }
+  #endif
   private func fingerprint(_ item: JSON) -> String {
     let run = item["runs"].items.first ?? .null
     // List responses omit notes and truncate prose; use their shared server revision.
@@ -60,17 +152,19 @@ import SwiftUI
     guard !loading else { return }
     loading = true
     let user = account.session?.user_id
+    let startedOwner = owner, startedRevision = revision
     defer { loading = false }
     do {
       let result = try await account.request("tasks")
-      guard user == account.session?.user_id, !Task.isCancelled else { return }
-      let nextSuggestions = result["suggestions"].items
+      guard user == account.session?.user_id, owner == startedOwner, revision == startedRevision, !Task.isCancelled else { return }
+      let nextSuggestions = result["suggestions"].items.filter { !pendingSuggestions.contains($0["id"].text) }
       if suggestions != nextSuggestions { suggestions = nextSuggestions }
-      let next = result["tasks"].items
+      let next = result["tasks"].items.filter { !removals.contains($0["id"].text) && !deletedIDs.contains($0["id"].text) }
       if items != next {
         items = next
         rebuildChanges()
       }
+      persistSnapshot()
       if !loaded { loaded = true }
       if !error.isEmpty { error = "" }
     } catch is CancellationError {
@@ -132,7 +226,7 @@ struct ProductShell: View, Equatable {
       ShellAgentStatus(account: account, client: client, board: board, selected: $selected)
     }
     .sheet(isPresented: $showAccount) {
-      AccountScreen(account: account, client: client)
+      AccountScreen(account: account, client: client, taskBoard: board)
     }
     .sheet(isPresented: $showTasks) {
       NavigationStack { TasksScreen(account: account, board: board, onAccount: {}, showAccountButton: false)
@@ -141,7 +235,7 @@ struct ProductShell: View, Equatable {
     .sheet(isPresented: $showKits) { KitsScreen(account: account, onAccount: {}, showAccountButton: false) }
     .sheet(isPresented: Binding(get: { notificationTask != nil }, set: { if !$0 { notificationTask = nil } })) {
       if let item = notificationTask {
-        NavigationStack { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item) }
+        NavigationStack { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, board: board) }
       }
     }
   }
@@ -192,6 +286,7 @@ struct HomeScreen: View {
   let onAccount: () -> Void
   var onTasks: () -> Void = {}
   var onKits: () -> Void = {}
+  var previewMode = false
   @State private var applications: [JSON] = []
   @State private var openedTask: JSON?
   @State private var agent = HomeAgentSnapshot()
@@ -276,7 +371,7 @@ struct HomeScreen: View {
               Companion(size: 52, mood: agent.working ? .working : .greeting)
               Text(agent.working ? "正在忙" : "在这里").font(.system(size: 10)).foregroundStyle(Brand.muted)
             }
-          }.padding(.top, 12)
+          }.padding(.top, 12).unredacted()
           if !decisions.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
               HStack {
@@ -337,10 +432,12 @@ struct HomeScreen: View {
           if !applications.isEmpty { commonApplications }
           if let idea = board.suggestions.first { inspiration(idea) }
           if !board.error.isEmpty {
-            Button("暂时未能更新，点击重试") { Task { await board.refresh(account) } }
+            Button(board.error + " 点击重试") { Task { await board.refresh(account) } }
               .font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
           }
         }.padding(.horizontal, 22).padding(.bottom, 28).frame(maxWidth: 620).frame(maxWidth: .infinity)
+          .redacted(reason: !board.loaded && board.error.isEmpty ? .placeholder : [])
+          .allowsHitTesting(board.loaded || !board.error.isEmpty)
       }
       .background(Brand.base)
       .onReceive(client.$ready.combineLatest(client.$phase, client.$model).map(HomeAgentSnapshot.init).removeDuplicates()) { agent = $0 }
@@ -356,13 +453,13 @@ struct HomeScreen: View {
       .sheet(isPresented: $allDecisions) {
         NavigationStack {
           ScrollView {
-            LazyVStack(spacing: 12) { ForEach(decisions) { decisionCard($0) } }.padding(20)
+            LazyVStack(spacing: 0) { ForEach(decisions) { compactDecision($0) } }.padding(.horizontal, 20)
           }.background(Brand.base).navigationTitle("等你决定").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { allDecisions = false } } }
         }
       }
       .navigationDestination(item: $openedTask) { item in
-        TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, onViewed: { board.markSeen($0) })
+        TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, board: board, previewMode: previewMode, onViewed: { board.markSeen($0) })
       }
     }
   }
@@ -372,23 +469,47 @@ struct HomeScreen: View {
       allDecisions = false
       if let task = item.task { openedTask = task } else { selected = .chat }
     } label: {
-      VStack(alignment: .leading, spacing: 16) {
+      VStack(alignment: .leading, spacing: 12) {
         HStack {
           Image(systemName: "hand.raised").foregroundStyle(Brand.attention)
           Spacer()
           Text("\((decisions.firstIndex { $0.id == item.id } ?? 0) + 1) / \(decisions.count)")
             .font(.caption).monospacedDigit().foregroundStyle(Brand.muted)
         }
-        Text(item.title).font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
+        Text(item.title).font(.headline).foregroundStyle(Brand.ink)
           .lineLimit(typeSize.isAccessibilitySize ? nil : 3).multilineTextAlignment(.leading)
-        Text(item.detail).font(.subheadline).foregroundStyle(Brand.muted)
+        Text(item.detail).font(.caption).foregroundStyle(Brand.muted)
           .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
         HStack { Text("看一下"); Spacer(); Image(systemName: "arrow.up.right") }
           .font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
-      }.padding(22).frame(maxWidth: .infinity, minHeight: 200, alignment: .topLeading)
+      }.padding(18).frame(maxWidth: .infinity, minHeight: 156, alignment: .topLeading)
         .background(Brand.raised, in: RoundedRectangle(cornerRadius: 24))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.line, lineWidth: 0.7))
     }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+  }
+
+  @ViewBuilder private func compactDecision(_ item: Decision) -> some View {
+    if let task = item.task {
+      NavigationLink {
+        TaskDetailScreen(account: account, taskID: task["id"].text, initial: task, board: board,
+          previewMode: previewMode, onViewed: { board.markSeen($0) })
+      } label: { decisionRow(item) }.buttonStyle(.plain)
+    } else {
+      Button { allDecisions = false; selected = .chat } label: { decisionRow(item) }.buttonStyle(.plain)
+    }
+  }
+  private func decisionRow(_ item: Decision) -> some View {
+    HStack(alignment: .center, spacing: 12) {
+      Image(systemName: "hand.raised").font(.system(size: 17)).foregroundStyle(Brand.attention).frame(width: 28)
+      VStack(alignment: .leading, spacing: 5) {
+        Text(item.title).font(.body.weight(.medium)).foregroundStyle(Brand.ink).lineLimit(2)
+        Text(item.detail).font(.footnote).foregroundStyle(Brand.muted).lineLimit(1)
+      }
+      Spacer(minLength: 4)
+      Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(Brand.muted)
+    }.padding(.vertical, 16).frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+      .overlay(alignment: .bottom) { Rectangle().fill(Brand.line).frame(height: 0.5) }
+      .contentShape(Rectangle()).accessibilityIdentifier("home.decision.row." + item.id)
   }
 
   private var scheduleTile: some View {
@@ -463,6 +584,7 @@ struct HomeScreen: View {
   }
 
   private func handleSuggestion(_ item: JSON, accept: Bool) async {
+    let removed = board.hideSuggestion(item["id"].text)
     do {
       _ = try await account.request(
         "tasks",
@@ -470,8 +592,11 @@ struct HomeScreen: View {
           "action": .string(accept ? "accept_suggestion" : "dismiss_suggestion"),
           "suggestion_id": .string(item["id"].text),
         ]))
+      board.finishSuggestion(item["id"].text)
       await board.refresh(account)
-    } catch { board.error = "这次操作未完成，请重试。" }
+    } catch {
+      if let removed { board.restoreSuggestion(removed) }
+    }
   }
 }
 
@@ -620,6 +745,14 @@ struct PersonalExperiencePreview: View {
   var body: some View { ProductShell(account: account, client: client, previewMode: true) }
 }
 
+struct TaskStoreValidationPreview: View {
+  @State private var status = "Checking"
+  var body: some View {
+    Text(status).accessibilityIdentifier("task-store.validation")
+      .task { status = await TaskBoard.validateLocalSnapshot() ? "Cache and rollback verified" : "Validation failed" }
+  }
+}
+
 struct HomeExperiencePreview: View {
   let account: AccountService
   @StateObject private var board = TaskBoard()
@@ -633,7 +766,7 @@ struct HomeExperiencePreview: View {
     NavigationStack {
       HomeScreen(
         account: account, client: client, board: board, selected: $selected,
-        onAccount: {})
+        onAccount: {}, previewMode: true)
     }
     .onAppear {
       installExperienceFixture(board)
