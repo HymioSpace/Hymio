@@ -409,11 +409,7 @@ struct ChatScreen: View {
             }.padding(.horizontal, 4)
           }
         }
-        TextField("接着说，我在听…", text: $draft, axis: .vertical)
-          .lineLimit(1...6).padding(.vertical, 6).padding(.horizontal, 8).focused($typing)
-          .accessibilityIdentifier(
-            "chat.input")
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 0) {
           Menu {
             Button {
               photosOpen = true
@@ -438,7 +434,10 @@ struct ChatScreen: View {
             ).frame(width: 44, height: 44)
           }.disabled(uploading || attachments.count >= AttachmentLimits.maxCount)
             .accessibilityLabel("添加附件")
-          Spacer(minLength: 8)
+          TextField("接着说，我在听…", text: $draft, axis: .vertical)
+            .lineLimit(1...5).padding(.vertical, 11).padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .focused($typing).accessibilityIdentifier("chat.input")
           Button {
             send()
           } label: {
@@ -454,7 +453,9 @@ struct ChatScreen: View {
             .accessibilityIdentifier("chat.send")
         }
       }
-      .padding(8)
+      .padding(5)
+      .contentShape(RoundedRectangle(cornerRadius: 28))
+      .onTapGesture { typing = true }
       .modifier(ComposerSurface(focused: typing))
     }.padding(.horizontal, 16).padding(.top, 9).padding(.bottom, 8)
   }

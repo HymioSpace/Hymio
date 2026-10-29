@@ -119,8 +119,11 @@ struct AccountButton: View {
 
   var body: some View {
     Button(action: { Haptics.selection(); action() }) {
-      Image(systemName: "line.3.horizontal")
-        .font(.system(size: 17, weight: .regular)).foregroundStyle(Brand.ink)
+      VStack(spacing: 4.5) {
+        ForEach(0..<3) { _ in
+          Capsule().fill(Brand.ink).frame(width: 16, height: 1.5)
+        }
+      }
         .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())
@@ -175,10 +178,58 @@ struct AddActionButton: View {
   let action: () -> Void
   var body: some View {
     Button { Haptics.selection(); action() } label: {
-      Image(systemName: "plus").font(.system(size: 19, weight: .medium))
-        .frame(width: 44, height: 44).foregroundStyle(Brand.ink)
+      Image(systemName: "plus").font(.system(size: 17, weight: .regular))
+        .frame(width: 36, height: 36).foregroundStyle(Brand.ink)
         .background(.regularMaterial, in: Circle())
         .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.7))
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
     }.buttonStyle(.plain).accessibilityLabel(title)
+  }
+}
+
+/// One locally bundled artwork atlas; no remote image fetches during navigation.
+struct FeatureArtwork: View {
+  enum Kind { case notebook, health, calendar, mail, chat, archive
+    var cell: (Int, Int) {
+      switch self {
+      case .notebook: (0, 0)
+      case .health: (1, 0)
+      case .calendar: (2, 0)
+      case .mail: (0, 1)
+      case .chat: (1, 1)
+      case .archive: (2, 1)
+      }
+    }
+  }
+  let kind: Kind
+  var size: CGFloat = 72
+  var body: some View {
+    let cell = kind.cell
+    Image("FeatureArtwork").resizable()
+      .frame(width: size * 3, height: size * 2)
+      .offset(x: -CGFloat(cell.0) * size, y: -CGFloat(cell.1) * size)
+      .frame(width: size, height: size, alignment: .topLeading)
+      .clipped().clipShape(RoundedRectangle(cornerRadius: size * 0.24))
+      .accessibilityHidden(true)
+  }
+}
+
+/// Measure both columns first, then give each the same row height.
+struct EqualHeightColumns: Layout {
+  var spacing: CGFloat = 12
+  func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    let gaps = spacing * CGFloat(max(0, subviews.count - 1))
+    let width = proposal.width ?? subviews.reduce(gaps) { $0 + $1.sizeThatFits(.unspecified).width }
+    let column = max(0, width - gaps) / CGFloat(max(1, subviews.count))
+    let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: column, height: nil)).height }.max() ?? 0
+    return CGSize(width: width, height: height)
+  }
+  func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    let column = max(0, bounds.width - spacing * CGFloat(max(0, subviews.count - 1))) / CGFloat(max(1, subviews.count))
+    for (index, view) in subviews.enumerated() {
+      view.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (column + spacing), y: bounds.minY),
+        anchor: .topLeading, proposal: ProposedViewSize(width: column, height: bounds.height))
+    }
   }
 }

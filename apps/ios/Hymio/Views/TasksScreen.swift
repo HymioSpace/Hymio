@@ -136,7 +136,7 @@ struct TasksScreen: View {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
       ToolbarItem(placement: .topBarTrailing) {
         AddActionButton(title: "新建安排") { creating = true }
-      }
+      }.accountUnframed()
     }
     .sheet(isPresented: $creating, onDismiss: {
       if !previewMode { Task { await board.refresh(account) } }

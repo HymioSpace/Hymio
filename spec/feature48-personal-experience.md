@@ -8,6 +8,8 @@ Three native tabs: Now, Chat, Recollections (此刻、对话、回忆). Tasks an
 
 Home is composed from approvals awaiting a decision, explicit user-facing reminders, meaningful recent outcomes, common applications and evidence-grounded inspirations. Missing modules collapse rather than showing fabricated content. The otter is a small brand anchor. No all-tasks inventory is duplicated on Home.
 
+Multiple decisions form a horizontally paged carousel with a visible position and a complete decision list. Every count has a navigation path. A missing schedule has a quiet illustrated empty state and a real task entry, rather than a dash. My uses illustrated task/application shortcuts, a connector entry and readable preference rows; deeper configuration keeps platform controls. Generated artwork is bundled locally and reused without network image loading. The composer keeps attachment, multiline editor and send controls on a single bottom-aligned row, and the surrounding input surface focuses the editor.
+
 ## Task audience
 
 An additive `for_user` boolean defaults false on creation and legacy records. User-facing reminders/schedules explicitly opt in; internal follow-ups remain false. API, CLI schema, prompt, editor and clients carry the same field. Home eligibility never infers audience from a title. Calendar remains the full task time workspace.
@@ -19,6 +21,12 @@ Technical device telemetry and health daily summaries are not human diary entrie
 ## Performance and failures
 
 Keep conversation receipt, reconciliation and durability independent of UI ticks. Bound streaming presentation work and limit scroll anchoring to actual visible content; no competing count/timer/geometry auto-scroll loops. No bottom placeholder may create an invisible screen of scroll range. Main tab hierarchy does not subscribe to token updates. Non-chat stores publish only actual changes; polling is foreground-scoped and bounded. Errors shown in product surfaces use user language; diagnostic details remain in the debug destination. WebSocket resumes on foreground/network recovery, with backoff; background suspension is expected on iOS and must not be presented as an unexplained failure.
+
+## Streaming text and toolbar geometry
+
+The jitter buffer controls output cadence; a separate native text renderer softens only the arriving edge with a brief Gaussian blur and opacity transition. Settled runs draw without a filter. Completed messages stop animating, and Reduce Motion shows clear text immediately. Keep the tail renderer alive for its final settling interval before handing off to completed Markdown; do not replay the whole response on completion.
+
+Toolbar symbols have a balanced visible footprint inside a 44-point hit target. Custom circular add buttons use a 36-point visible surface and explicitly hide the system toolbar's shared background so two surfaces cannot overlap or clip each other. Review actual screenshots of every affected destination and record the real ChatScreen streaming path, rather than relying on a standalone text demo.
 
 ## Validation
 

@@ -1,6 +1,69 @@
 import XCTest
 
 final class HymioUITests: XCTestCase {
+  @MainActor func testHomeDecisionCarouselAndEmptySchedule() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioHomePreview", "-HymioHomeManyDecisions"]
+    app.launch()
+    let carousel = app.scrollViews["home.decisions"]
+    XCTAssertTrue(carousel.waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["确认周五住哪家酒店"].isHittable)
+    carousel.swipeLeft()
+    XCTAssertTrue(app.staticTexts["选一个周末出行方向"].isHittable)
+    var shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "home-decisions-second-page"; shot.lifetime = .keepAlways; add(shot)
+    app.buttons["home.decisions.all"].tap()
+    XCTAssertTrue(app.navigationBars["等你决定"].waitForExistence(timeout: 5))
+    app.scrollViews.firstMatch.swipeUp()
+    XCTAssertTrue(app.staticTexts["确认要保留的应用"].exists)
+    app.terminate()
+    app.launchArguments = ["-HymioHomePreview", "-HymioHomeEmpty"]
+    app.launch()
+    XCTAssertTrue(app.staticTexts["留一点空白"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["没有定时安排"].exists)
+    let schedule = app.buttons["home.schedule"].frame
+    let agent = app.buttons["home.agent"].frame
+    XCTAssertEqual(schedule.minY, agent.minY, accuracy: 0.5)
+    XCTAssertEqual(schedule.maxY, agent.maxY, accuracy: 0.5)
+    XCTAssertEqual(schedule.width, agent.width, accuracy: 0.5)
+    XCTAssertEqual(app.staticTexts["留一点空白"].frame.midY,
+      app.staticTexts["最近进展"].frame.midY, accuracy: 0.5)
+    shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "home-empty-schedule"; shot.lifetime = .keepAlways; add(shot)
+  }
+
+  @MainActor func testToolbarControlsAcrossProductDestinations() throws {
+    let app = XCUIApplication()
+    for (argument, name, addLabel) in [
+      ("-HymioHomePreview", "home-menu", ""),
+      ("-HymioCalendarPreview", "calendar-toolbar", "新建安排"),
+      ("-HymioContextPreview", "recollections-toolbar", "添加回忆"),
+      ("-HymioKitAppPreview", "application-toolbar", ""),
+    ] {
+      app.launchArguments = [argument]
+      app.launch()
+      XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 10))
+      let shot = XCTAttachment(screenshot: app.screenshot())
+      shot.name = name; shot.lifetime = .keepAlways; add(shot)
+      if !addLabel.isEmpty {
+        let button = app.buttons[addLabel]
+        XCTAssertTrue(button.isHittable)
+        XCTAssertGreaterThanOrEqual(button.frame.height, 43.5)
+        button.tap()
+        let sheet = XCTAttachment(screenshot: app.screenshot())
+        sheet.name = name + "-add-sheet"; sheet.lifetime = .keepAlways; add(sheet)
+      }
+      app.terminate()
+    }
+    app.launchArguments = ["-HymioExperiencePreview"]
+    app.launch()
+    XCTAssertTrue(app.buttons["账号与设置"].waitForExistence(timeout: 10))
+    app.buttons["账号与设置"].tap()
+    XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
+    let my = XCTAttachment(screenshot: app.screenshot())
+    my.name = "my-toolbar"; my.lifetime = .keepAlways; add(my)
+  }
+
   @MainActor func testThreeTabsAndGroupedMyNavigation() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioExperiencePreview"]
@@ -46,6 +109,14 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.buttons["最新消息"].waitForExistence(timeout: 5))
     app.buttons["最新消息"].tap()
     XCTAssertTrue(final.isHittable)
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.isHittable)
+    editor.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)).tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    editor.typeText("draft only")
+    XCTAssertTrue((editor.value as? String)?.contains("draft only") == true)
+    let input = XCTAttachment(screenshot: app.screenshot())
+    input.name = "single-row-composer-keyboard"; input.lifetime = .keepAlways; add(input)
   }
 
   @MainActor func testHomeLargeTextAndDarkAppearance() throws {

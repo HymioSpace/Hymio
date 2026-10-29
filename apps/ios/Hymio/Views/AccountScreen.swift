@@ -159,44 +159,77 @@ struct AccountScreen: View {
       } catch { modelError = "上下文长度未更改，请稍后重试。" }
     }
   }
+  private func accountTile(_ title: String, detail: String, artwork: FeatureArtwork.Kind) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      FeatureArtwork(kind: artwork, size: 78).padding(.leading, -8)
+      Text(title).font(.headline).foregroundStyle(Brand.ink)
+      Text(detail).font(.caption).foregroundStyle(Brand.muted)
+    }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 24))
+      .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityHint(detail)
+  }
+  private func accountRow(_ title: String, detail: String, symbol: String) -> some View {
+    HStack(spacing: 14) {
+      Image(systemName: symbol).font(.system(size: 18, weight: .regular))
+        .foregroundStyle(Brand.blue).frame(width: 28)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
+        Text(detail).font(.caption).foregroundStyle(Brand.muted)
+      }
+      Spacer(minLength: 4)
+      Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundStyle(Brand.muted)
+    }.padding(.vertical, 12).contentShape(Rectangle())
+      .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityHint(detail)
+  }
   var body: some View {
     NavigationStack {
-      List {
-        Section {
-          HStack(spacing: 14) {
-            Companion(size: 64)
-            VStack(alignment: .leading, spacing: 5) {
-              Text(account.session?.displayName ?? "我的账号").font(.headline)
-              Text("在不同设备上，继续同一段对话。").font(.caption).foregroundStyle(.secondary)
+      ScrollView {
+        VStack(alignment: .leading, spacing: 28) {
+          HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+              Text(account.session?.displayName ?? "我的账号").font(.title.weight(.semibold)).foregroundStyle(Brand.ink)
+              Text("一个 Hymio，随处接着聊。").font(.subheadline).foregroundStyle(Brand.muted)
             }
-          }.padding(.vertical, 6)
-        }
-        Section {
+            Spacer(minLength: 8)
+            Companion(size: 72)
+          }.padding(.top, 12)
+          HStack(spacing: 12) {
+            NavigationLink { TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
+              .task { taskBoard.bind(account); await taskBoard.refresh(account) } } label: {
+              accountTile("任务与日程", detail: "安排与进展", artwork: .calendar)
+            }
+            NavigationLink { KitsScreen(account: account, onAccount: {}, showAccountButton: false) } label: {
+              accountTile("我的应用", detail: "为日常添些工具", artwork: .archive)
+            }
+          }
           NavigationLink { ConnectorsScreen(account: account) } label: {
-            Label("连接来源", systemImage: "link")
+            HStack(spacing: 14) {
+              FeatureArtwork(kind: .mail, size: 64)
+              VStack(alignment: .leading, spacing: 5) {
+                Text("连接来源").font(.headline).foregroundStyle(Brand.ink)
+                Text("把邮件、清单和日常带进来。请先选择你愿意分享的部分。")
+                  .font(.caption).foregroundStyle(Brand.muted).fixedSize(horizontal: false, vertical: true)
+              }
+              Spacer(minLength: 0)
+              Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
+            }.padding(16).background(Brand.paper, in: RoundedRectangle(cornerRadius: 22))
           }.accessibilityIdentifier("account.connectors")
-        } footer: { Text("邮件、清单和来自 iPhone 的日常，由你选择分享。") }
-        Section("Hymio") {
-          NavigationLink { TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
-            .task { taskBoard.bind(account); await taskBoard.refresh(account) } } label: {
-            Label("任务与日程", systemImage: "calendar")
+          VStack(alignment: .leading, spacing: 6) {
+            Text("按你的方式").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
+            NavigationLink { Form { modelSection }.navigationTitle("模型设置").navigationBarTitleDisplayMode(.inline) } label: {
+              accountRow("模型与上下文", detail: "选择对话模型与上下文长度", symbol: "slider.horizontal.3")
+            }
+            Divider().overlay(Brand.line)
+            NavigationLink { Form { authorizationSection }.navigationTitle("隐私与授权").navigationBarTitleDisplayMode(.inline) } label: {
+              accountRow("隐私与工具授权", detail: "由你决定 Hymio 能做什么", symbol: "hand.raised")
+            }
+            Divider().overlay(Brand.line)
+            NavigationLink { NotificationSettingsScreen(account: account) } label: {
+              accountRow("通知与实时活动", detail: "重要进展，及时知道", symbol: "bell")
+            }
           }
-          NavigationLink { KitsScreen(account: account, onAccount: {}, showAccountButton: false) } label: {
-            Label("我的应用", systemImage: "square.grid.2x2")
-          }
-        }
-        Section("偏好与安全") {
-          NavigationLink { Form { modelSection }.navigationTitle("模型设置").navigationBarTitleDisplayMode(.inline) } label: {
-            Label("模型与上下文", systemImage: "slider.horizontal.3")
-          }
-          NavigationLink { Form { authorizationSection }.navigationTitle("隐私与授权").navigationBarTitleDisplayMode(.inline) } label: {
-            Label("隐私与工具授权", systemImage: "hand.raised")
-          }
-          NavigationLink { NotificationSettingsScreen(account: account) } label: {
-            Label("通知与实时活动", systemImage: "bell.badge")
-          }
-        }
-        Section("设备与连接") {
+          VStack(alignment: .leading, spacing: 6) {
+            Text("保持连接").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
           NavigationLink { List {
         Section {
           Button {
@@ -295,28 +328,29 @@ struct AccountScreen: View {
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
               }
             }
-          } label: { Label("我的设备", systemImage: "desktopcomputer") }
-        }
-        Section("调试与诊断") {
+          } label: { accountRow("我的设备", detail: "Mac、手机与云电脑", symbol: "desktopcomputer") }
+
+          }
           NavigationLink {
-            TraceScreen(account: account, client: client)
+            ScrollView {
+              VStack(spacing: 12) {
+                NavigationLink { TraceScreen(account: account, client: client) } label: {
+                  accountRow("探索记录", detail: "查看一次工作的执行过程", symbol: "clock.arrow.circlepath")
+                }
+                Button { diagnostics = true } label: {
+                  accountRow("连接诊断", detail: "检查连接与同步状态", symbol: "waveform.path.ecg")
+                }
+              }.padding(22)
+            }.background(Brand.base).navigationTitle("调试与诊断").navigationBarTitleDisplayMode(.inline)
           } label: {
-            Label("探索记录", systemImage: "clock.arrow.circlepath")
+            accountRow("调试与诊断", detail: "需要排查问题时再来这里", symbol: "wrench.adjustable")
           }
-          Button {
-            diagnostics = true
-          } label: {
-            Label("连接诊断", systemImage: "waveform.path.ecg")
-          }
-        }
-        Section {
-          Button(role: .destructive) {
-            loggingOut = true
-          } label: {
-            Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
-          }.accessibilityIdentifier("account.logout")
-        }
-      }
+          Button(role: .destructive) { loggingOut = true } label: {
+            Text("退出登录").font(.subheadline).frame(minHeight: 44)
+          }.accessibilityIdentifier("account.logout").padding(.top, 8)
+        }.padding(.horizontal, 24).padding(.bottom, 28)
+          .frame(maxWidth: 620).frame(maxWidth: .infinity)
+      }.background(Brand.base).buttonStyle(.plain)
       .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {

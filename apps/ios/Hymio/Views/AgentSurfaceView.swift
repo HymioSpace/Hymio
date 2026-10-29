@@ -1,5 +1,72 @@
 import SwiftUI
 
+/// Draw only the arriving edge out of focus; settled prose has no filter or timer.
+private struct DiffuseTextRenderer: TextRenderer, Animatable {
+  var revealed: Double
+  let characterCount: Int
+  var animatableData: Double {
+    get { revealed }
+    set { revealed = newValue }
+  }
+  func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+    let glyphCount = layout.reduce(0) { count, line in count + line.reduce(0) { $0 + $1.count } }
+    let frontier = revealed / Double(max(1, characterCount)) * Double(glyphCount)
+    var index = 0
+    for line in layout {
+      for run in line {
+        if Double(index + run.count) <= frontier {
+          context.draw(run)
+          index += run.count
+          continue
+        }
+        for slice in run {
+          let diffuse = min(1, max(0, (Double(index + 1) - frontier) / 4))
+          var glyphContext = context
+          if diffuse > 0 {
+            glyphContext.opacity = 1 - diffuse * 0.7
+            glyphContext.addFilter(.blur(radius: diffuse * 2.8))
+          }
+          glyphContext.draw(slice)
+          index += 1
+        }
+      }
+    }
+  }
+}
+
+private struct DiffuseStreamingText: View {
+  let content: String
+  var plain = false
+  var animate = true
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var revealed = 0.0
+  @State private var previous = ""
+  var body: some View {
+    let attributed = plain ? AttributedString(content) :
+      ((try? AttributedString(markdown: content,
+        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content))
+    Text(attributed)
+      .font(plain ? .callout : .body)
+      .foregroundStyle(plain ? Brand.muted : Brand.ink)
+      .lineSpacing(4)
+      .textRenderer(DiffuseTextRenderer(
+        revealed: reduceMotion || !animate ? Double(content.count) : revealed, characterCount: content.count))
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onChange(of: content, initial: true) { _, value in
+        if reduceMotion || !animate {
+          revealed = Double(value.count)
+        } else {
+          if !value.hasPrefix(previous) {
+            var reset = Transaction(); reset.disablesAnimations = true
+            withTransaction(reset) { revealed = 0 }
+          }
+          withAnimation(.linear(duration: 0.24)) { revealed = Double(value.count) }
+        }
+        previous = value
+      }
+  }
+}
+
 private struct StableMarkdown: View, Equatable {
   let content: String
   let account: AccountService
@@ -65,6 +132,7 @@ struct BufferedProse: View {
   @Environment(\.scenePhase) private var scene
   @State private var copyGeneration = 0
   @State private var copied = false
+  @State private var settling = false
   @StateObject private var presentation: ProsePresenter
   init(source: String, streaming: Bool, account: AccountService, plain: Bool = false) {
     self.plain = plain
@@ -77,8 +145,7 @@ struct BufferedProse: View {
     let frame = presentation.frame
     Group {
       if plain {
-        Text(frame.text).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-          .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+        DiffuseStreamingText(content: frame.text, plain: true, animate: streaming || frame.pending || settling)
       } else {
         let parts = AgentSurface.stableMarkdown(frame.text)
         VStack(alignment: .leading, spacing: 8) {
@@ -86,20 +153,21 @@ struct BufferedProse: View {
             StableMarkdown(content: parts.stable, account: account).equatable()
           }
           if !parts.tail.isEmpty {
-            if frame.pending || streaming {
-              Text(
-                (try? AttributedString(
-                  markdown: parts.tail,
-                  options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                  ?? AttributedString(parts.tail)
-              )
-              .font(.body).lineSpacing(4).textSelection(.disabled)
-              .frame(maxWidth: .infinity, alignment: .leading)
+            if frame.pending || streaming || settling {
+              DiffuseStreamingText(content: parts.tail)
             } else {
               StableMarkdown(content: parts.tail, account: account).equatable()
             }
           }
         }.frame(minHeight: 24, alignment: .topLeading)
+      }
+    }
+    .task(id: frame.pending || streaming) {
+      if frame.pending || streaming {
+        settling = true
+      } else if settling {
+        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+        settling = false
       }
     }
     .contextMenu {
@@ -471,7 +539,10 @@ struct AgentSurfaceView: View {
     private var frames = 0
     private var stalls = 0
     private var maxGap = 0.0
+    private var started = 0.0
+    private var slowFrames: [String] = []
     func start() {
+      started = ProcessInfo.processInfo.systemUptime
       link = CADisplayLink(target: self, selector: #selector(frame(_:)))
       link?.add(to: .main, forMode: .common)
     }
@@ -479,7 +550,12 @@ struct AgentSurfaceView: View {
       if previous > 0 {
         let gap = sender.timestamp - previous
         maxGap = max(maxGap, gap)
-        if gap > 0.05 { stalls += 1 }
+        if gap > 0.05 {
+          stalls += 1
+          if slowFrames.count < 8 {
+            slowFrames.append(String(format: "%.2fs:%dms", sender.timestamp - started, Int(gap * 1000)))
+          }
+        }
       }
       previous = sender.timestamp
       frames += 1
@@ -487,7 +563,7 @@ struct AgentSurfaceView: View {
     @discardableResult func stop() -> String {
       link?.invalidate()
       link = nil
-      return "\(frames) frames, \(stalls) gaps >50ms, max \(Int(maxGap * 1000))ms"
+      return "\(frames) frames, \(stalls) gaps >50ms, max \(Int(maxGap * 1000))ms; \(slowFrames.joined(separator: ", "))"
     }
   }
 #endif

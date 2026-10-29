@@ -195,6 +195,22 @@ struct HomeScreen: View {
   @State private var applications: [JSON] = []
   @State private var openedTask: JSON?
   @State private var agent = HomeAgentSnapshot()
+  @State private var decisionPage: String?
+  @State private var allDecisions = false
+  private struct Decision: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let task: JSON?
+  }
+  private var decisions: [Decision] {
+    pendingApprovals.map { Decision(id: "approval-" + $0.id, title: $0.title, detail: $0.summary, task: nil) }
+      + attention.map { item in
+        let run = item["runs"].items.first ?? .null
+        let detail = [run["next_step"].text, run["progress"].text, item["objective"].text].first { !$0.isEmpty } ?? ""
+        return Decision(id: item["id"].text, title: item["title"].text, detail: detail, task: item)
+      }
+  }
 
   private var attention: [JSON] {
     board.items.filter { taskLane($0) == .attention }
@@ -261,13 +277,41 @@ struct HomeScreen: View {
               Text(agent.working ? "正在忙" : "在这里").font(.system(size: 10)).foregroundStyle(Brand.muted)
             }
           }.padding(.top, 12)
+          if !decisions.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+              HStack {
+                Text("等你决定").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.attention)
+                Spacer()
+                Button("查看全部 · \(decisions.count)") { allDecisions = true }
+                  .font(.caption).frame(minHeight: 36).accessibilityIdentifier("home.decisions.all")
+              }
+              ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                  ForEach(decisions) { item in
+                    decisionCard(item).containerRelativeFrame(.horizontal).id(item.id)
+                  }
+                }.scrollTargetLayout()
+              }.scrollTargetBehavior(.viewAligned).scrollPosition(id: $decisionPage)
+                .accessibilityIdentifier("home.decisions")
+              if decisions.count > 1 {
+                HStack(spacing: 6) {
+                  ForEach(Array(decisions.prefix(7))) { item in
+                    Circle().fill((decisionPage ?? decisions.first?.id) == item.id ? Brand.blue : Brand.line)
+                      .frame(width: 5, height: 5)
+                  }
+                  Spacer()
+                  Text("左右滑动查看").font(.caption2).foregroundStyle(Brand.muted)
+                }.accessibilityLabel("共 \(decisions.count) 项待决定，可左右滑动")
+              }
+            }
+          } else {
           Button(action: openFocus) {
             VStack(alignment: .leading, spacing: 20) {
               HStack {
                 Label(focusLabel, systemImage: needsAttention > 0 ? "hand.raised" : "circle.dotted")
                   .font(.caption.weight(.medium)).foregroundStyle(needsAttention > 0 ? Brand.attention : Brand.muted)
                 Spacer()
-                if needsAttention > 1 { Text("+\(needsAttention - 1)").font(.caption).foregroundStyle(Brand.muted) }
+
               }
               Text(focusTitle).font(.title2.weight(.semibold)).tracking(-0.6)
                 .foregroundStyle(Brand.ink).multilineTextAlignment(.leading).lineLimit(typeSize.isAccessibilitySize ? nil : 3)
@@ -284,10 +328,11 @@ struct HomeScreen: View {
               .background(Brand.raised, in: RoundedRectangle(cornerRadius: 26))
               .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.7))
           }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+          }
           if typeSize.isAccessibilitySize {
             VStack(spacing: 12) { scheduleTile; agentTile }
           } else {
-            HStack(alignment: .top, spacing: 12) { scheduleTile; agentTile }
+            EqualHeightColumns { scheduleTile; agentTile }
           }
           if !applications.isEmpty { commonApplications }
           if let idea = board.suggestions.first { inspiration(idea) }
@@ -308,14 +353,47 @@ struct HomeScreen: View {
       .toolbarBackground(.regularMaterial, for: .navigationBar)
       .toolbar { ToolbarItem(placement: .topBarLeading) { AccountButton(account: account, action: onAccount) }.accountUnframed() }
       .refreshable { await board.refresh(account) }
+      .sheet(isPresented: $allDecisions) {
+        NavigationStack {
+          ScrollView {
+            LazyVStack(spacing: 12) { ForEach(decisions) { decisionCard($0) } }.padding(20)
+          }.background(Brand.base).navigationTitle("等你决定").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { allDecisions = false } } }
+        }
+      }
       .navigationDestination(item: $openedTask) { item in
         TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, onViewed: { board.markSeen($0) })
       }
     }
   }
+  private func decisionCard(_ item: Decision) -> some View {
+    Button {
+      Haptics.selection()
+      allDecisions = false
+      if let task = item.task { openedTask = task } else { selected = .chat }
+    } label: {
+      VStack(alignment: .leading, spacing: 16) {
+        HStack {
+          Image(systemName: "hand.raised").foregroundStyle(Brand.attention)
+          Spacer()
+          Text("\((decisions.firstIndex { $0.id == item.id } ?? 0) + 1) / \(decisions.count)")
+            .font(.caption).monospacedDigit().foregroundStyle(Brand.muted)
+        }
+        Text(item.title).font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 3).multilineTextAlignment(.leading)
+        Text(item.detail).font(.subheadline).foregroundStyle(Brand.muted)
+          .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
+        HStack { Text("看一下"); Spacer(); Image(systemName: "arrow.up.right") }
+          .font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
+      }.padding(22).frame(maxWidth: .infinity, minHeight: 200, alignment: .topLeading)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.line, lineWidth: 0.7))
+    }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+  }
+
   private var scheduleTile: some View {
     Button { Haptics.selection(); onTasks() } label: {
-      VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 10) {
         HStack { Text("接下来").font(.caption); Spacer(); Image(systemName: "arrow.up.right").font(.caption2) }.foregroundStyle(Brand.muted)
         if let item = upcoming.first {
           let due = taskSortDate(item)
@@ -323,24 +401,31 @@ struct HomeScreen: View {
             .font(.system(.title, design: .rounded, weight: .medium)).foregroundStyle(Brand.ink)
           Text(item["title"].text).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
         } else {
-          Text("—").font(.title).foregroundStyle(Brand.muted)
-          Text("没有定时安排").font(.caption).foregroundStyle(Brand.muted)
+          HStack(spacing: 6) {
+            FeatureArtwork(kind: .notebook, size: 36)
+            Text("留一点空白").font(.headline).foregroundStyle(Brand.ink)
+          }
+          Text("有想记住的事，随时安排。")
+            .font(.caption).foregroundStyle(Brand.muted).fixedSize(horizontal: false, vertical: true)
+          Text("安排一件事").font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+
         }
-      }.frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading).padding(18)
+      }.frame(maxWidth: .infinity, minHeight: 136, maxHeight: .infinity, alignment: .topLeading).padding(18)
         .background(Brand.surface, in: RoundedRectangle(cornerRadius: 22))
-    }.buttonStyle(.plain)
+    }.buttonStyle(.plain).accessibilityIdentifier("home.schedule")
   }
   private var agentTile: some View {
     Button { Haptics.selection(); selected = .chat } label: {
-      VStack(alignment: .leading, spacing: 14) {
+      VStack(alignment: .leading, spacing: 10) {
         HStack { Text("Hymio").font(.caption); Spacer(); Image(systemName: "arrow.up.right").font(.caption2) }.foregroundStyle(Brand.muted)
         Text(!active.isEmpty || agent.working ? "正在推进" : "最近进展").font(.headline).foregroundStyle(Brand.ink)
+          .frame(minHeight: upcoming.isEmpty ? 36 : 0, alignment: .leading)
         Text((active.first ?? recent.first)?["title"].text ?? (agent.working ? "有新结果时告诉你。" : agent.lastReply.isEmpty ? "暂时没有新的进展。" : agent.lastReply))
           .font(.caption).foregroundStyle(Brand.muted).lineLimit(2).multilineTextAlignment(.leading)
         Capsule().fill(Brand.blue.opacity(agent.working || !active.isEmpty ? 0.7 : 0.15)).frame(width: 32, height: 2)
-      }.frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading).padding(18)
+      }.frame(maxWidth: .infinity, minHeight: 136, maxHeight: .infinity, alignment: .topLeading).padding(18)
         .background(Brand.surface, in: RoundedRectangle(cornerRadius: 22))
-    }.buttonStyle(.plain)
+    }.buttonStyle(.plain).accessibilityIdentifier("home.agent")
   }
   private func inspiration(_ idea: JSON) -> some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -552,6 +637,17 @@ struct HomeExperiencePreview: View {
     }
     .onAppear {
       installExperienceFixture(board)
+      if ProcessInfo.processInfo.arguments.contains("-HymioHomeEmpty") {
+        board.items = []; board.suggestions = []
+      } else if ProcessInfo.processInfo.arguments.contains("-HymioHomeManyDecisions"),
+        case .object(let first) = board.items.first {
+        let titles = ["确认周五住哪家酒店", "选一个周末出行方向", "确认下一周的空闲时间", "选定这次阅读的主题", "确认要保留的应用"]
+        board.items = titles.enumerated().map { index, title in
+          var value = first
+          value["id"] = .string("decision-\(index)"); value["title"] = .string(title)
+          return .object(value)
+        }
+      }
     }
   }
 }
