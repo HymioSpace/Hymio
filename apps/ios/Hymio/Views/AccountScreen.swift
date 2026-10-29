@@ -8,6 +8,11 @@ struct AccountScreen: View {
   @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var taskBoard: TaskBoard
+  private enum Destination: String, Identifiable {
+    case tasks, applications, connectors
+    var id: String { rawValue }
+  }
+  @State private var destination: Destination?
   @State private var loggingOut = false
   @State private var diagnostics = false
   @State private var modelOptions: [String] = []
@@ -160,12 +165,11 @@ struct AccountScreen: View {
     }
   }
   private func accountTile(_ title: String, detail: String, artwork: FeatureArtwork.Kind) -> some View {
-    VStack(alignment: .leading, spacing: 7) {
-      FeatureArtwork(kind: artwork, size: 78).padding(.leading, -8)
-      Text(title).font(.headline).foregroundStyle(Brand.ink)
-      Text(detail).font(.caption).foregroundStyle(Brand.muted)
-    }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 24))
+    VStack(spacing: 10) {
+      FeatureArtwork(kind: artwork, size: 76)
+      Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+    }.frame(maxWidth: .infinity).padding(.vertical, 14)
+      .contentShape(Rectangle())
       .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityHint(detail)
   }
   private func accountRow(_ title: String, detail: String, symbol: String) -> some View {
@@ -174,7 +178,6 @@ struct AccountScreen: View {
         .foregroundStyle(Brand.blue).frame(width: 28)
       VStack(alignment: .leading, spacing: 4) {
         Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
-        Text(detail).font(.caption).foregroundStyle(Brand.muted)
       }
       Spacer(minLength: 4)
       Image(systemName: "chevron.right").font(.system(size: 11, weight: .medium)).foregroundStyle(Brand.muted)
@@ -184,30 +187,29 @@ struct AccountScreen: View {
   var body: some View {
     NavigationStack {
       ScrollView {
-        VStack(alignment: .leading, spacing: 28) {
+        VStack(alignment: .leading, spacing: 24) {
           HStack(alignment: .center, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
               Text(account.session?.displayName ?? "我的账号").font(.title.weight(.semibold)).foregroundStyle(Brand.ink)
-              Text("一个 Hymio，随处接着聊。").font(.subheadline).foregroundStyle(Brand.muted)
             }
             Spacer(minLength: 8)
             Companion(size: 72)
           }.padding(.top, 12)
-          HStack(spacing: 12) {
-            NavigationLink { TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
-              .task { taskBoard.bind(account); await taskBoard.refresh(account) } } label: {
+          HStack(spacing: 0) {
+            Button { destination = .tasks } label: {
               accountTile("任务与日程", detail: "安排与进展", artwork: .calendar)
             }
-            NavigationLink { KitsScreen(account: account, onAccount: {}, showAccountButton: false) } label: {
+            Rectangle().fill(Brand.line).frame(width: 1, height: 56)
+            Button { destination = .applications } label: {
               accountTile("我的应用", detail: "为日常添些工具", artwork: .archive)
             }
-          }
-          NavigationLink { ConnectorsScreen(account: account) } label: {
+          }.padding(.vertical, 4)
+          Button { destination = .connectors } label: {
             HStack(spacing: 14) {
               FeatureArtwork(kind: .mail, size: 64)
               VStack(alignment: .leading, spacing: 5) {
-                Text("连接来源").font(.headline).foregroundStyle(Brand.ink)
-                Text("把邮件、清单和日常带进来。请先选择你愿意分享的部分。")
+                Text("连接服务").font(.headline).foregroundStyle(Brand.ink)
+                Text("Gmail · 滴答清单 · 健康 · 日历")
                   .font(.caption).foregroundStyle(Brand.muted).fixedSize(horizontal: false, vertical: true)
               }
               Spacer(minLength: 0)
@@ -215,13 +217,13 @@ struct AccountScreen: View {
             }.padding(16).background(Brand.paper, in: RoundedRectangle(cornerRadius: 22))
           }.accessibilityIdentifier("account.connectors")
           VStack(alignment: .leading, spacing: 6) {
-            Text("按你的方式").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
+            Text("偏好设置").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
             NavigationLink { Form { modelSection }.navigationTitle("模型设置").navigationBarTitleDisplayMode(.inline) } label: {
-              accountRow("模型与上下文", detail: "选择对话模型与上下文长度", symbol: "slider.horizontal.3")
+              accountRow("对话模型", detail: "选择对话模型与上下文长度", symbol: "slider.horizontal.3")
             }
             Divider().overlay(Brand.line)
             NavigationLink { Form { authorizationSection }.navigationTitle("隐私与授权").navigationBarTitleDisplayMode(.inline) } label: {
-              accountRow("隐私与工具授权", detail: "由你决定 Hymio 能做什么", symbol: "hand.raised")
+              accountRow("隐私与授权", detail: "由你决定 Hymio 能做什么", symbol: "hand.raised")
             }
             Divider().overlay(Brand.line)
             NavigationLink { NotificationSettingsScreen(account: account) } label: {
@@ -229,7 +231,7 @@ struct AccountScreen: View {
             }
           }
           VStack(alignment: .leading, spacing: 6) {
-            Text("保持连接").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
+            Text("设备").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
           NavigationLink { List {
         Section {
           Button {
@@ -352,6 +354,17 @@ struct AccountScreen: View {
           .frame(maxWidth: 620).frame(maxWidth: .infinity)
       }.background(Brand.base).buttonStyle(.plain)
       .navigationTitle("我的").navigationBarTitleDisplayMode(.inline)
+      .navigationDestination(item: $destination) { route in
+        switch route {
+        case .tasks:
+          TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
+            .task { taskBoard.bind(account); await taskBoard.refresh(account) }
+        case .applications:
+          KitsScreen(account: account, onAccount: {}, showAccountButton: false)
+        case .connectors:
+          ConnectorsScreen(account: account)
+        }
+      }
       .toolbar {
         ToolbarItem(placement: .cancellationAction) {
           Button {

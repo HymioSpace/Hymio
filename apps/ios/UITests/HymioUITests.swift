@@ -93,11 +93,9 @@ final class HymioUITests: XCTestCase {
     XCTAssertFalse(app.staticTexts["没有定时安排"].exists)
     let schedule = app.buttons["home.schedule"].frame
     let agent = app.buttons["home.agent"].frame
-    XCTAssertEqual(schedule.minY, agent.minY, accuracy: 0.5)
-    XCTAssertEqual(schedule.maxY, agent.maxY, accuracy: 0.5)
+    XCTAssertLessThanOrEqual(schedule.maxY, agent.minY)
+    XCTAssertEqual(schedule.minX, agent.minX, accuracy: 0.5)
     XCTAssertEqual(schedule.width, agent.width, accuracy: 0.5)
-    XCTAssertEqual(app.staticTexts["暂无安排"].frame.midY,
-      app.staticTexts["还没有新进展"].frame.midY, accuracy: 0.5)
     shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "home-empty-schedule"; shot.lifetime = .keepAlways; add(shot)
   }
@@ -134,6 +132,21 @@ final class HymioUITests: XCTestCase {
     my.name = "my-toolbar"; my.lifetime = .keepAlways; add(my)
   }
 
+  @MainActor func testAccountPrimaryDestinationsStayDistinct() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioExperiencePreview"]
+    app.launch()
+    app.buttons["账号与设置"].tap()
+    for (entry, title) in [("任务与日程", "任务"), ("我的应用", "应用"), ("account.connectors", "连接来源"), ("任务与日程", "任务")] {
+      XCTAssertTrue(app.buttons[entry].waitForExistence(timeout: 5))
+      app.buttons[entry].tap()
+      XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
+      let shot = XCTAttachment(screenshot: app.screenshot())
+      shot.name = "account-destination-" + title; shot.lifetime = .keepAlways; add(shot)
+      app.navigationBars[title].buttons.firstMatch.tap()
+    }
+  }
+
   @MainActor func testThreeTabsAndGroupedMyNavigation() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioExperiencePreview"]
@@ -143,8 +156,8 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.tabBars.buttons["回忆"].exists)
     app.buttons["账号与设置"].tap()
     XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.buttons["模型与上下文"].exists)
-    app.buttons["模型与上下文"].tap()
+    XCTAssertTrue(app.buttons["对话模型"].exists)
+    app.buttons["对话模型"].tap()
     XCTAssertTrue(app.navigationBars["模型设置"].waitForExistence(timeout: 5))
     app.navigationBars.buttons.firstMatch.tap()
     let shot = XCTAttachment(screenshot: app.screenshot())

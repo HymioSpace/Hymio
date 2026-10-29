@@ -38,7 +38,7 @@ export function contextText(value: ContextDetail): string {
   for (const key of ['text', 'content', 'title']) {
     if (typeof context?.[key] === 'string' && context[key]) return context[key] as string;
   }
-  return context || value.command ? JSON.stringify(context || value.command, null, 2) : '';
+  return ''; // Internal metadata is not user-facing content.
 }
 export function readable(text: string): string {
   try {

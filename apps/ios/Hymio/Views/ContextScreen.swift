@@ -864,7 +864,7 @@ private struct ContextDetailScreen: View {
             VStack(alignment: .leading, spacing: 10) {
               Text("记录时间：\(value["created_at"].text.isEmpty ? "未提供" : value["created_at"].text)")
               if !value["produced_at"].text.isEmpty { Text("发生时间：\(value["produced_at"].text)") }
-              if !entry.namespace.isEmpty { Text("\(entry.sourceTitle) · \(entry.namespace)") }
+              Text(entry.sourceTitle)
             }.font(.caption).foregroundStyle(Brand.muted).padding(.top, 12)
           }.font(.subheadline)
         }
@@ -969,8 +969,6 @@ private func contextContent(_ value: JSON) -> String {
   for key in ["text", "content", "title"] {
     if !value["context"][key].text.isEmpty { return value["context"][key].text }
   }
-  if value["context"] != .null { return value["context"].pretty }
-  if value["command"] != .null { return value["command"].pretty }
   return ""
 }
 private func connectorName(_ namespace: String) -> String {
@@ -1003,7 +1001,7 @@ private func contextReadable(_ text: String) -> String {
   if !value["text"].text.isEmpty { return value["text"].text }
   if !value["content"].text.isEmpty { return value["content"].text }
   if !value["title"].text.isEmpty { return value["title"].text }
-  return text
+  return ""
 }
 
 private func contextDate(_ value: String) -> Date? {

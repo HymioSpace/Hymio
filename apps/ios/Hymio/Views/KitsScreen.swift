@@ -170,7 +170,13 @@ struct KitsScreen: View {
   private var available: [JSON] { store.items.filter { !$0["installed"].flag } }
 
   var body: some View {
-    NavigationStack {
+    Group {
+      if showAccountButton { NavigationStack { catalog } }
+      else { catalog }
+    }.task { await store.load(account) }
+  }
+
+  private var catalog: some View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 28) {
           VStack(alignment: .leading, spacing: 9) {
@@ -224,8 +230,6 @@ struct KitsScreen: View {
         }.accountUnframed()
       }
       .refreshable { await store.load(account) }
-    }
-    .task { await store.load(account) }
   }
 
   private func appSection(_ title: String, items: [JSON], installed: Bool) -> some View {
