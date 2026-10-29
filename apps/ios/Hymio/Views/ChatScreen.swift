@@ -19,13 +19,12 @@ struct ChatScreen: View {
   @State private var cameraOpen = false
   @State private var photosOpen = false
   @State private var following = true
-  @State private var positioned = false
   @State private var atBottom = true
   @State private var sendBusy = false
   @FocusState private var typing: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
-  @State private var followTask: Task<Void, Never>?
+  @State private var scrollPosition = ScrollPosition(edge: .bottom)
   private var visibleTurns: [Turn] {
     if client.turns.isEmpty, !client.model.messages.isEmpty {
       return client.model.turns
@@ -40,6 +39,7 @@ struct ChatScreen: View {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.turns.first?.id
+                following = false
                 Task {
                   await client.loadHistory()
                   if let first { proxy.scrollTo(first, anchor: .top) }
@@ -120,41 +120,32 @@ struct ChatScreen: View {
               }
             }
             Color.clear.frame(height: 1).id("bottom")
-          }.padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 14)
+          }.scrollTargetLayout().padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
         }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { typing = false })
         .scrollDismissesKeyboard(.interactively)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .scrollPosition($scrollPosition)
+        .trackStreamGeometry()
+        .padding(.horizontal, 18)
         .onScrollGeometryChange(for: Bool.self) { geometry in
           geometry.contentSize.height - geometry.visibleRect.maxY < 12
         } action: { _, near in
           atBottom = near
         }
         .onScrollPhaseChange { _, phase in
-          if phase == .interacting {
-            following = false
-            followTask?.cancel()
-            followTask = nil
-          }
-          if phase == .idle && atBottom { following = true }
-        }
-        .onScrollGeometryChange(for: CGFloat.self) {
-          $0.contentSize.height
-        } action: { before, after in
-          if after > before + 0.5 && following && !client.loadingHistory && positioned {
-            scheduleFollow(proxy)
+          if phase == .interacting { following = false }
+          if phase == .idle && atBottom && !following {
+            following = true
+            scrollPosition.scrollTo(edge: .bottom)
           }
         }
         .onChange(of: client.model.messages.count) { _, _ in
           if client.model.messages.last?.role == "user" {
             following = true
-            scheduleFollow(proxy)
-          } else if !positioned && !client.model.messages.isEmpty {
-            proxy.scrollTo("bottom", anchor: .bottom)
+            scrollPosition.scrollTo(edge: .bottom)
           }
-          positioned = !client.model.messages.isEmpty
         }
         .overlay(alignment: .bottomTrailing) {
           if client.model.approvals.contains(where: { $0.status == "pending" }) {
@@ -164,14 +155,7 @@ struct ChatScreen: View {
                 Button {
                   following = true
                   atBottom = true
-                  withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                  }
-                  Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(180))
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                    atBottom = true
-                  }
+                  scrollPosition.scrollTo(edge: .bottom)
                 } label: {
                   if pending > 0 {
                     Label("\(pending) 个待确认", systemImage: "hand.raised")
@@ -195,14 +179,7 @@ struct ChatScreen: View {
             Button {
               following = true
               atBottom = true
-              withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                proxy.scrollTo("bottom", anchor: .bottom)
-              }
-              Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(180))
-                proxy.scrollTo("bottom", anchor: .bottom)
-                atBottom = true
-              }
+              scrollPosition.scrollTo(edge: .bottom)
             } label: {
               Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())
                 .shadow(color: .black.opacity(0.05), radius: 8)
@@ -327,25 +304,9 @@ struct ChatScreen: View {
       )
       .safeAreaInset(edge: .bottom, spacing: 0) { composer }
       .sensoryFeedback(.selection, trigger: sentCount)
-      .onDisappear {
-        followTask?.cancel()
-        followTask = nil
-      }
     }
   }
 
-  private func scheduleFollow(_ proxy: ScrollViewProxy) {
-    guard followTask == nil else { return }
-    followTask = Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(60))
-      guard !Task.isCancelled else { return }
-      followTask = nil
-      guard following, !client.loadingHistory else { return }
-      if reduceMotion { proxy.scrollTo("bottom", anchor: .bottom) }
-      else { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo("bottom", anchor: .bottom) } }
-      atBottom = true
-    }
-  }
 
   private var composer: some View {
     VStack(spacing: 8) {

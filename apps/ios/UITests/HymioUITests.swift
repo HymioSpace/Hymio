@@ -89,15 +89,15 @@ final class HymioUITests: XCTestCase {
     app.terminate()
     app.launchArguments = ["-HymioHomePreview", "-HymioHomeEmpty"]
     app.launch()
-    XCTAssertTrue(app.staticTexts["留一点空白"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["暂无安排"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["没有定时安排"].exists)
     let schedule = app.buttons["home.schedule"].frame
     let agent = app.buttons["home.agent"].frame
     XCTAssertEqual(schedule.minY, agent.minY, accuracy: 0.5)
     XCTAssertEqual(schedule.maxY, agent.maxY, accuracy: 0.5)
     XCTAssertEqual(schedule.width, agent.width, accuracy: 0.5)
-    XCTAssertEqual(app.staticTexts["留一点空白"].frame.midY,
-      app.staticTexts["最近进展"].frame.midY, accuracy: 0.5)
+    XCTAssertEqual(app.staticTexts["暂无安排"].frame.midY,
+      app.staticTexts["还没有新进展"].frame.midY, accuracy: 0.5)
     shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "home-empty-schedule"; shot.lifetime = .keepAlways; add(shot)
   }
@@ -197,7 +197,7 @@ final class HymioUITests: XCTestCase {
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "home-large-dark"; shot.lifetime = .keepAlways; add(shot)
     app.scrollViews.firstMatch.swipeUp()
-    XCTAssertTrue(app.staticTexts["Hymio"].exists)
+    XCTAssertTrue(app.staticTexts["正在推进"].exists)
   }
 
   @MainActor func testHomePrioritizesAttention() throws {

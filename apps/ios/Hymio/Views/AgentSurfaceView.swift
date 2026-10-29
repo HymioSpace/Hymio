@@ -19,7 +19,21 @@ private struct DiffuseTextRenderer: TextRenderer, Animatable {
           index += run.count
           continue
         }
-        for slice in run {
+        let slices = Array(run)
+        let start = max(0, min(slices.count, Int(floor(frontier)) - index - 1))
+        if start > 0, start < slices.count {
+          let full = run.typographicBounds.rect
+          let edge = slices[start].typographicBounds.rect
+          let leftToRight = slices.last!.typographicBounds.rect.midX >= slices.first!.typographicBounds.rect.midX
+          let stableRect = leftToRight
+            ? CGRect(x: full.minX - 2, y: full.minY - 2, width: max(0, edge.minX - full.minX + 2), height: full.height + 4)
+            : CGRect(x: edge.maxX, y: full.minY - 2, width: max(0, full.maxX - edge.maxX + 2), height: full.height + 4)
+          var stableContext = context
+          stableContext.clip(to: Path(stableRect))
+          stableContext.draw(run)
+          index += start
+        }
+        for slice in slices.dropFirst(start) {
           let diffuse = min(1, max(0, (Double(index + 1) - frontier) / 4))
           var glyphContext = context
           if diffuse > 0 {
@@ -63,6 +77,47 @@ private struct DiffuseStreamingText: View {
           withAnimation(.linear(duration: 0.16)) { revealed = Double(value.count) }
         }
         previous = value
+      }
+  }
+}
+
+private struct BufferedMarkdownTail: View {
+  let content: String
+  let active: Bool
+  let account: AccountService
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var revealed: Double
+  @State private var previous = ""
+  @State private var wasLive: Bool
+  init(content: String, active: Bool, account: AccountService) {
+    self.content = content; self.active = active; self.account = account
+    _revealed = State(initialValue: active ? 0 : Double(content.count))
+    _wasLive = State(initialValue: active)
+  }
+  var body: some View {
+    Group {
+      if wasLive {
+        StableMarkdown(content: content, account: account).equatable()
+          .textRenderer(DiffuseTextRenderer(revealed: reduceMotion ? Double(content.count) : revealed,
+            characterCount: content.count))
+      } else {
+        StableMarkdown(content: content, account: account).equatable()
+      }
+    }
+      .onChange(of: content, initial: true) { _, value in
+        if !active || reduceMotion { revealed = Double(value.count) }
+        else {
+          if !value.hasPrefix(previous) {
+            var reset = Transaction(); reset.disablesAnimations = true
+            withTransaction(reset) { revealed = 0 }
+          }
+          withAnimation(.linear(duration: 0.16)) { revealed = Double(value.count) }
+        }
+        previous = value
+      }
+      .onChange(of: active) { _, value in
+        if value { wasLive = true }
+        if !value { withAnimation(reduceMotion ? nil : .linear(duration: 0.16)) { revealed = Double(content.count) } }
       }
   }
 }
@@ -153,11 +208,7 @@ struct BufferedProse: View {
             StableMarkdown(content: parts.stable, account: account).equatable()
           }
           if !parts.tail.isEmpty {
-            if frame.pending || streaming || settling {
-              DiffuseStreamingText(content: parts.tail)
-            } else {
-              StableMarkdown(content: parts.tail, account: account).equatable()
-            }
+            BufferedMarkdownTail(content: parts.tail, active: frame.pending || streaming || settling, account: account)
           }
         }.frame(minHeight: 24, alignment: .topLeading)
       }
@@ -515,6 +566,7 @@ struct AgentSurfaceView: View {
           }
           emit("user.message", ["content": .string("继续整理，给我最终结果。")])
           let clock = StreamFrameProbe(); clock.start()
+          StreamGeometryProbe.shared.start()
           let answer = String(repeating: "文字逐渐到达，已读内容留在原位。中英文 09:58 与 🦦 保持完整。", count: 18) + "\n\n最终结果已整理好。"
           let characters = Array(answer)
           for index in stride(from: 0, to: characters.count, by: 10) {
@@ -528,11 +580,31 @@ struct AgentSurfaceView: View {
           let metrics = clock.stop()
           let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("actual-chat-metrics.txt")
           try? metrics.write(to: path, atomically: true, encoding: .utf8)
+          let geometryPath = path.deletingLastPathComponent().appendingPathComponent("actual-chat-geometry.csv")
+          try? StreamGeometryProbe.shared.stop().write(to: geometryPath, atomically: true, encoding: .utf8)
           complete = true
         }
     }
   }
 
+  struct StreamGeometrySample: Equatable {
+    let height: CGFloat
+    let offset: CGFloat
+    let viewport: CGFloat
+  }
+  @MainActor final class StreamGeometryProbe {
+    static let shared = StreamGeometryProbe()
+    private var active = false
+    private var started = 0.0
+    private var samples: [String] = []
+    func start() { active = true; started = ProcessInfo.processInfo.systemUptime; samples = ["seconds,height,offset,viewport"] }
+    func record(_ value: StreamGeometrySample) {
+      guard active, samples.count < 20000 else { return }
+      samples.append(String(format: "%.5f,%.3f,%.3f,%.3f", ProcessInfo.processInfo.systemUptime - started,
+        value.height, value.offset, value.viewport))
+    }
+    func stop() -> String { active = false; return samples.joined(separator: "\n") }
+  }
   @MainActor final class StreamFrameProbe: NSObject {
     private var link: CADisplayLink?
     private var previous = 0.0
@@ -567,3 +639,16 @@ struct AgentSurfaceView: View {
     }
   }
 #endif
+
+extension View {
+  @ViewBuilder @MainActor func trackStreamGeometry() -> some View {
+    #if DEBUG
+      self.onScrollGeometryChange(for: StreamGeometrySample.self) { geometry in
+        StreamGeometrySample(height: geometry.contentSize.height,
+          offset: geometry.contentOffset.y + geometry.contentInsets.top, viewport: geometry.containerSize.height)
+      } action: { _, value in StreamGeometryProbe.shared.record(value) }
+    #else
+      self
+    #endif
+  }
+}

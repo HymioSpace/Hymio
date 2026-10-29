@@ -292,6 +292,7 @@ struct HomeScreen: View {
   @State private var agent = HomeAgentSnapshot()
   @State private var decisionPage: String?
   @State private var allDecisions = false
+  @State private var selectedIdea: JSON?
   private struct Decision: Identifiable {
     let id: String
     let title: String
@@ -327,36 +328,8 @@ struct HomeScreen: View {
       $0.status == "pending" && $0.expires > Date().timeIntervalSince1970
     }
   }
-  private var needsAttention: Int {
-    attention.count + pendingApprovals.count
-  }
   @Environment(\.dynamicTypeSize) private var typeSize
-  private var focusTask: JSON? { attention.first ?? upcoming.first ?? recent.first }
-  private var focusTitle: String {
-    if let approval = pendingApprovals.first { return approval.title }
-    if let task = focusTask { return task["title"].text }
-    return agent.working ? "正在替你处理。" : "有什么想做的？"
-  }
-  private var focusLabel: String {
-    if !pendingApprovals.isEmpty || !attention.isEmpty { return "等你决定" }
-    if !upcoming.isEmpty { return "下一项安排" }
-    if !recent.isEmpty { return "刚刚完成" }
-    return "此刻"
-  }
-  private var focusDetail: String {
-    if let approval = pendingApprovals.first { return approval.summary }
-    if let task = focusTask {
-      let run = task["runs"].items.first ?? .null
-      return [run["next_step"].text, run["result"].text, run["progress"].text, task["objective"].text].first { !$0.isEmpty } ?? ""
-    }
-    return "说个想法，或把眼前的事交给 Hymio。"
-  }
-  private func openFocus() {
-    Haptics.selection()
-    if !pendingApprovals.isEmpty { selected = .chat }
-    else if let task = focusTask { openedTask = task }
-    else { selected = .chat }
-  }
+  private func startConversation() { Haptics.selection(); selected = .chat }
   var body: some View {
     NavigationStack {
       ScrollView {
@@ -375,7 +348,7 @@ struct HomeScreen: View {
           if !decisions.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
               HStack {
-                Text("等你决定").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.attention)
+                Text("等你决定").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
                 Spacer()
                 Button("查看全部 · \(decisions.count)") { allDecisions = true }
                   .font(.caption).frame(minHeight: 36).accessibilityIdentifier("home.decisions.all")
@@ -399,30 +372,15 @@ struct HomeScreen: View {
                 }.accessibilityLabel("共 \(decisions.count) 项待决定，可左右滑动")
               }
             }
-          } else {
-          Button(action: openFocus) {
-            VStack(alignment: .leading, spacing: 20) {
+          } else if board.items.isEmpty && agent.lastReply.isEmpty && !agent.working {
+            Button(action: startConversation) {
               HStack {
-                Label(focusLabel, systemImage: needsAttention > 0 ? "hand.raised" : "circle.dotted")
-                  .font(.caption.weight(.medium)).foregroundStyle(needsAttention > 0 ? Brand.attention : Brand.muted)
+                Text("开始一段对话").font(.headline)
                 Spacer()
-
-              }
-              Text(focusTitle).font(.title2.weight(.semibold)).tracking(-0.6)
-                .foregroundStyle(Brand.ink).multilineTextAlignment(.leading).lineLimit(typeSize.isAccessibilitySize ? nil : 3)
-              if !focusDetail.isEmpty {
-                Text(focusDetail).font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
-                  .multilineTextAlignment(.leading).lineLimit(typeSize.isAccessibilitySize ? nil : 2)
-              }
-              HStack {
-                Text(needsAttention > 0 ? "看一下" : focusTask == nil ? "开始对话" : "查看详情").font(.subheadline.weight(.medium))
-                Spacer()
-                Image(systemName: "arrow.up.right").font(.system(size: 17, weight: .medium))
-              }.foregroundStyle(Brand.blue).padding(.top, 6)
-            }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-              .background(Brand.raised, in: RoundedRectangle(cornerRadius: 26))
-              .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.7))
-          }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+                Image(systemName: "arrow.up.right")
+              }.foregroundStyle(Brand.blue).padding(20)
+                .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
+            }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
           }
           if typeSize.isAccessibilitySize {
             VStack(spacing: 12) { scheduleTile; agentTile }
@@ -430,7 +388,10 @@ struct HomeScreen: View {
             EqualHeightColumns { scheduleTile; agentTile }
           }
           if !applications.isEmpty { commonApplications }
-          if let idea = board.suggestions.first { inspiration(idea) }
+          if let idea = board.suggestions.first(where: {
+            $0["state"].text == "pending" && !$0["proposal"]["record_ids"].items.isEmpty
+              && !$0["proposal"]["dream_id"].text.isEmpty && !$0["proposal"]["title"].text.isEmpty
+          }) { inspiration(idea) }
           if !board.error.isEmpty {
             Button(board.error + " 点击重试") { Task { await board.refresh(account) } }
               .font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
@@ -450,6 +411,9 @@ struct HomeScreen: View {
       .toolbarBackground(.regularMaterial, for: .navigationBar)
       .toolbar { ToolbarItem(placement: .topBarLeading) { AccountButton(account: account, action: onAccount) }.accountUnframed() }
       .refreshable { await board.refresh(account) }
+      .sheet(isPresented: Binding(get: { selectedIdea != nil }, set: { if !$0 { selectedIdea = nil } })) {
+        if let idea = selectedIdea { inspirationDetail(idea) }
+      }
       .sheet(isPresented: $allDecisions) {
         NavigationStack {
           ScrollView {
@@ -469,22 +433,21 @@ struct HomeScreen: View {
       allDecisions = false
       if let task = item.task { openedTask = task } else { selected = .chat }
     } label: {
-      VStack(alignment: .leading, spacing: 12) {
-        HStack {
-          Image(systemName: "hand.raised").foregroundStyle(Brand.attention)
-          Spacer()
-          Text("\((decisions.firstIndex { $0.id == item.id } ?? 0) + 1) / \(decisions.count)")
-            .font(.caption).monospacedDigit().foregroundStyle(Brand.muted)
+      HStack(spacing: 14) {
+        Image(systemName: "hand.raised").font(.system(size: 20)).foregroundStyle(Brand.attention).frame(width: 28)
+        VStack(alignment: .leading, spacing: 6) {
+          Text(item.title).font(.headline).foregroundStyle(Brand.ink)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
+          if !item.detail.isEmpty {
+            Text(item.detail).font(.subheadline).foregroundStyle(Brand.muted)
+              .lineLimit(typeSize.isAccessibilitySize ? nil : 1).multilineTextAlignment(.leading)
+          }
         }
-        Text(item.title).font(.headline).foregroundStyle(Brand.ink)
-          .lineLimit(typeSize.isAccessibilitySize ? nil : 3).multilineTextAlignment(.leading)
-        Text(item.detail).font(.caption).foregroundStyle(Brand.muted)
-          .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
-        HStack { Text("看一下"); Spacer(); Image(systemName: "arrow.up.right") }
-          .font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
-      }.padding(18).frame(maxWidth: .infinity, minHeight: 156, alignment: .topLeading)
-        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 24))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.line, lineWidth: 0.7))
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
+      }.padding(18).frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line, lineWidth: 0.5))
     }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
   }
 
@@ -512,58 +475,79 @@ struct HomeScreen: View {
       .contentShape(Rectangle()).accessibilityIdentifier("home.decision.row." + item.id)
   }
 
+  private func moduleHeading(_ title: String) -> some View {
+    HStack {
+      Text(title).font(.headline).foregroundStyle(Brand.ink)
+      Spacer(minLength: 0)
+      Image(systemName: "chevron.right").font(.system(size: 10, weight: .medium)).foregroundStyle(Brand.muted)
+    }.frame(height: 24)
+  }
   private var scheduleTile: some View {
     Button { Haptics.selection(); onTasks() } label: {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack { Text("接下来").font(.caption); Spacer(); Image(systemName: "arrow.up.right").font(.caption2) }.foregroundStyle(Brand.muted)
+      VStack(alignment: .leading, spacing: 12) {
+        moduleHeading("接下来")
         if let item = upcoming.first {
           let due = taskSortDate(item)
           Text(due.isFinite ? Date(timeIntervalSince1970: due).formatted(.dateTime.hour().minute()) : "待定")
-            .font(.system(.title, design: .rounded, weight: .medium)).foregroundStyle(Brand.ink)
-          Text(item["title"].text).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
+            .font(.title2.weight(.medium)).monospacedDigit().foregroundStyle(Brand.ink)
+          Text(item["title"].text).font(.subheadline).foregroundStyle(Brand.ink).lineLimit(2)
         } else {
           HStack(spacing: 6) {
-            FeatureArtwork(kind: .notebook, size: 36)
-            Text("留一点空白").font(.headline).foregroundStyle(Brand.ink)
-          }
-          Text("有想记住的事，随时安排。")
-            .font(.caption).foregroundStyle(Brand.muted).fixedSize(horizontal: false, vertical: true)
-          Text("安排一件事").font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
-
+            FeatureArtwork(kind: .notebook, size: 32)
+            Text("暂无安排").font(.subheadline).foregroundStyle(Brand.muted)
+          }.frame(height: 32)
+          Text("去安排").font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
         }
-      }.frame(maxWidth: .infinity, minHeight: 136, maxHeight: .infinity, alignment: .topLeading).padding(18)
-        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 22))
+      }.frame(maxWidth: .infinity, minHeight: 108, maxHeight: .infinity, alignment: .topLeading).padding(16)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
     }.buttonStyle(.plain).accessibilityIdentifier("home.schedule")
   }
   private var agentTile: some View {
     Button { Haptics.selection(); selected = .chat } label: {
-      VStack(alignment: .leading, spacing: 10) {
-        HStack { Text("Hymio").font(.caption); Spacer(); Image(systemName: "arrow.up.right").font(.caption2) }.foregroundStyle(Brand.muted)
-        Text(!active.isEmpty || agent.working ? "正在推进" : "最近进展").font(.headline).foregroundStyle(Brand.ink)
-          .frame(minHeight: upcoming.isEmpty ? 36 : 0, alignment: .leading)
-        Text((active.first ?? recent.first)?["title"].text ?? (agent.working ? "有新结果时告诉你。" : agent.lastReply.isEmpty ? "暂时没有新的进展。" : agent.lastReply))
-          .font(.caption).foregroundStyle(Brand.muted).lineLimit(2).multilineTextAlignment(.leading)
-        Capsule().fill(Brand.blue.opacity(agent.working || !active.isEmpty ? 0.7 : 0.15)).frame(width: 32, height: 2)
-      }.frame(maxWidth: .infinity, minHeight: 136, maxHeight: .infinity, alignment: .topLeading).padding(18)
-        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 22))
+      VStack(alignment: .leading, spacing: 12) {
+        moduleHeading(!active.isEmpty || agent.working ? "正在推进" : "最近进展")
+        if let task = active.first ?? recent.first {
+          Text(task["title"].text).font(.subheadline).foregroundStyle(Brand.ink).lineLimit(3)
+        } else if !agent.lastReply.isEmpty {
+          Text(agent.lastReply).font(.subheadline).foregroundStyle(Brand.ink).lineLimit(3)
+        } else {
+          Text(agent.working ? "正在处理" : "还没有新进展").font(.subheadline)
+            .foregroundStyle(Brand.muted).frame(height: 32, alignment: .leading)
+        }
+      }.frame(maxWidth: .infinity, minHeight: 108, maxHeight: .infinity, alignment: .topLeading).padding(16)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
     }.buttonStyle(.plain).accessibilityIdentifier("home.agent")
   }
   private func inspiration(_ idea: JSON) -> some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack { Image(systemName: "lightbulb").font(.subheadline); Text("灵感").font(.caption.weight(.medium)); Spacer() }.foregroundStyle(Brand.attention)
-      Text(idea["proposal"]["title"].text).font(.headline).foregroundStyle(Brand.ink)
-      Text(idea["proposal"]["reason"].text).font(.caption).foregroundStyle(Brand.muted).lineSpacing(3).lineLimit(3)
-      HStack {
-        Button("聊聊这个") {
-          Haptics.selection(); selected = .chat
-          Task { do { try await client.message("想聊聊：" + idea["proposal"]["title"].text) }
-            catch { client.error = "暂时未能发送，想法仍保留在此刻。" } }
-        }.font(.caption.weight(.medium)).foregroundStyle(Brand.blue).frame(minHeight: 44)
-        Spacer()
-        Button("暂不需要") { Task { await handleSuggestion(idea, accept: false) } }.font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
-      }
-    }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
-      .background(Brand.paper, in: RoundedRectangle(cornerRadius: 22))
+    Button { selectedIdea = idea } label: {
+      VStack(alignment: .leading, spacing: 12) {
+        moduleHeading("灵感")
+        Text(idea["proposal"]["title"].text).font(.body).foregroundStyle(Brand.ink)
+          .lineLimit(2).multilineTextAlignment(.leading)
+      }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.paper, in: RoundedRectangle(cornerRadius: 20))
+    }.buttonStyle(.plain).accessibilityIdentifier("home.inspiration")
+  }
+  private func inspirationDetail(_ idea: JSON) -> some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          Text(idea["proposal"]["title"].text).font(.title2.weight(.semibold))
+          Text(idea["proposal"]["reason"].text).font(.body).foregroundStyle(Brand.muted)
+          Text("基于 \(idea["proposal"]["record_ids"].items.count) 条足迹提出").font(.footnote).foregroundStyle(Brand.muted)
+          Button("聊聊这个") {
+            selectedIdea = nil; selected = .chat
+            Task { do { try await client.message("想聊聊：" + idea["proposal"]["title"].text) }
+              catch { client.error = "暂时未能发送，想法仍保留在此刻。" } }
+          }.buttonStyle(PrimaryAction())
+          Button("暂不需要") {
+            selectedIdea = nil
+            Task { await handleSuggestion(idea, accept: false) }
+          }.frame(minHeight: 44)
+        }.padding(24)
+      }.background(Brand.base).navigationTitle("灵感").navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("关闭") { selectedIdea = nil } } }
+    }
   }
 
   private var commonApplications: some View {
@@ -723,15 +707,7 @@ func taskSymbol(_ state: String) -> String {
           "done", "更新周末出行清单", "succeeded", "succeeded", at: date(day: -1, hour: 16),
           progress: "清单已整理，缺少的物品已经补齐。"),
       ]
-      board.suggestions = [
-        .object([
-          "id": .string("suggestion-1"),
-          "proposal": .object([
-            "title": .string("给下周留一个不看消息的下午"),
-            "reason": .string("最近连续几天都有密集安排，也许需要一段完整时间。"),
-          ]),
-        ])
-      ]
+      board.suggestions = []
       board.loaded = true
 }
 
