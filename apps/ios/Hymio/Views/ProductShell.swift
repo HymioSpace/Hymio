@@ -336,12 +336,17 @@ struct HomeScreen: View {
         VStack(alignment: .leading, spacing: 24) {
           HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 6) {
-              Text(Date.now.formatted(.dateTime.weekday(.wide))).font(.caption).foregroundStyle(Brand.muted)
-              Text(Date.now.formatted(.dateTime.month().day())).font(.system(size: 30, weight: .semibold)).tracking(-1)
+              Text(Date.now.formatted(.dateTime.month().day().weekday(.wide)))
+                .font(.caption).foregroundStyle(Brand.muted)
+              Text("Hymio").font(.system(size: 38, weight: .semibold)).tracking(-1.4)
+              if agent.working || !active.isEmpty {
+                Label("正在推进 \(max(active.count, 1)) 件事", systemImage: "circle.dotted")
+                  .font(.subheadline).foregroundStyle(Brand.blue)
+              }
             }
             Spacer()
             VStack(spacing: 5) {
-              Companion(size: 52, mood: agent.working ? .working : .greeting)
+              Companion(size: 86, mood: agent.working ? .working : .greeting)
             }
           }.padding(.top, 12).unredacted()
           if !decisions.isEmpty {
@@ -381,12 +386,10 @@ struct HomeScreen: View {
                 .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
             }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
           }
-          VStack(spacing: 0) {
-            scheduleTile
-            Rectangle().fill(Brand.line).frame(height: 0.5).padding(.horizontal, 20)
-            agentTile
-          }.background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line, lineWidth: 0.5))
+          agentTile
+          scheduleTile
+            .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line, lineWidth: 0.5))
           if !applications.isEmpty { commonApplications }
           if let idea = board.suggestions.first(where: {
             $0["state"].text == "pending" && !$0["proposal"]["record_ids"].items.isEmpty
@@ -433,21 +436,20 @@ struct HomeScreen: View {
       allDecisions = false
       if let task = item.task { openedTask = task } else { selected = .chat }
     } label: {
-      HStack(spacing: 14) {
-        Image(systemName: "hand.raised").font(.system(size: 20)).foregroundStyle(Brand.attention).frame(width: 28)
+      HStack(alignment: .top, spacing: 14) {
+        Image(systemName: "hand.raised").font(.system(size: 19)).foregroundStyle(Color.white.opacity(0.7)).frame(width: 24).padding(.top, 4)
         VStack(alignment: .leading, spacing: 6) {
-          Text(item.title).font(.headline).foregroundStyle(Brand.ink)
+          Text(item.title).font(.title2.weight(.semibold)).foregroundStyle(Color.white)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
           if !item.detail.isEmpty {
-            Text(item.detail).font(.subheadline).foregroundStyle(Brand.muted)
+            Text(item.detail).font(.subheadline).foregroundStyle(Color.white.opacity(0.72))
               .lineLimit(typeSize.isAccessibilitySize ? nil : 1).multilineTextAlignment(.leading)
           }
         }
         Spacer(minLength: 0)
-        Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
-      }.padding(18).frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-        .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.attention.opacity(0.12), lineWidth: 0.5))
+        Image(systemName: "arrow.up.right").font(.system(size: 18, weight: .medium)).foregroundStyle(Color.white.opacity(0.8))
+      }.padding(22).frame(maxWidth: .infinity, minHeight: 128, alignment: .leading)
+        .background(Color(red: 0.12, green: 0.17, blue: 0.28), in: RoundedRectangle(cornerRadius: 22))
     }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
   }
 
@@ -480,7 +482,7 @@ struct HomeScreen: View {
       Text(title).font(.headline).foregroundStyle(Brand.ink)
       Spacer(minLength: 0)
       Image(systemName: "chevron.right").font(.system(size: 10, weight: .medium)).foregroundStyle(Brand.muted)
-    }.frame(height: 24)
+    }.frame(minHeight: 24)
   }
   private var scheduleTile: some View {
     Button { Haptics.selection(); onTasks() } label: {
@@ -495,18 +497,19 @@ struct HomeScreen: View {
         } else {
           ForEach(Array(upcoming.prefix(3)), id: \.self) { item in
             let due = taskSortDate(item)
-            HStack(alignment: .top, spacing: 14) {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
+            layout {
               VStack(alignment: .leading, spacing: 3) {
                 Text(due.isFinite ? Date(timeIntervalSince1970: due).formatted(.dateTime.hour().minute()) : "待定")
-                  .font(.system(.subheadline, design: .rounded, weight: .semibold)).monospacedDigit().foregroundStyle(Brand.ink)
+                  .font(.system(.subheadline, design: .rounded, weight: .semibold)).monospacedDigit().foregroundStyle(Brand.ink).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                 if due.isFinite && !Calendar.current.isDateInToday(Date(timeIntervalSince1970: due)) {
                   Text(Date(timeIntervalSince1970: due).formatted(.dateTime.month().day()))
                     .font(.caption2).foregroundStyle(Brand.muted)
                 }
-              }.frame(width: 58, alignment: .leading)
-              RoundedRectangle(cornerRadius: 2).fill(Brand.blue).frame(width: 3, height: 34)
+              }.frame(width: typeSize.isAccessibilitySize ? nil : 58, alignment: .leading)
+              if !typeSize.isAccessibilitySize { RoundedRectangle(cornerRadius: 2).fill(Brand.blue).frame(width: 3, height: 34) }
               Text(item["title"].text).font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
-                .lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : 2).frame(maxWidth: .infinity, alignment: .leading)
             }.padding(.vertical, 3)
           }
         }
@@ -530,7 +533,7 @@ struct HomeScreen: View {
           }
           Spacer(minLength: 0)
         }
-      }.padding(20).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+      }.padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }.buttonStyle(.plain).accessibilityIdentifier("home.agent")
   }
   private func inspiration(_ idea: JSON) -> some View {

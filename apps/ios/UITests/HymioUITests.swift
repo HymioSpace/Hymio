@@ -93,7 +93,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertFalse(app.staticTexts["没有定时安排"].exists)
     let schedule = app.buttons["home.schedule"].frame
     let agent = app.buttons["home.agent"].frame
-    XCTAssertLessThanOrEqual(schedule.maxY, agent.minY)
+    XCTAssertLessThanOrEqual(agent.maxY, schedule.minY)
     XCTAssertEqual(schedule.minX, agent.minX, accuracy: 0.5)
     XCTAssertEqual(schedule.width, agent.width, accuracy: 0.5)
     shot = XCTAttachment(screenshot: app.screenshot())
