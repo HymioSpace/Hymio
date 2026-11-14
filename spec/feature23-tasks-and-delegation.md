@@ -38,8 +38,8 @@ Completed one-time tasks can be run again explicitly. Findings and results remai
 `capture` records work already admitted by the current conversation. It creates a running run directly,
 never a scheduled/delivering row or app.task.due event. An owner-scoped unique intent_key deduplicates
 retries across tool invocations; it never reopens completed work. Distinct requested outcomes need
-separate keys. Greetings and tentative ideas are not commitments. A quick result can be captured as
-succeeded atomically, without an extra start/complete cycle. Only the agent's internal API accepts capture.
+separate keys. Greetings and tentative ideas are not commitments. Short answers, memory writes and small device operations remain in conversation. A substantial
+result already achieved can be captured as succeeded without dispatching it again. Only the agent's internal API accepts capture.
 
 Task source is conversation/manual/scheduled. Runs separate phase, latest progress, next_step and final
 result. Timeline updates carry their resulting status and phase; blockers remain visible until progress

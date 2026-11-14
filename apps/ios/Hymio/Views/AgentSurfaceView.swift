@@ -1,5 +1,127 @@
 import SwiftUI
 
+/// Draw only the arriving edge out of focus; settled prose has no filter or timer.
+private struct DiffuseTextRenderer: TextRenderer, Animatable {
+  var revealed: Double
+  let characterCount: Int
+  var animatableData: Double {
+    get { revealed }
+    set { revealed = newValue }
+  }
+  func draw(layout: Text.Layout, in context: inout GraphicsContext) {
+    let glyphCount = layout.reduce(0) { count, line in count + line.reduce(0) { $0 + $1.count } }
+    let frontier = revealed / Double(max(1, characterCount)) * Double(glyphCount)
+    var index = 0
+    for line in layout {
+      for run in line {
+        if Double(index + run.count) <= frontier {
+          context.draw(run)
+          index += run.count
+          continue
+        }
+        let slices = Array(run)
+        let start = max(0, min(slices.count, Int(floor(frontier)) - index - 1))
+        if start > 0, start < slices.count {
+          let full = run.typographicBounds.rect
+          let edge = slices[start].typographicBounds.rect
+          let leftToRight = slices.last!.typographicBounds.rect.midX >= slices.first!.typographicBounds.rect.midX
+          let stableRect = leftToRight
+            ? CGRect(x: full.minX - 2, y: full.minY - 2, width: max(0, edge.minX - full.minX + 2), height: full.height + 4)
+            : CGRect(x: edge.maxX, y: full.minY - 2, width: max(0, full.maxX - edge.maxX + 2), height: full.height + 4)
+          var stableContext = context
+          stableContext.clip(to: Path(stableRect))
+          stableContext.draw(run)
+          index += start
+        }
+        for slice in slices.dropFirst(start) {
+          let diffuse = min(1, max(0, (Double(index + 1) - frontier) / 4))
+          var glyphContext = context
+          if diffuse > 0 {
+            glyphContext.opacity = 1 - diffuse * 0.25
+            glyphContext.addFilter(.blur(radius: diffuse * 0.65))
+          }
+          glyphContext.draw(slice)
+          index += 1
+        }
+      }
+    }
+  }
+}
+
+private struct DiffuseStreamingText: View {
+  let content: String
+  var plain = false
+  var animate = true
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var revealed = 0.0
+  @State private var previous = ""
+  var body: some View {
+    let attributed = plain ? AttributedString(content) :
+      ((try? AttributedString(markdown: content,
+        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(content))
+    Text(attributed)
+      .font(plain ? .callout : .body)
+      .foregroundStyle(plain ? Brand.muted : Brand.ink)
+      .lineSpacing(4)
+      .textRenderer(DiffuseTextRenderer(
+        revealed: reduceMotion || !animate ? Double(content.count) : revealed, characterCount: content.count))
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .onChange(of: content, initial: true) { _, value in
+        if reduceMotion || !animate {
+          revealed = Double(value.count)
+        } else {
+          if !value.hasPrefix(previous) {
+            var reset = Transaction(); reset.disablesAnimations = true
+            withTransaction(reset) { revealed = 0 }
+          }
+          withAnimation(.linear(duration: 0.16)) { revealed = Double(value.count) }
+        }
+        previous = value
+      }
+  }
+}
+
+private struct BufferedMarkdownTail: View {
+  let content: String
+  let active: Bool
+  let account: AccountService
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var revealed: Double
+  @State private var previous = ""
+  @State private var wasLive: Bool
+  init(content: String, active: Bool, account: AccountService) {
+    self.content = content; self.active = active; self.account = account
+    _revealed = State(initialValue: active ? 0 : Double(content.count))
+    _wasLive = State(initialValue: active)
+  }
+  var body: some View {
+    Group {
+      if wasLive {
+        StableMarkdown(content: content, account: account).equatable()
+          .textRenderer(DiffuseTextRenderer(revealed: reduceMotion ? Double(content.count) : revealed,
+            characterCount: content.count))
+      } else {
+        StableMarkdown(content: content, account: account).equatable()
+      }
+    }
+      .onChange(of: content, initial: true) { _, value in
+        if !active || reduceMotion { revealed = Double(value.count) }
+        else {
+          if !value.hasPrefix(previous) {
+            var reset = Transaction(); reset.disablesAnimations = true
+            withTransaction(reset) { revealed = 0 }
+          }
+          withAnimation(.linear(duration: 0.16)) { revealed = Double(value.count) }
+        }
+        previous = value
+      }
+      .onChange(of: active) { _, value in
+        if value { wasLive = true }
+        if !value { withAnimation(reduceMotion ? nil : .linear(duration: 0.16)) { revealed = Double(content.count) } }
+      }
+  }
+}
+
 private struct StableMarkdown: View, Equatable {
   let content: String
   let account: AccountService
@@ -38,7 +160,7 @@ private final class ProsePresenter: ObservableObject {
     guard task == nil, buffer.pending else { return }
     task = Task { [weak self] in
       while !Task.isCancelled {
-        do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
+        do { try await Task.sleep(for: .milliseconds(33)) } catch { return }
         guard let self else { return }
         self.buffer.tick(ProcessInfo.processInfo.systemUptime)
         self.publish()
@@ -65,6 +187,7 @@ struct BufferedProse: View {
   @Environment(\.scenePhase) private var scene
   @State private var copyGeneration = 0
   @State private var copied = false
+  @State private var settling = false
   @StateObject private var presentation: ProsePresenter
   init(source: String, streaming: Bool, account: AccountService, plain: Bool = false) {
     self.plain = plain
@@ -77,8 +200,7 @@ struct BufferedProse: View {
     let frame = presentation.frame
     Group {
       if plain {
-        Text(frame.text).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-          .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+        DiffuseStreamingText(content: frame.text, plain: true, animate: streaming || frame.pending || settling)
       } else {
         let parts = AgentSurface.stableMarkdown(frame.text)
         VStack(alignment: .leading, spacing: 8) {
@@ -86,20 +208,17 @@ struct BufferedProse: View {
             StableMarkdown(content: parts.stable, account: account).equatable()
           }
           if !parts.tail.isEmpty {
-            if frame.pending || streaming {
-              Text(
-                (try? AttributedString(
-                  markdown: parts.tail,
-                  options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                  ?? AttributedString(parts.tail)
-              )
-              .font(.body).lineSpacing(4).textSelection(.disabled)
-              .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-              StableMarkdown(content: parts.tail, account: account).equatable()
-            }
+            BufferedMarkdownTail(content: parts.tail, active: frame.pending || streaming || settling, account: account)
           }
         }.frame(minHeight: 24, alignment: .topLeading)
+      }
+    }
+    .task(id: frame.pending || streaming) {
+      if frame.pending || streaming {
+        settling = true
+      } else if settling {
+        do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
+        settling = false
       }
     }
     .contextMenu {
@@ -421,13 +540,81 @@ struct AgentSurfaceView: View {
     }
   }
 
-  @MainActor private final class StreamFrameProbe: NSObject {
+  struct ActualChatPerformancePreview: View {
+    let account: AccountService
+    @StateObject private var client: AgentClient
+    @State private var complete = false
+    init(account: AccountService) {
+      self.account = account
+      _client = StateObject(wrappedValue: AgentClient(account: account, previewConnected: true))
+    }
+    var body: some View {
+      ChatScreen(account: account, client: client, onAccount: {})
+        .overlay(alignment: .topTrailing) {
+          if complete { Text("验收完成").font(.caption2).padding(6).background(Brand.base).accessibilityIdentifier("chat.stress.complete") }
+        }
+        .task { @MainActor in
+          var seq = 0
+          @MainActor func emit(_ type: String, _ body: [String: JSON]) {
+            seq += 1
+            client.injectSynthetic(Event(user_id: "synthetic", event_seq: seq, event_type: type,
+              payload: .object(body), occur_dt: "2026-01-01T00:00:00Z"))
+          }
+          for i in 0..<16 {
+            emit("user.message", ["content": .string("整理第 \(i + 1) 件事")])
+            emit("assistant.message", ["step_id": .string("history-\(i)"), "content": .string("已整理好。保留清楚的结果与下一步。")])
+          }
+          emit("user.message", ["content": .string("继续整理，给我最终结果。")])
+          let clock = StreamFrameProbe(); clock.start()
+          StreamGeometryProbe.shared.start()
+          let answer = String(repeating: "文字逐渐到达，已读内容留在原位。中英文 09:58 与 🦦 保持完整。", count: 18) + "\n\n最终结果已整理好。"
+          let characters = Array(answer)
+          for index in stride(from: 0, to: characters.count, by: 10) {
+            guard !Task.isCancelled else { clock.stop(); return }
+            emit("assistant.delta", ["step_id": .string("live"), "channel": .string("content"), "attempt": .number(0),
+              "text": .string(String(characters[index..<min(index + 10, characters.count)]))])
+            try? await Task.sleep(for: .milliseconds(index % 70 == 0 ? 180 : 50))
+          }
+          emit("assistant.message", ["step_id": .string("live"), "content": .string(answer)])
+          try? await Task.sleep(for: .seconds(8))
+          let metrics = clock.stop()
+          let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("actual-chat-metrics.txt")
+          try? metrics.write(to: path, atomically: true, encoding: .utf8)
+          let geometryPath = path.deletingLastPathComponent().appendingPathComponent("actual-chat-geometry.csv")
+          try? StreamGeometryProbe.shared.stop().write(to: geometryPath, atomically: true, encoding: .utf8)
+          complete = true
+        }
+    }
+  }
+
+  struct StreamGeometrySample: Equatable {
+    let height: CGFloat
+    let offset: CGFloat
+    let viewport: CGFloat
+  }
+  @MainActor final class StreamGeometryProbe {
+    static let shared = StreamGeometryProbe()
+    private var active = false
+    private var started = 0.0
+    private var samples: [String] = []
+    func start() { active = true; started = ProcessInfo.processInfo.systemUptime; samples = ["seconds,height,offset,viewport"] }
+    func record(_ value: StreamGeometrySample) {
+      guard active, samples.count < 20000 else { return }
+      samples.append(String(format: "%.5f,%.3f,%.3f,%.3f", ProcessInfo.processInfo.systemUptime - started,
+        value.height, value.offset, value.viewport))
+    }
+    func stop() -> String { active = false; return samples.joined(separator: "\n") }
+  }
+  @MainActor final class StreamFrameProbe: NSObject {
     private var link: CADisplayLink?
     private var previous = 0.0
     private var frames = 0
     private var stalls = 0
     private var maxGap = 0.0
+    private var started = 0.0
+    private var slowFrames: [String] = []
     func start() {
+      started = ProcessInfo.processInfo.systemUptime
       link = CADisplayLink(target: self, selector: #selector(frame(_:)))
       link?.add(to: .main, forMode: .common)
     }
@@ -435,7 +622,12 @@ struct AgentSurfaceView: View {
       if previous > 0 {
         let gap = sender.timestamp - previous
         maxGap = max(maxGap, gap)
-        if gap > 0.05 { stalls += 1 }
+        if gap > 0.05 {
+          stalls += 1
+          if slowFrames.count < 8 {
+            slowFrames.append(String(format: "%.2fs:%dms", sender.timestamp - started, Int(gap * 1000)))
+          }
+        }
       }
       previous = sender.timestamp
       frames += 1
@@ -443,7 +635,20 @@ struct AgentSurfaceView: View {
     @discardableResult func stop() -> String {
       link?.invalidate()
       link = nil
-      return "\(frames) frames, \(stalls) gaps >50ms, max \(Int(maxGap * 1000))ms"
+      return "\(frames) frames, \(stalls) gaps >50ms, max \(Int(maxGap * 1000))ms; \(slowFrames.joined(separator: ", "))"
     }
   }
 #endif
+
+extension View {
+  @ViewBuilder @MainActor func trackStreamGeometry() -> some View {
+    #if DEBUG
+      self.onScrollGeometryChange(for: StreamGeometrySample.self) { geometry in
+        StreamGeometrySample(height: geometry.contentSize.height,
+          offset: geometry.contentOffset.y + geometry.contentInsets.top, viewport: geometry.containerSize.height)
+      } action: { _, value in StreamGeometryProbe.shared.record(value) }
+    #else
+      self
+    #endif
+  }
+}

@@ -115,6 +115,7 @@ struct TraceScreen: View {
 }
 struct TraceRecordScreen: View {
   let traceID: String
+  var agentID: String = ""
   @ObservedObject var account: AccountService
   @State private var trace: JSON = .null
   @State private var fullTrace: JSON = .null
@@ -184,7 +185,7 @@ struct TraceRecordScreen: View {
     error = ""
     do {
       trace = try await account.request(
-        "oath-biz/query_trace?summary=1&trace_id=\(traceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        "oath-biz/query_trace?agent_id=\(agentID)&summary=1&trace_id=\(traceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
       )
     } catch { self.error = "详情读取失败，请重试。" }
   }
@@ -195,7 +196,7 @@ struct TraceRecordScreen: View {
     defer { loadingFull = false }
     do {
       fullTrace = try await account.request(
-        "oath-biz/query_trace?trace_id=\(traceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        "oath-biz/query_trace?agent_id=\(agentID)&trace_id=\(traceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
       )
     } catch { fullError = "完整数据读取失败，请重试。" }
   }

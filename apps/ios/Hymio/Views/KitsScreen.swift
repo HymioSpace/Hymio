@@ -48,6 +48,7 @@ import os
   @Published var changes: [JSON] = []
   @Published var agentStatus = "not_started"
   @Published var agentResult = ""
+  @Published var agentID = ""
   @Published var loading = true
   @Published var sending = false
   @Published var error = ""
@@ -89,6 +90,7 @@ import os
       changes = value["changes"].items
       agentStatus = value["agent_status"].text
       agentResult = value["agent_result"].text
+      agentID = value["coding_agent_id"].text
       loading = false
       error = ""
     } catch {
@@ -160,6 +162,7 @@ private enum KitVisual {
 struct KitsScreen: View {
   @ObservedObject var account: AccountService
   let onAccount: () -> Void
+  var showAccountButton = true
   @StateObject private var store = KitCatalogStore()
   @State private var installing = ""
 
@@ -167,7 +170,13 @@ struct KitsScreen: View {
   private var available: [JSON] { store.items.filter { !$0["installed"].flag } }
 
   var body: some View {
-    NavigationStack {
+    Group {
+      if showAccountButton { NavigationStack { catalog } }
+      else { catalog }
+    }.task { await store.load(account) }
+  }
+
+  private var catalog: some View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 28) {
           VStack(alignment: .leading, spacing: 9) {
@@ -217,12 +226,10 @@ struct KitsScreen: View {
       .navigationTitle("应用").navigationBarTitleDisplayMode(.inline)
       .toolbar {
         ToolbarItemGroup(placement: .topBarLeading) {
-          AccountButton(account: account, action: onAccount)
+          if showAccountButton { AccountButton(account: account, action: onAccount) }
         }.accountUnframed()
       }
       .refreshable { await store.load(account) }
-    }
-    .task { await store.load(account) }
   }
 
   private func appSection(_ title: String, items: [JSON], installed: Bool) -> some View {
@@ -356,7 +363,7 @@ private struct KitCatalogCard: View {
   }
 }
 
-private struct KitAppScreen: View {
+struct KitAppScreen: View {
   @ObservedObject var account: AccountService
   let item: JSON
   @State private var app: JSON = .null
@@ -498,6 +505,7 @@ private struct KitEditorScreen: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 18) {
           statusHeader
+          if !store.agentID.isEmpty { AgentActivityView(account: account, agentID: store.agentID) }
           if !store.messages.isEmpty {
             sectionTitle("对话记录", detail: "你和 Hymio 的修改要求")
             ForEach(store.messages, id: \.self) { message in

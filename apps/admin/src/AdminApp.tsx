@@ -32,6 +32,7 @@ import {
 } from "./api";
 import { Monitoring } from "./Monitoring";
 import { PromptPanel } from "./PromptPanel";
+import { NostalgiaPanel } from "./NostalgiaPanel";
 import { ToolsPanel } from "./ToolsPanel";
 
 const states: Record<string, string> = {
@@ -257,18 +258,20 @@ export function AdminApp() {
     data?.providers.find((item) => item.provider === provider)?.name ||
     provider;
   const granted = data?.users.filter((user) => user.enabled).length || 0;
-  const monitoringPage = hash.startsWith("#/monitoring/prompt")
-    ? "prompt"
-    : hash.startsWith("#/monitoring/traces") ||
-        hash.startsWith("#/monitoring/trace/")
-      ? "traces"
-      : hash.startsWith("#/monitoring/logs")
-        ? "logs"
-        : hash.startsWith("#/monitoring/tools")
-          ? "tools"
-          : hash.startsWith("#/monitoring/runbook")
-            ? "runbook"
-            : "overview";
+  const monitoringPage = hash.startsWith("#/monitoring/nostalgia")
+    ? "nostalgia"
+    : hash.startsWith("#/monitoring/prompt")
+      ? "prompt"
+      : hash.startsWith("#/monitoring/traces") ||
+          hash.startsWith("#/monitoring/trace/")
+        ? "traces"
+        : hash.startsWith("#/monitoring/logs")
+          ? "logs"
+          : hash.startsWith("#/monitoring/tools")
+            ? "tools"
+            : hash.startsWith("#/monitoring/runbook")
+              ? "runbook"
+              : "overview";
 
   return (
     <div className="shell">
@@ -292,6 +295,14 @@ export function AdminApp() {
             <span>{data?.devices.length || 0}</span>
           </a>
           <p>观测</p>
+          <a
+            className={`nav ${monitoringPage === "nostalgia" ? "active" : ""}`}
+            href="#/monitoring/nostalgia"
+            onClick={() => setView("monitoring")}
+          >
+            <Workflow size={17} />
+            Nostalgia
+          </a>
           <a
             className={`nav ${view === "monitoring" && monitoringPage === "prompt" ? "active" : ""}`}
             href="#/monitoring/prompt"
@@ -385,7 +396,9 @@ export function AdminApp() {
         </div>
       </aside>
 
-      {view === "monitoring" && monitoringPage === "tools" ? (
+      {view === "monitoring" && monitoringPage === "nostalgia" ? (
+        <NostalgiaPanel session={session} />
+      ) : view === "monitoring" && monitoringPage === "tools" ? (
         <ToolsPanel session={session} />
       ) : view === "monitoring" ? (
         monitoringPage === "prompt" ? (

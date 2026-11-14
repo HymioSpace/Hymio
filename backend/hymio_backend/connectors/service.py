@@ -49,9 +49,7 @@ class ConnectorService:
             client_id = os.environ.get(environment[0])
             client_secret = os.environ.get(environment[1])
             if client_id or client_secret:
-                return _valid_registration(
-                    {"client_id": client_id, "client_secret": client_secret}
-                )
+                return _valid_registration({"client_id": client_id, "client_secret": client_secret})
         path = getattr(self.settings, "connectors_config_file", None)
         if not path:
             return None
@@ -267,6 +265,10 @@ class ConnectorService:
                         (row["connection_id"], row["external_id"], row["id"]),
                     ).fetchone()
                 item = json.loads(row["body"])
+                if row["provider"] == "apple_health":
+                    from ..context.presentation import health_summary
+
+                    item = {**item, "text": health_summary(item), "feed_visibility": "background"}
                 data = {
                     "item_type": "context",
                     "context_type": "connector",

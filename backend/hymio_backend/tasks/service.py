@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from collections import defaultdict
 
 import httpx
 
@@ -14,6 +15,7 @@ class TaskService:
     def __init__(self, settings, store, notifications=None):
         self.settings, self.store, self.notifications = settings, store, notifications
         self.slots = asyncio.Semaphore(4)
+        self.dispatch_locks = defaultdict(asyncio.Lock)
 
     async def oath(self, uid, path, data):
         async with httpx.AsyncClient(timeout=10, trust_env=False, follow_redirects=False) as client:
@@ -38,7 +40,7 @@ class TaskService:
         await asyncio.gather(*(self.reconcile_one(run) for run in runs))
 
     async def reconcile_one(self, run):
-        async with self.slots:
+        async with self.slots, self.dispatch_locks[run["user_id"]]:
             await self.sync_run(run)
 
     async def sync_run(self, run):
@@ -53,6 +55,10 @@ class TaskService:
                     if run["status"] in {"cancelled", "succeeded", "failed"}:
                         if time.time() - (run["finished_at"] or time.time()) > 60:
                             await asyncio.to_thread(self.store.synced, uid, rid)
+                        return
+                    if await asyncio.to_thread(self.store.executing_children, uid) >= getattr(
+                        self.settings, "task_parallelism", 2
+                    ):
                         return
                     task = await asyncio.to_thread(self.store.get, uid, run["task_id"])
                     child = await self.oath(
@@ -166,6 +172,78 @@ class TaskService:
                 _log.debug("Task reconciliation notice deferred")
 
     async def tick(self):
+        for run in await asyncio.to_thread(self.store.continuations):
+            try:
+                content = (
+                    "Continue the existing task after a user requested it. Check the blocker "
+                    "and current evidence before taking action; ask if a decision is missing. "
+                    "Never repeat an uncertain external effect.\n"
+                    + run["objective"]
+                    + "\nLast progress: "
+                    + run["progress"]
+                    + "\nNext: "
+                    + run["next_step"]
+                    + "\nAdditional user instruction: "
+                    + run.get("resume_note", "")
+                )
+                if run["agent_id"] and run["agent_id"] != "pending":
+                    await self.oath(
+                        run["user_id"],
+                        "/subagents/continue",
+                        {
+                            "agent_id": run["agent_id"],
+                            "message_id": run["resume_request_id"],
+                            "content": content,
+                            "success_criteria": run["success_criteria"],
+                        },
+                    )
+                else:
+                    await self.oath(
+                        run["user_id"],
+                        "/events",
+                        {
+                            "type": "app.task.continue",
+                            "event_id": "continue:" + run["resume_request_id"],
+                            "payload": {
+                                "task_id": run["task_id"],
+                                "run_id": run["id"],
+                                "instruction": content,
+                            },
+                        },
+                    )
+                await asyncio.to_thread(
+                    self.store.continued, run["user_id"], run["id"], run["resume_request_id"]
+                )
+            except Exception as exc:
+                _log.warning("Task continuation deferred: %s", type(exc).__name__)
+        for run in await asyncio.to_thread(self.store.followups):
+            try:
+                await self.oath(
+                    run["user_id"],
+                    "/events",
+                    {
+                        "type": "app.task.followup",
+                        "event_id": "task-followup:"
+                        + run["id"]
+                        + ":"
+                        + str(run["followup_version"]),
+                        "payload": {
+                            k: run[k] for k in ("task_id", "title", "wait_reason", "next_step")
+                        }
+                        | {
+                            "run_id": run["id"],
+                            "instruction": "Check current task state and the waiting condition. "
+                            "This is a follow-up, not permission to repeat an external effect. "
+                            "Resume with progress only when actionable; otherwise wait again "
+                            "with a justified time, or ask the user. Do not create another task.",
+                        },
+                    },
+                )
+                await asyncio.to_thread(
+                    self.store.followed_up, run["user_id"], run["id"], run["followup_version"]
+                )
+            except Exception as exc:
+                _log.warning("Task continuation deferred: %s", type(exc).__name__)
         await asyncio.to_thread(self.store.reconcile_time)
         main = await asyncio.to_thread(self.store.main_runs)
         await asyncio.gather(*(self.reconcile_main(run) for run in main))
@@ -209,6 +287,10 @@ class TaskService:
                 or occurrence["status"] not in {"scheduled", "delivering"}
                 or time.time() > occurrence["expires_at"]
             ):
+                return
+            if current["kind"] != "reminder":
+                await asyncio.to_thread(self.store.start, run["user_id"], run["id"])
+                await self.delegate(run["user_id"], run["id"])
                 return
             await self.oath(
                 run["user_id"],
