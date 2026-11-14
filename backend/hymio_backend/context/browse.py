@@ -4,6 +4,8 @@ import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
 
+from .presentation import PROVIDERS, present_record, provider_of
+
 CATEGORIES = {"work": "工作", "learning": "学习", "life": "生活", "uncategorized": "未分类"}
 ALIASES = {**{key: key for key in CATEGORIES}, **{v: k for k, v in CATEGORIES.items()}}
 PAGE_SIZE = 30
@@ -27,6 +29,7 @@ def card(hit, value):
         "domains": metadata.get("domains") or [],
         "title": title if isinstance(title, str) else "",
         "updated_at": value.get("updated_at"),
+        **(present_record(hit, value) if hit["kind"] == "record" else {}),
     }
 
 
@@ -45,7 +48,7 @@ def browse(client, user_id, data):
         or len(query) > 4000
         or not isinstance(category, str)
         or not 1 <= len(category) <= 32
-        or source not in {"all", "conversation", "user", "connector", "kit", "legacy"}
+        or source not in {"all", "conversation", "user", "connector", "kit", "legacy", *PROVIDERS}
         or type(limit) is not int
         or not 1 <= limit <= 30
     ):
@@ -80,7 +83,7 @@ def browse(client, user_id, data):
                 "order": "recent",
                 "mode": "text" if query else "filter",
                 "query": query or None,
-                "filters": {"source_kind": source}
+                "filters": {"source_kind": "connector" if source in PROVIDERS else source}
                 if target == "records" and source != "all"
                 else {},
                 "limit": PAGE_SIZE,
@@ -92,6 +95,18 @@ def browse(client, user_id, data):
         candidates = [h for h in hits[offset:] if not h["id"].startswith("_")]
 
         def enrich(hit):
+            # Search hits already identify their provider. Do not fetch hidden sensor bodies.
+            provider = provider_of(hit)
+            if target == "records" and (
+                (source == "all" and provider == "apple_health")
+                or (source in PROVIDERS and provider != source)
+            ):
+                return {
+                    **hit,
+                    "source_provider": provider,
+                    "category": "uncategorized",
+                    "labels": [],
+                }
             value = client.call(
                 user_id,
                 "artifacts.read" if hit["kind"] == "artifact" else "records.read",
@@ -107,6 +122,12 @@ def browse(client, user_id, data):
                 if hit["id"].startswith("_"):
                     continue
                 item = next(cards)
+                provider = item.get("source_provider")
+                if target == "records" and (
+                    (source == "all" and provider == "apple_health")
+                    or (source in PROVIDERS and provider != source)
+                ):
+                    continue
                 if category == "all" or item["category"] == category or category in item["labels"]:
                     items.append(item)
                 if len(items) == limit:

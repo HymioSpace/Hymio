@@ -54,6 +54,7 @@ class TaskStore:
     def _view(self, db, row, *, summary=False):
         task = dict(row)
         task["schedule"] = json.loads(task["schedule"])
+        task["for_user"] = bool(task.get("for_user", False))
         if summary:
             task["objective"] = task["objective"][:300]
             task["success_criteria"] = task["success_criteria"][:300]
@@ -127,6 +128,9 @@ class TaskStore:
         fields = {k: v.strip() for k, v in fields.items()}
         if any(not v or len(v) > 10000 for v in fields.values()) or len(fields["title"]) > 160:
             raise ValueError("Title, objective and success criteria required")
+        for_user = data.get("for_user", False)
+        if type(for_user) is not bool:
+            raise ValueError("for_user must be boolean")
         kind = data.get("kind", "task")
         if kind not in {"task", "reminder"}:
             raise ValueError("Invalid task kind")
@@ -190,7 +194,7 @@ class TaskStore:
                     key,
                 ),
             )
-            db.execute("UPDATE tasks SET kind=? WHERE id=?", (kind, tid))
+            db.execute("UPDATE tasks SET kind=?,for_user=? WHERE id=?", (kind, int(for_user), tid))
             if captured:
                 rid = uuid.uuid4().hex
                 db.execute(
@@ -244,6 +248,9 @@ class TaskStore:
             if "schedule" in data:
                 task["schedule"] = json.dumps(normalize(data["schedule"]))
             task["kind"] = data.get("kind", task["kind"])
+            if "for_user" in data and type(data["for_user"]) is not bool:
+                raise ValueError("for_user must be boolean")
+            task["for_user"] = data.get("for_user", bool(task["for_user"]))
             # Editing active work must be explicit: cancel it before changing its contract.
             if db.execute(
                 "SELECT 1 FROM task_runs WHERE task_id=? AND status IN ('running','blocked')",
@@ -268,7 +275,10 @@ class TaskStore:
                     tid,
                 ),
             )
-            db.execute("UPDATE tasks SET kind=? WHERE id=?", (task["kind"], tid))
+            db.execute(
+                "UPDATE tasks SET kind=?,for_user=? WHERE id=?",
+                (task["kind"], int(task["for_user"]), tid),
+            )
             row = self._task(db, uid, tid)
             if row["state"] == "active":
                 self._plan(db, row)

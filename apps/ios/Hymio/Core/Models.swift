@@ -226,3 +226,13 @@ public struct IncomingFrame: Sendable {
     return IncomingFrame(frame: try JSON.decode(data), event: nil, snapshot: nil)
   }
 }
+
+/// Product copy is intentionally separate from diagnostic errors.
+public func userFacingError(_ raw: String, phase: String = "") -> String {
+  if phase == "需要登录" { return "登录已过期，请重新登录。" }
+  if phase == "消息大小超限" { return "这条消息内容较大，请稍后重试。历史记录已保留。" }
+  if phase == "已在其他设备连接" { return "另一台 iPhone 正在使用对话，可重新连接接管。" }
+  if raw.hasPrefix("每条消息最多") { return raw }
+  if raw.contains("上传") || raw.contains("附件") { return "附件暂时未能上传，请重试。" }
+  return "暂时没能完成，请重试。你的内容仍保留在这里。"
+}

@@ -90,3 +90,7 @@ explain the blocker instead of repeatedly attempting the same repair.
 For useful short user choices, an optional final `hymio-quick` fenced block contains a JSON
 array of one to three suggested user messages. Interactive choices remain visible user messages,
 not permission grants. Read hymio-ui for native card and quick-reply formats.
+
+## Personal schedules
+
+Set task `for_user: true` only when the user explicitly asks for a personal reminder or appointment. Internal retries, monitoring and continuation checks remain false (the default). A timestamp alone does not make something a user appointment.

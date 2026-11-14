@@ -28,6 +28,7 @@ export type Run = {
   }[];
 };
 export type Work = {
+  for_user?: boolean;
   updated_at: number;
   id: string;
   title: string;

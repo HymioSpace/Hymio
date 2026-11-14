@@ -83,6 +83,10 @@ class TasksTool(Tool):
                         "type": "number",
                         "description": "UTC Unix timestamp for a justified follow-up; omit while awaiting a user decision.",
                     },
+                    "for_user": {
+                        "type": "boolean",
+                        "description": "True only for a user-requested personal reminder or appointment. False for agent maintenance and follow-up checks; defaults false.",
+                    },
                     "kind": {"type": "string", "enum": ["task", "reminder"]},
                     "status": {
                         "type": "string",

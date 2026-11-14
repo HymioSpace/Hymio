@@ -146,7 +146,7 @@ export function HomePanel({
       (baseline ? baseline[t.id] !== fingerprint(t) : workState(t) === 'succeeded'),
   );
   const ongoing = tasks.filter((t) => ['running', 'ready', 'delivering'].includes(workState(t)));
-  const upcoming = tasks.filter((t) => workState(t) === 'scheduled');
+  const upcoming = tasks.filter((t) => workState(t) === 'scheduled' && t.for_user === true);
   const firstVisit = loaded && conversationReady && !tasks.length && !hasConversation;
   const modules = [
     { kind: 'attention' as const, title: '需要处理', items: attention.slice(0, 3) },

@@ -1,3 +1,4 @@
+- [Personal experience and performance](feature48-personal-experience.md)：三标签导航、首页模块、回忆来源与滚动性能。
 # Hymio 设计
 
 - [Tool authorization and approvals](feature44-tool-authorization.md)：能力边界、行动审批、授权范围和客户端交互。

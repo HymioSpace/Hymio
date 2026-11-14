@@ -146,3 +146,13 @@ def propose(settings, task):
         raise ContextError(
             503, "dreaming_model_unavailable", "Dreaming proposal unavailable"
         ) from exc
+
+# Home inspiration is intentionally evidence-grounded and generated in the existing dreaming call.
+SYSTEM_PROMPT += """
+
+When proposing opportunities, also consider a small useful explanation, comparison or idea the user
+might enjoy exploring based on recent motivations. A useful learning direction can be a better
+opportunity than another obligation. Do not invent personal interests from sensor summaries, turn
+routine health sync into goals, or repeat old suggestions. Proposals remain optional, cite original
+records, and never imply authorization to act. Produce none when there is no grounded useful idea.
+"""

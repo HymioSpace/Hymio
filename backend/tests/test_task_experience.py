@@ -117,3 +117,17 @@ def test_new_background_task_starts_bound_delegation_without_main_wake(environme
     service.oath.assert_not_called()
     stored = service.store.get("u1", task["id"])["runs"][0]
     assert stored["status"] == "running" and stored["agent_id"] == "pending"
+
+
+def test_task_audience_defaults_private_and_roundtrips(environment):
+    _, _, service = environment
+    fields = {"title": "Morning", "objective": "Send reminder", "success_criteria": "Delivered"}
+    first = service.store.create("u1", fields)
+    assert first["for_user"] is False
+    public = service.store.create("u1", {**fields, "for_user": True})
+    assert public["for_user"] is True
+    assert service.store.list("u1")[0]["for_user"] is True
+    edited = service.store.edit("u1", public["id"], {"for_user": False})
+    assert edited["for_user"] is False
+    with pytest.raises(ValueError):
+        service.store.create("u1", {**fields, "for_user": "true"})

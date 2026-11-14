@@ -34,3 +34,5 @@ Waiting for a user decision resumes explicitly; do not poll for it. A follow-up 
 check the prerequisite, not repeat a side effect. Use action=progress on the existing run when
 actionable again, or explain the remaining blocker. Inspect automatic child history with
 action=activity and task_id. Task state describes the outcome; tool status still comes from Oath.
+
+Use `for_user: true` for explicit personal reminders/appointments requested by the user. Keep agent follow-ups, maintenance and monitoring false. Do not infer audience from task titles.
