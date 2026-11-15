@@ -77,12 +77,16 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
     source = oath_config.read_text()
     for field in ("exposed_tools", "cli_public_url", "permission_policy_url"):
         source = re.sub(r"^" + field + r"\s*=.*$", "", source, flags=re.MULTILINE)
-    public_url = config.get("public_url", "http://127.0.0.1:8080").rstrip("/") + "/agent"
+    public_url = (
+        config.get("public_url", "http://127.0.0.1:8080").rstrip("/") + "/agent"
+    )
     agent_defaults = (
         '[agent]\nexposed_tools = ["bash", "cli", "skill"]\ncli_public_url = '
         + json.dumps(public_url)
         + "\npermission_policy_url = "
-        + json.dumps("http://host.docker.internal:8080/internal/tool-authorization/check")
+        + json.dumps(
+            "http://host.docker.internal:8080/internal/tool-authorization/check"
+        )
     )
     source = source.replace("[agent]", agent_defaults, 1)
     choices = config.get("model_options", ["MiniMax-M2.7", "MiniMax-M3"])
@@ -112,13 +116,21 @@ def prepare_devices(config, config_path, oath_config, tools_dir=None):
     # Serialize the existing config once; do not append duplicate TOML tables.
     data = tomllib.loads(source)
     data["agent"]["model_context_windows"] = capacities
-    native = config.get("native_image_models", [
-        "MiniMax-M3", "deepseek-flash", "Qwen/Qwen3.8-27B", "Qwen/Qwen3-VL-32B-Instruct",
-    ])
+    native = config.get(
+        "native_image_models",
+        [
+            "MiniMax-M3",
+            "deepseek-flash",
+            "Qwen/Qwen3.8-27B",
+            "Qwen/Qwen3-VL-32B-Instruct",
+        ],
+    )
     providers = data["agent"].setdefault("model_providers", {})
     for choice in choices:
         if choice in native:
-            entry = providers.setdefault(choice, {**data["agent"]["provider"], "model": choice})
+            entry = providers.setdefault(
+                choice, {**data["agent"]["provider"], "model": choice}
+            )
             entry["supports_images"] = True
     source = toml(data)
     generated = oath_config.with_name("hymio-runtime.local.toml")
@@ -403,34 +415,6 @@ def main():
         database = Path(config["database"]).expanduser()
         if not database.is_absolute():
             database = config_path.parent / database
-        kit_database = database.with_name("kits.sqlite3")
-        service_token = (
-            config_path.parent / Path(config["service_token_file"]).expanduser()
-        ).resolve()
-        kit_host = subprocess.Popen(
-            [
-                "uv",
-                "run",
-                "--frozen",
-                *extras,
-                "python",
-                "-m",
-                "kit_host",
-            ],
-            cwd=ROOT / "backend",
-            env={
-                **os.environ,
-                "PYTHONPATH": str(ROOT / "services/kit-host"),
-                "KIT_HOST_DATABASE": str(kit_database),
-                "KIT_HOST_MANIFESTS_DIR": str(ROOT / "kits"),
-                "KIT_HOST_HOST": "127.0.0.1",
-                "KIT_HOST_PORT": "8090",
-                "KIT_HOST_TOKEN_FILE": str(service_token),
-            },
-            start_new_session=True,
-        )
-        children.append(kit_host)
-        wait_http("http://127.0.0.1:8090/health", kit_host)
         backend = subprocess.Popen(
             [
                 "uv",
@@ -510,7 +494,8 @@ def main():
                 flush=True,
             )
         print(
-            "Ctrl+C stops Backend/Kit Host/client. Docker services remain running.", flush=True
+            "Ctrl+C stops Backend/Kit Host/client. Docker services remain running.",
+            flush=True,
         )
         if args.ready_file and args.instance:
             temporary = args.ready_file.with_suffix(".tmp")

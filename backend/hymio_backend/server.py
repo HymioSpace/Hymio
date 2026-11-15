@@ -28,8 +28,6 @@ from .devices.admin import admin_routes
 from .devices.link import DeviceLink, link_routes
 from .devices.routes import device_routes
 from .devices.service import DeviceService
-from .kits.routes import kit_routes
-from .kits.service import KitsService
 from .media.routes import media_routes
 from .media.store import MediaStore
 from .monitoring import monitoring_routes, record_client_turn
@@ -41,9 +39,7 @@ from .session_store import SessionStore, Unauthorized
 from .system_log import LogCapture
 from .tasks.credentials import PREFIX
 from .tasks.credentials import verify as verify_service
-from .tasks.routes import task_routes
-from .tasks.service import TaskService
-from .tasks.store import TaskStore
+from .tasks.remote import RemoteTasks, remote_task_routes
 from .tool_authorization import ToolAuthorizationService, tool_authorization_routes
 
 _log = logging.getLogger(__name__)
@@ -76,14 +72,12 @@ def text(data, key):
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
     notifications = NotificationService(settings, store)
-    tasks = TaskService(settings, TaskStore(store), notifications)
+    tasks = RemoteTasks(settings, store, notifications)
     discovery = Discovery(settings, store, tasks)
-    tasks.discovery = discovery
     connectors = ConnectorService(settings, store)
     oidc = provider or Oidc(settings)
     accounts = CasdoorAccounts(settings, oidc)
     upstream = httpx.AsyncClient(timeout=10, follow_redirects=False, trust_env=False)
-    kits = KitsService(settings, upstream)
     tool_authorization = ToolAuthorizationService(settings, store)
 
     @asynccontextmanager
@@ -309,11 +303,10 @@ def build_app(settings, *, provider=None):
 
     routes = (
         connector_routes(settings, store, connectors, bearer, body)
-        + context_routes(settings, store, bearer, body, kits, tasks.store)
+        + context_routes(settings, store, bearer, body)
         + nostalgia_admin_routes(settings, store, discovery, bearer, body)
-        + task_routes(settings, store, tasks, bearer, body)
+        + remote_task_routes(settings, store, tasks, bearer, body)
         + notification_routes(settings, store, bearer, body, notifications)
-        + kit_routes(settings, store, kits, bearer, body)
         + media_routes(
             settings,
             store,

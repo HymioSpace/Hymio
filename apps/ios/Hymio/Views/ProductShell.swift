@@ -172,7 +172,7 @@ import SwiftUI
   }
 }
 
-enum ProductTab: Hashable { case today, chat, tasks, moments, kits }
+enum ProductTab: Hashable { case today, chat, tasks, moments }
 
 struct ProductShell: View, Equatable {
   static func == (lhs: Self, rhs: Self) -> Bool {
@@ -187,7 +187,6 @@ struct ProductShell: View, Equatable {
   @State private var notificationTask: JSON?
   @State private var showAccount = false
   @State private var showTasks = false
-  @State private var showKits = false
   @Environment(\.scenePhase) private var scene
 
   var body: some View {
@@ -195,7 +194,7 @@ struct ProductShell: View, Equatable {
       Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
         HomeScreen(
           account: account, client: client, board: board, selected: $selected,
-          onAccount: { showAccount = true }, onTasks: { showTasks = true }, onKits: { showKits = true })
+          onAccount: { showAccount = true }, onTasks: { showTasks = true })
       }
       Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
         ChatScreen(account: account, client: client, onAccount: { showAccount = true })
@@ -232,7 +231,6 @@ struct ProductShell: View, Equatable {
       NavigationStack { TasksScreen(account: account, board: board, onAccount: {}, showAccountButton: false)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { showTasks = false } } } }
     }
-    .sheet(isPresented: $showKits) { KitsScreen(account: account, onAccount: {}, showAccountButton: false) }
     .sheet(isPresented: Binding(get: { notificationTask != nil }, set: { if !$0 { notificationTask = nil } })) {
       if let item = notificationTask {
         NavigationStack { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, board: board) }
@@ -285,9 +283,7 @@ struct HomeScreen: View {
   @Binding var selected: ProductTab
   let onAccount: () -> Void
   var onTasks: () -> Void = {}
-  var onKits: () -> Void = {}
   var previewMode = false
-  @State private var applications: [JSON] = []
   @State private var openedTask: JSON?
   @State private var agent = HomeAgentSnapshot()
   @State private var decisionPage: String?
@@ -390,7 +386,6 @@ struct HomeScreen: View {
           scheduleTile
             .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line, lineWidth: 0.5))
-          if !applications.isEmpty { commonApplications }
           if let idea = board.suggestions.first(where: {
             $0["state"].text == "pending" && !$0["proposal"]["record_ids"].items.isEmpty
               && !$0["proposal"]["dream_id"].text.isEmpty && !$0["proposal"]["title"].text.isEmpty
@@ -406,9 +401,7 @@ struct HomeScreen: View {
       .background(Brand.base)
       .onReceive(client.$ready.combineLatest(client.$phase, client.$model).map(HomeAgentSnapshot.init).removeDuplicates()) { agent = $0 }
       .task {
-        if let result = try? await account.request("kits") {
-          applications = Array(result["kits"].items.filter { $0["installed"].flag }.prefix(4))
-        }
+
       }
       .navigationTitle("").navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(.regularMaterial, for: .navigationBar)
@@ -568,22 +561,7 @@ struct HomeScreen: View {
     }
   }
 
-  private var commonApplications: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack { Text("常用应用").font(.subheadline.weight(.semibold)); Spacer(); Button("全部", action: onKits).font(.caption).frame(minHeight: 44) }
-      HStack(spacing: 12) {
-        ForEach(applications, id: \.["id"]) { item in
-          NavigationLink { KitAppScreen(account: account, item: item) } label: {
-            VStack(spacing: 8) {
-              Image(systemName: "square.stack.3d.up.fill").font(.title3).frame(width: 48, height: 48)
-                .foregroundStyle(Brand.blue).background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 14))
-              Text(item["title"].text.isEmpty ? item["name"].text : item["title"].text).font(.caption).foregroundStyle(Brand.ink).lineLimit(1)
-            }.frame(maxWidth: .infinity)
-          }.buttonStyle(.plain)
-        }
-      }
-    }.padding(.top, 22)
-  }
+
 
   private func handleSuggestion(_ item: JSON, accept: Bool) async {
     let removed = board.hideSuggestion(item["id"].text)

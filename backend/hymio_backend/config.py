@@ -17,7 +17,6 @@ class Settings:
     origins: tuple[str, ...]
     oath_ws: str
     oath_biz: str
-    kits_url: str = "http://127.0.0.1:8090"
     oath_admin_token_file: Path | None = None
     access_seconds: int = 900
     refresh_seconds: int = 2592000
@@ -65,12 +64,11 @@ class Settings:
     def load(cls, path):
         path = Path(path).expanduser().resolve()
         data = tomllib.loads(path.read_text())
+        data.pop("kits_url", None)  # Retired setting; accept old config during migration.
         if os.environ.get("HYMIO_CONNECTORS_CONFIG_FILE"):
             data["connectors_config_file"] = os.environ["HYMIO_CONNECTORS_CONFIG_FILE"]
         if os.environ.get("HYMIO_PROMETHEUS_URL"):
             data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
-        if os.environ.get("HYMIO_KITS_URL"):
-            data["kits_url"] = os.environ["HYMIO_KITS_URL"]
         if os.environ.get("HYMIO_APNS_KEY_FILE"):
             data["apns_key_file"] = os.environ["HYMIO_APNS_KEY_FILE"]
         for key, env in (
@@ -159,7 +157,6 @@ class Settings:
             result.public_url,
             result.callback_url,
             result.oath_biz,
-            result.kits_url,
             result.media_api_base,
             result.vault_url,
             result.prometheus_url,

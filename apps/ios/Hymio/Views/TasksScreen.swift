@@ -6,7 +6,7 @@ func taskStatus(_ item: JSON) -> String {
 }
 func taskLabel(_ state: String) -> String {
   [
-    "scheduled": "已安排", "delivering": "正在送达", "ready": "等已安排", "running": "进行中", "blocked": "需要关注",
+    "queued": "等待执行", "waiting": "等待条件", "closed": "已结束", "scheduled": "已安排", "delivering": "正在送达", "ready": "等已安排", "running": "进行中", "blocked": "需要关注",
     "succeeded": "已完成", "failed": "未完成", "expired": "已过期", "cancelled": "已取消", "paused": "已暂停",
   ][state] ?? state
 }
@@ -85,7 +85,6 @@ struct TasksScreen: View {
   @State private var mode = TaskDisplayMode.month
   @State private var statusFilter = TaskStatusFilter.all
   @State private var hourHeight: CGFloat = 72
-  @State private var creating = false
   @State private var inbox = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -134,13 +133,8 @@ struct TasksScreen: View {
     .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
-      ToolbarItem(placement: .topBarTrailing) {
-        AddActionButton(title: "新建安排") { creating = true }
-      }.accountUnframed()
     }
-    .sheet(isPresented: $creating, onDismiss: {
-      if !previewMode { Task { await board.refresh(account) } }
-    }) { TaskEditor(account: account, board: board, initialDate: calendar.date(bySettingHour: 9, minute: 0, second: 0, of: focus)) }
+
   }
   private var calendarHeader: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -372,7 +366,7 @@ struct TasksScreen: View {
         VStack(alignment: .leading, spacing: 10) {
           Image(systemName: "sun.max").font(.title2).foregroundStyle(Brand.muted)
           Text("这一天，留点空白。 ").font(.headline)
-          Button("添加安排", systemImage: "plus") { creating = true }.font(.subheadline).frame(minHeight: 44)
+          Text("在对话中交代需要安排的工作。").font(.subheadline)
         }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
           .background(Brand.base, in: RoundedRectangle(cornerRadius: 20))
       }
@@ -658,7 +652,6 @@ struct TaskDetailScreen: View {
   @State private var value: JSON = .null
   @State private var error = ""
   @State private var busy = false
-  @State private var editing = false
   @State private var deleting = false
   @State private var continuation = ""
   @Environment(\.scenePhase) private var scene
@@ -723,7 +716,7 @@ struct TaskDetailScreen: View {
               if run["resume_at"].double > 0 {
                 Text("下次跟进：" + taskDate(run["resume_at"].double)).font(.caption).foregroundStyle(Brand.muted)
               }
-              Button("继续推进", systemImage: "play") { Task { await action("continue") } }
+              Text("请在对话中补充要求或回答待处理问题。")
                 .font(.subheadline).frame(minHeight: 44).disabled(busy)
             }
           }.frame(maxWidth: .infinity, alignment: .leading).padding(18)
@@ -795,9 +788,8 @@ struct TaskDetailScreen: View {
               }
               Button("取消任务", systemImage: "xmark.circle") { Task { await action("cancel") } }
             }
-            Button("编辑", systemImage: "pencil") { editing = true }.disabled(
-              ["running", "blocked"].contains(item["runs"].items.first?["status"].text ?? ""))
-            Button("删除任务", systemImage: "trash", role: .destructive) { deleting = true }
+            Text("请在对话中修改要求")
+            Button("取消任务", systemImage: "xmark.circle") { Task { await action("cancel") } }
           } label: {
             Image(systemName: "ellipsis").frame(width: 30, height: 30)
           }.disabled(busy).accessibilityLabel("任务操作")
@@ -805,9 +797,6 @@ struct TaskDetailScreen: View {
       }
       .confirmationDialog("删除任务并取消尚未完成的工作？", isPresented: $deleting, titleVisibility: .visible) {
         Button("删除任务", role: .destructive) { deleteImmediately() }
-      }
-      .sheet(isPresented: $editing, onDismiss: { Task { await load() } }) {
-        TaskEditor(account: account, board: board, existing: item)
       }
       .task(id: scene) {
         guard !previewMode, scene == .active else { return }
@@ -879,184 +868,6 @@ private struct TaskNotePreview: View {
     }
   }
 }
-
-private struct TaskEditor: View {
-  @ObservedObject var account: AccountService
-  var board: TaskBoard? = nil
-  @EnvironmentObject private var notifications: PushNotificationManager
-  var existing: JSON = .null
-  var initialDate: Date? = nil
-  @Environment(\.dismiss) private var dismiss
-  @State private var title = ""
-  @State private var objective = ""
-  @State private var criteria = ""
-  @State private var mode = "now"
-  @State private var kind = "task"
-  @State private var forUser = false
-  @State private var grace = 900
-  @State private var date = Date().addingTimeInterval(3600)
-  @State private var weekday = 0
-  @State private var requestID = UUID().uuidString
-  @State private var busy = false
-  @State private var error = ""
-  @FocusState private var editingText: Bool
-  var body: some View {
-    NavigationStack {
-      Form {
-        Section {
-          Picker("想交代什么", selection: $kind) {
-            Text("帮我做件事").tag("task")
-            Text("到时提醒我").tag("reminder")
-          }.pickerStyle(.segmented)
-          Text(kind == "reminder" ? "在约定的时间，把这件事提醒给你。" : "交代目标，Hymio 会推进并带回结果。")
-            .font(.footnote).foregroundStyle(Brand.muted)
-        }.listRowBackground(Brand.surface)
-        Section("这件事叫什么") {
-          TextField(kind == "reminder" ? "例如，提醒我出门" : "例如，整理周末出游路线", text: $title).focused(
-            $editingText)
-        }
-        Section(kind == "reminder" ? "提醒内容" : "希望完成什么") {
-          TextField("背景、范围，以及你关心的重点", text: $objective, axis: .vertical).lineLimit(3...7).focused(
-            $editingText)
-        }
-        Section {
-          Picker("开始时间", selection: $mode) {
-            Text("现在").tag("now")
-            Text("选个时间").tag("once")
-            Text("每天").tag("daily")
-            Text("每周").tag("weekly")
-          }
-          if mode == "weekly" {
-            Picker("每周", selection: $weekday) {
-              ForEach(0..<7) { i in Text(["周一", "周二", "周三", "周四", "周五", "周六", "周日"][i]).tag(i) }
-            }
-          }
-          if mode != "now" {
-            Toggle("作为我的安排显示在此刻", isOn: $forUser)
-            DatePicker(
-              "时间", selection: $date,
-              displayedComponents: mode == "once" ? [.date, .hourAndMinute] : [.hourAndMinute]
-            )
-            .environment(\.timeZone, timeZone)
-          }
-        } header: {
-          Text("什么时候开始")
-        } footer: {
-          Text("\(timeZone.identifier) · 关闭 App 后，已安排的工作仍会继续。")
-        }
-        Section {
-          DisclosureGroup("更多设置") {
-            TextField("完成标准（可选）", text: $criteria, axis: .vertical).lineLimit(2...4).focused(
-              $editingText)
-            if mode != "now" {
-              Picker("错过时间后", selection: $grace) {
-                ForEach(Array(Set([60, 300, 900, 3600, grace])).sorted(), id: \.self) { seconds in
-                  Text("\(seconds / 60) 分钟内补执行").tag(seconds)
-                }
-              }
-            }
-          }.foregroundStyle(Brand.muted)
-        }
-        if !error.isEmpty { Text(error).font(.footnote).foregroundStyle(Brand.attention) }
-      }.navigationTitle(existing == .null ? "安排一件事" : "编辑任务")
-        .navigationBarTitleDisplayMode(.inline).scrollDismissesKeyboard(.interactively)
-        .onChange(of: kind) { _, next in
-          if existing == .null && next == "reminder" { if mode == "now" { mode = "once" }; forUser = true }
-        }
-        .toolbar {
-          ToolbarItemGroup(placement: .keyboard) {
-            Spacer()
-            Button("完成", systemImage: "keyboard.chevron.compact.down") { editingText = false }
-          }
-          ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(busy) }
-          ToolbarItem(placement: .confirmationAction) {
-            Button {
-              Task { await save() }
-            } label: {
-              if busy { ProgressView() } else { Text(existing == .null ? "交给 Hymio" : "保存修改") }
-            }.disabled(
-              busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                || objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          }
-        }
-        .onAppear {
-          if existing == .null, let initialDate { date = initialDate; mode = "once" }
-          if existing != .null {
-            forUser = existing["for_user"].flag
-            kind = existing["kind"].text.isEmpty ? "task" : existing["kind"].text
-            grace =
-              existing["schedule"]["grace_seconds"].int > 0
-              ? existing["schedule"]["grace_seconds"].int : 900
-            title = existing["title"].text
-            objective = existing["objective"].text
-            criteria = existing["success_criteria"].text
-            mode = existing["schedule"]["mode"].text
-            weekday = existing["schedule"]["weekday"].int
-            if mode == "once",
-              let at = taskTimestamp(existing["schedule"]["at"].text)
-            {
-              date = at
-            }
-            if ["daily", "weekly"].contains(mode) {
-              let parts = existing["schedule"]["time"].text.split(separator: ":").compactMap {
-                Int($0)
-              }
-              if parts.count == 2 {
-                var calendar = Calendar.current
-                calendar.timeZone = timeZone
-                date =
-                  calendar.date(
-                    bySettingHour: parts[0], minute: parts[1], second: 0, of: date) ?? date
-              }
-            }
-          }
-        }
-    }.tint(Brand.blue)
-  }
-  private var timeZone: TimeZone {
-    TimeZone(identifier: existing["schedule"]["timezone"].text) ?? .current
-  }
-  private func save() async {
-    busy = true
-    defer { busy = false }
-    var schedule: [String: JSON] = [
-      "mode": .string(mode), "timezone": .string(timeZone.identifier),
-      "grace_seconds": .number(Double(grace)),
-      "run_timeout_seconds": .number(
-        Double(
-          existing["schedule"]["run_timeout_seconds"].int > 0
-            ? existing["schedule"]["run_timeout_seconds"].int : 3600)),
-    ]
-    if mode == "once" { schedule["at"] = .string(date.ISO8601Format()) }
-    if ["daily", "weekly"].contains(mode) {
-      let f = DateFormatter()
-      f.timeZone = timeZone
-      f.dateFormat = "HH:mm"
-      schedule["time"] = .string(f.string(from: date))
-    }
-    if mode == "weekly" { schedule["weekday"] = .number(Double(weekday)) }
-    var body: [String: JSON] = [
-      "action": .string(existing == .null ? "create" : "edit"),
-      "request_id": .string(requestID), "title": .string(title),
-      "kind": .string(kind), "for_user": .bool(forUser),
-      "objective": .string(objective),
-      "success_criteria": .string(
-        criteria.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          ? (kind == "reminder" ? "提醒已送达" : "完成所述目标，并记录结果与未解决事项。") : criteria),
-      "schedule": .object(schedule),
-    ]
-    if existing != .null { body["task_id"] = existing["id"] }
-    do {
-      let saved = try await account.request("tasks", body: .object(body))
-      board?.apply(saved)
-      if mode != "now" {
-        await notifications.requestForBackgroundWork(account)
-      }
-      dismiss()
-    } catch { self.error = "暂时无法保存。执行中的任务需要先取消，再修改。" }
-  }
-}
-
 
 struct AgentActivityView: View {
   @ObservedObject var account: AccountService

@@ -9,7 +9,7 @@ struct AccountScreen: View {
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var taskBoard: TaskBoard
   private enum Destination: String, Identifiable {
-    case tasks, applications, connectors
+    case tasks, connectors
     var id: String { rawValue }
   }
   @State private var destination: Destination?
@@ -200,9 +200,7 @@ struct AccountScreen: View {
               accountTile("任务与日程", detail: "安排与进展", artwork: .calendar)
             }
             Rectangle().fill(Brand.line).frame(width: 1, height: 56)
-            Button { destination = .applications } label: {
-              accountTile("我的应用", detail: "为日常添些工具", artwork: .archive)
-            }
+
           }.padding(.vertical, 4)
           Button { destination = .connectors } label: {
             HStack(spacing: 14) {
@@ -359,8 +357,6 @@ struct AccountScreen: View {
         case .tasks:
           TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
             .task { taskBoard.bind(account); await taskBoard.refresh(account) }
-        case .applications:
-          KitsScreen(account: account, onAccount: {}, showAccountButton: false)
         case .connectors:
           ConnectorsScreen(account: account)
         }
