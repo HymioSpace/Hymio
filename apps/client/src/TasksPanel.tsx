@@ -11,7 +11,7 @@ const labels: Record<string, string> = {
   waiting: '等待条件',
   paused: '已暂停',
   succeeded: '已完成',
-  failed: '需要处理',
+  failed: '执行失败',
   cancelled: '已取消',
   closed: '已结束',
   active: '已安排',
@@ -132,15 +132,7 @@ export function TasksPanel({
               aria-pressed={selected === task.id}
             >
               <strong>{task.title}</strong>
-              <span>
-                {labels[
-                  task.state === 'active'
-                    ? task.runs[0]?.status === 'succeeded' && task.next_due_at
-                      ? 'active'
-                      : task.runs[0]?.status || 'active'
-                    : task.state
-                ] || task.state}
-              </span>
+              <span>{taskStatusLabel(task)}</span>
             </button>
           ))}
         </section>
@@ -158,7 +150,8 @@ export function TasksPanel({
             </details>
             {chosen.runs.map((run) => (
               <div key={run.id}>
-                <p>{run.progress}</p>
+                {run.status !== 'succeeded' && run.progress && <p>{run.progress}</p>}
+                {run.status !== 'succeeded' && run.next_step && <p>{run.next_step}</p>}
                 {run.wait_reason && <p className="task-waiting">◷ {run.wait_reason}</p>}
                 {run.result && (
                   <details>
@@ -179,31 +172,45 @@ export function TasksPanel({
                 </div>
               </section>
             )}
-            {!!chosen.evidence?.length && (
-              <section>
-                <h4>完成依据</h4>
-                {chosen.evidence.map((e, i) => (
-                  <p key={i}>
-                    {e.summary}
-                    <small> · {e.ref}</small>
-                  </p>
-                ))}
-              </section>
-            )}
             <details className="task-technical">
               <summary>执行细节</summary>
+              {!!chosen.evidence?.length && (
+                <section>
+                  <h4>完成依据</h4>
+                  {chosen.evidence.map((e, i) => (
+                    <p key={i}>
+                      {e.summary}
+                      <small> · {e.ref}</small>
+                    </p>
+                  ))}
+                </section>
+              )}
               <dl className="task-facts">
-                <div>
-                  <dt>执行方式</dt>
-                  <dd>{chosen.execution?.executor === 'program' ? '程序规则' : '专属 Agent'}</dd>
-                </div>
-                <div>
-                  <dt>模型用量</dt>
-                  <dd>
-                    {chosen.execution?.usage?.steps ?? 0} 步 ·{' '}
-                    {chosen.execution?.usage?.tokens ?? 0} tokens
-                  </dd>
-                </div>
+                {(chosen.executor_kind || chosen.execution?.executor) && (
+                  <div>
+                    <dt>执行方式</dt>
+                    <dd>
+                      {(chosen.executor_kind || chosen.execution?.executor) === 'program'
+                        ? '程序规则'
+                        : '专属 Agent'}
+                    </dd>
+                  </div>
+                )}
+                {chosen.execution?.usage && (
+                  <div>
+                    <dt>模型用量</dt>
+                    <dd>
+                      {chosen.execution.usage.steps} 步 · {chosen.execution.usage.tokens} tokens
+                    </dd>
+                  </div>
+                )}
+                {chosen.runs[0]?.notification_status &&
+                  chosen.runs[0].notification_status !== 'none' && (
+                    <div>
+                      <dt>结果通知</dt>
+                      <dd>{notificationLabel(chosen.runs[0].notification_status)}</dd>
+                    </div>
+                  )}
               </dl>
               {chosen.context?.brief && (
                 <details>
@@ -289,4 +296,32 @@ function AgentDetail({ agent }: { agent: ExecutionAgent }) {
       </details>
     </details>
   );
+}
+
+function notificationLabel(status: string) {
+  return (
+    (
+      {
+        pending: '等待发送',
+        inflight: '正在发送',
+        accepted: '系统已接收',
+        unknown: '回执未知',
+        failed: '发送失败',
+        cancelled: '已取消',
+      } as Record<string, string>
+    )[status] || status
+  );
+}
+
+function taskStatusLabel(task: Work) {
+  if (task.state === 'closed')
+    return task.close_reason === 'achieved'
+      ? '已完成'
+      : task.close_reason === 'cancelled'
+        ? '已取消'
+        : '已结束';
+  if (task.state !== 'active') return labels[task.state] || task.state;
+  const run = task.runs[0];
+  if (run?.status === 'succeeded' && task.next_due_at) return '已安排';
+  return labels[run?.status || 'active'] || run?.status || task.state;
 }

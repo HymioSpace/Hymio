@@ -15,10 +15,11 @@ export type Run = {
   wait_reason?: string;
   wait_kind?: string | null;
   resume_at?: number;
-  phase: string;
+  phase?: string;
   next_step: string;
   agent_id?: string;
-  due_at: number;
+  notification_status?: string;
+  due_at: number | null;
   started_at?: number;
   updates: {
     note_id: string;
@@ -39,7 +40,9 @@ export type Work = {
   objective: string;
   success_criteria: string;
   state: string;
-  source: string;
+  source?: string;
+  executor_kind?: string;
+  close_reason?: string | null;
   kind?: 'task' | 'reminder';
   schedule: Schedule;
   runs: Run[];
