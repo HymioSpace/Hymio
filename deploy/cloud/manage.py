@@ -219,6 +219,29 @@ def generate(path):
     return target
 
 
+def remove_retired_kit_host():
+    """Retire this project's old application service without deleting stored data."""
+    result = subprocess.run(
+        [
+            "docker",
+            "ps",
+            "-aq",
+            "--filter",
+            "label=com.docker.compose.project=hymio-cloud",
+            "--filter",
+            "label=com.docker.compose.service=kit-host",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    containers = result.stdout.split()
+    if any(not re.fullmatch(r"[0-9a-f]{12,64}", value) for value in containers):
+        raise ValueError("Unexpected retired container identifier")
+    if containers:
+        subprocess.run(["docker", "rm", "-f", *containers], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -245,6 +268,8 @@ def main():
     subprocess.run(
         ["docker", "compose", "-f", str(target), *commands[args.command]], check=True
     )
+    if args.command == "start":
+        remove_retired_kit_host()
 
 
 if __name__ == "__main__":

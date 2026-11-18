@@ -363,13 +363,21 @@ export function MomentsPanel({ login }: { login: LoginState }) {
   }
   const page = pages[layer];
   const hasAny = pages.artifacts.items.length + pages.records.items.length > 0;
-  const emptyAction = contextEmptyAction({ layer, category, source, query, recordCount: pages.records.items.length });
+  const emptyAction = contextEmptyAction({
+    layer,
+    category,
+    source,
+    query,
+    recordCount: pages.records.items.length,
+  });
   const emptyTitle =
     page.cursor && !page.items.length
       ? '这批内容里暂时没有匹配项'
       : emptyAction === 'clear'
         ? '这里暂时没有匹配的内容'
-        : layer === 'artifacts' ? '理解会慢慢形成' : '留下第一条足迹';
+        : layer === 'artifacts'
+          ? '理解会慢慢形成'
+          : '留下第一条足迹';
 
   return (
     <main className="memory-page">
@@ -441,7 +449,6 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                 ['conversation', '对话'],
                 ['user', '手记'],
                 ['connector', '连接来源'],
-                ['kit', '应用'],
                 ['legacy', '其他'],
               ]
           ).map(([key, label]) => (
@@ -532,8 +539,8 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                   {emptyAction === 'clear'
                     ? '清除筛选，看看其他已经留下的内容。'
                     : emptyAction === 'records'
-                        ? '原文已保存在足迹中，不必等待整理就能查看。'
-                        : '想法、偏好，或一段值得保留的话，都可以从这里开始。'}
+                      ? '原文已保存在足迹中，不必等待整理就能查看。'
+                      : '想法、偏好，或一段值得保留的话，都可以从这里开始。'}
                 </p>
                 <button
                   onClick={() => {
@@ -549,8 +556,8 @@ export function MomentsPanel({ login }: { login: LoginState }) {
                   {emptyAction === 'clear'
                     ? '查看全部'
                     : emptyAction === 'records'
-                        ? '查看足迹'
-                        : '记一笔'}
+                      ? '查看足迹'
+                      : '记一笔'}
                 </button>
                 {page.cursor && (
                   <button disabled={moreBusy} onClick={() => void more(layer)}>

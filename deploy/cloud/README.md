@@ -101,17 +101,10 @@ the host's port 8080, appropriate for a locally running Backend.
 Set `signup_enabled = false` to close registration entirely. If registration is enabled
 without `invitation_codes_file`, registration remains open for backward compatibility.
 
-The Kit Host is a separate private container built from `services/kit-host`. It owns the Kit
-manifests, application HTML, installations and `kit-data/kits.sqlite3`; Hymio Backend proxies
-authenticated requests to it. Rebuilding the Kit Host does not remove Kit data. Do not mount or
-execute publisher-supplied Python/JavaScript in Backend; external Kit implementations must run as
-independent services behind the same operation contract.
-Generated applications add a pinned Node/esbuild builder and bounded Python handler subprocesses
-inside Kit Host. The image installs React dependencies at build time; runtime builds need no network.
-Set Oath `agent.max_output_tokens` to at least `8192` when application coding tools are enabled;
-small patch calls need room for complete tool JSON.
-The generated Compose stack sets Backend's internal `HYMIO_KITS_URL=http://kit-host:8090`; no
-Kit Host port is published.
+Kits application generation and Kit Host are retired. The generated stack contains no
+Kit service or mount. After the new stack becomes healthy, `start` removes only old
+`kit-host` containers belonging to the `hymio-cloud` Compose project; it does not remove
+legacy data volumes. Keep any old application data backed up outside the active product.
 
 ### File-cache read thrashing on Alibaba Cloud Linux
 
@@ -174,9 +167,10 @@ oath start --config /opt/hymio/config/oath.toml \
 
 Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
 and the same service token, following the [deployment guide](../README.md).
-Use a matching Oath release with `--system-prompt`, `max_tool_only_steps`, subagent APIs and
-application-event admission support. Tasks and delegated-result reconciliation start with
-Backend; they need no additional cron container or public port. Keep the
+Use a matching Oath release with durable task tools, schema v4, role prompts, subagent APIs
+and application-event admission support. Oath owns task execution and recovery; Backend
+only displays task state and receives configured result notifications. Deploy Oath before
+this Backend so the task API and schema agree. No additional cron container is required. Keep the
 role, style and skill guidance in the versioned Markdown file; do not put changing device
 state or user data in it. Restart after updating instructions. The runtime's tool-only limit
 defaults to 100; its independent run step/time limits may stop work sooner.
@@ -267,7 +261,8 @@ yet install a host boot service automatically. Test this recovery path on your d
 See the [configuration map](../CONFIGURATION.md) and
 [Agent diagnostics guide](../TROUBLESHOOTING.md) for source ownership and log commands.
 
-Back up Backend data, Kit Host data, Oath, Casdoor and Caddy volumes and private configuration separately.
+Back up Backend, Oath, Casdoor and Caddy data and private configuration separately.
+Keep legacy Kit volumes separately if historical application data needs retaining.
 Use SQLite's backup API for live databases; copying the database without its WAL can lose
 data. Never use `down --volumes` for routine stops. E2B pause is not a file backup. Test
 restoration before relying on backups. Upgrade reviewed versions and restart the stacks;

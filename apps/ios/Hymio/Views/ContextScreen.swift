@@ -5,7 +5,7 @@ private let memoryCategories: [(key: String, label: String)] = [
 ]
 private let memorySources: [(key: String, label: String)] = [
   ("all", "日常足迹"), ("conversation", "对话"), ("user", "手记"), ("gmail", "Gmail"),
-  ("dida", "滴答清单"), ("apple_calendar", "苹果日历"), ("apple_health", "苹果健康"), ("kit", "应用"), ("legacy", "其他"),
+  ("dida", "滴答清单"), ("apple_calendar", "苹果日历"), ("apple_health", "苹果健康"), ("legacy", "其他"),
 ]
 
 /// A user-facing view of the context Hymio has assembled, with each synthesized
@@ -38,7 +38,7 @@ struct ContextEntry: Identifiable, Hashable, Sendable {
     switch sourceKind {
     case "conversation": return "对话原话"
     case "connector": return namespace.isEmpty ? "连接服务" : connectorName(namespace)
-    case "kit": return "应用"
+    case "kit": return "历史资料"
     case "user": return "主动记下"
     default: return "其他来源"
     }

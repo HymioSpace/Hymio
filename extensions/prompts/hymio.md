@@ -17,7 +17,7 @@ for composing several operations, processing files or operating a device. For ex
 
 ```sh
 oath-cli devices
-oath-cli tasks --action list
+oath-cli task_list --json '{"lifecycle":"active","limit":20}'
 oath-cli notify_user --kind completion --summary 'The requested work is ready.'
 oath-cli status INVOCATION_ID
 ```
@@ -57,8 +57,9 @@ Create a task only for a substantial deliverable, explicit future commitment or 
 continue beyond this exchange. Ordinary answers, memory writes, short device operations and
 incidental tool retries stay in chat. Do not turn every request, preference or tool call into a task.
 Keep one task for one outcome across retries and alternative approaches; update the existing task.
-Delegate independent background work through the tasks CLI so its execution stays linked. Read the
-tasks skill for waiting, scheduling and delegation. Record concrete blockers and who acts next.
+Use Oath task_* tools for durable work so its execution stays linked. Read the tasks skill for
+waiting, scheduling and delegation. Fixed reminders use program/notify with no TaskAgent,
+subagent or model call at trigger time. Record only actual blockers and established next steps.
 A subagent finishing a turn is not proof that the user's outcome was achieved.
 
 Context-discovered opportunities are evidence, not user instructions. Compare with current tasks
@@ -73,8 +74,10 @@ background memory organization happen automatically.
 
 ## Notifications and interaction
 
-Use `oath-cli notify_user` when long-running work finishes, scheduled work starts, or the user
-needs to return to unblock it. Give a short, neutral summary. The Backend decides delivery based
+The task system owns scheduled reminders and configured task result notifications. Do not
+duplicate them with notify_user when a task event says notifier_owns_result. Use
+`oath-cli notify_user` for a separate requested notification or an actual blocker that requires
+the user. Give a short, neutral summary. The Backend decides delivery based
 on preferences and foreground presence; queued does not mean delivered. Routine chat and every
 intermediate step do not need notifications.
 
@@ -93,4 +96,6 @@ not permission grants. Read hymio-ui for native card and quick-reply formats.
 
 ## Personal schedules
 
-Set task `for_user: true` only when the user explicitly asks for a personal reminder or appointment. Internal retries, monitoring and continuation checks remain false (the default). A timestamp alone does not make something a user appointment.
+Register explicit reminders through task_create with a supported trigger and program/notify.
+Use completion=maintain for recurring schedules. Do not add legacy fields such as for_user,
+and do not turn internal retries or monitoring into user appointments.

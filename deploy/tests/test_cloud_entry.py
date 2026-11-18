@@ -3,6 +3,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
     "cloud_manage", Path(__file__).resolve().parents[1] / "cloud/manage.py"
@@ -12,6 +14,28 @@ spec.loader.exec_module(cloud)
 
 
 class CloudEntryTests(unittest.TestCase):
+    def test_retire_only_own_kit_host_without_deleting_volumes(self):
+        container = "a" * 12
+        with patch.object(
+            cloud.subprocess,
+            "run",
+            side_effect=[SimpleNamespace(stdout=container), None],
+        ) as run:
+            cloud.remove_retired_kit_host()
+        query = run.call_args_list[0].args[0]
+        self.assertIn("label=com.docker.compose.project=hymio-cloud", query)
+        self.assertIn("label=com.docker.compose.service=kit-host", query)
+        self.assertEqual(
+            run.call_args_list[1].args[0], ["docker", "rm", "-f", container]
+        )
+
+    def test_retired_container_cleanup_is_noop_when_absent(self):
+        with patch.object(
+            cloud.subprocess, "run", return_value=SimpleNamespace(stdout="")
+        ) as run:
+            cloud.remove_retired_kit_host()
+        self.assertEqual(run.call_count, 1)
+
     def test_admin_console_requires_oath_internal_token_file(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -90,7 +114,9 @@ class CloudEntryTests(unittest.TestCase):
                 self.assertNotIn("/kits/*", caddy.split("handle @backend")[0])
                 self.assertNotIn("kit-host", compose["services"])
                 self.assertNotIn("kit-data", compose["volumes"])
-                self.assertNotIn("HYMIO_KITS_URL", compose["services"]["backend"]["environment"])
+                self.assertNotIn(
+                    "HYMIO_KITS_URL", compose["services"]["backend"]["environment"]
+                )
                 self.assertEqual(
                     compose["services"]["backend"]["environment"]["DIDA_CLIENT_ID"],
                     "${DIDA_CLIENT_ID:-}",
