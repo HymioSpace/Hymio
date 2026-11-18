@@ -179,6 +179,16 @@ If bootstrapping as root, ensure generated Vault role/secret files are readable 
 UID 10001 after Oath initializes them, before accepting chat requests. A root-only
 bind-mounted credential causes model calls to fail even when container health passes.
 
+When upgrading an existing Oath configuration with an explicit `[agent].exposed_tools`
+allowlist, retain its existing tools and add `task_create`, `task_list`, `task_get`,
+`task_update`, `task_message`, `task_pause`, `task_resume`, `task_cancel`, `task_retry`,
+`task_report`, `task_fetch`, `detail_read`, and the `subagent_spawn`, `subagent_list`,
+`subagent_get`, `subagent_continue`, `subagent_cancel`, `subagent_notify` tools. An empty
+allowlist exposes all registered capabilities; a restricted old list does not automatically
+gain task tools. Hymio classifies these bounded task operations explicitly so background
+reports and delegation do not wait for an unknown-tool approval. Read-only mode still
+blocks starting or changing work; each external action retains its own permission check.
+
 Copy `deploy/cloud/cloud.example.toml` to `/opt/hymio/config/cloud.toml` and set:
 
 ```toml

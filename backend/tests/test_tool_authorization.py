@@ -36,6 +36,104 @@ def client_for(tmp_path, subject="alice"):
     return TestClient(app), session, token_file
 
 
+def test_durable_task_flow_does_not_wait_for_unclassified_tool_approval(tmp_path):
+    client, session, _ = client_for(tmp_path)
+    internal = {"Authorization": "Bearer synthetic-oath-token-with-at-least-32-characters"}
+    tools = {
+        "task_create",
+        "task_list",
+        "task_get",
+        "task_update",
+        "task_message",
+        "task_pause",
+        "task_resume",
+        "task_cancel",
+        "task_retry",
+        "task_report",
+        "task_fetch",
+        "subagent_spawn",
+        "subagent_list",
+        "subagent_get",
+        "subagent_continue",
+        "subagent_cancel",
+        "subagent_notify",
+    }
+    for tool in tools:
+        response = client.post(
+            "/internal/tool-authorization/check",
+            headers=internal,
+            json={"user_id": session["user_id"], "tool": tool, "arguments": {}},
+        )
+        assert response.json()["verdict"] == "allow", tool
+    for tool, arguments in [
+        ("bash", {"command": "touch output.txt"}),
+        ("task_unknown", {}),
+    ]:
+        assert (
+            client.post(
+                "/internal/tool-authorization/check",
+                headers=internal,
+                json={"user_id": session["user_id"], "tool": tool, "arguments": arguments},
+            ).json()["verdict"]
+            == "ask"
+        )
+
+
+def test_read_only_mode_allows_task_reads_and_reports_but_not_new_work(tmp_path):
+    client, session, _ = client_for(tmp_path)
+    headers = {"Authorization": "Bearer " + session["access_token"]}
+    internal = {"Authorization": "Bearer synthetic-oath-token-with-at-least-32-characters"}
+    client.post("/settings/tool-authorization", headers=headers, json={"mode": "read_only"})
+    for expected, tools in {
+        "allow": [
+            "task_list",
+            "task_get",
+            "task_fetch",
+            "task_report",
+            "subagent_list",
+            "subagent_get",
+            "subagent_notify",
+        ],
+        "deny": [
+            "task_create",
+            "task_update",
+            "task_message",
+            "task_pause",
+            "task_resume",
+            "task_cancel",
+            "task_retry",
+            "subagent_spawn",
+            "subagent_continue",
+            "subagent_cancel",
+        ],
+    }.items():
+        for tool in tools:
+            assert (
+                client.post(
+                    "/internal/tool-authorization/check",
+                    headers=internal,
+                    json={"user_id": session["user_id"], "tool": tool, "arguments": {}},
+                ).json()["verdict"]
+                == expected
+            ), tool
+
+
+def test_retired_kit_tools_stay_denied_in_autonomous_mode(tmp_path):
+    client, session, _ = client_for(tmp_path)
+    headers = {"Authorization": "Bearer " + session["access_token"]}
+    internal = {"Authorization": "Bearer synthetic-oath-token-with-at-least-32-characters"}
+    client.post("/settings/tool-authorization", headers=headers, json={"mode": "autonomous"})
+    for tool in ["kit_call", "kit_build", "kit_dev"]:
+        assert (
+            client.post(
+                "/internal/tool-authorization/check",
+                headers=internal,
+                json={"user_id": session["user_id"], "tool": tool, "arguments": {}},
+            ).json()["verdict"]
+            == "deny"
+        )
+
+
 def test_guided_policy_asks_for_shell_and_allows_bounded_reads(tmp_path):
     client, session, _ = client_for(tmp_path)
     headers = {"Authorization": "Bearer " + session["access_token"]}
