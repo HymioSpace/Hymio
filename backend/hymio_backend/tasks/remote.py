@@ -47,8 +47,10 @@ class RemoteTasks:
             result.raise_for_status()
             return result.json()
 
-    async def get(self, uid, tid):
-        value = await self.oath(uid, "/tasks/get", {"task_id": tid, "view": "detail"})
+    async def get(self, uid, tid, *, detail=True):
+        value = await self.oath(
+            uid, "/tasks/get", {"task_id": tid, "view": "detail", "include_execution": detail}
+        )
         t = value["task"]
         spec = value["spec"]
         run = value["run"]
@@ -65,7 +67,8 @@ class RemoteTasks:
                     "progress": run["progress"],
                     "result": (run["result"] or {}).get("summary", ""),
                     "phase": run["stage"],
-                    "next_step": run["wait_reason"] or "",
+                    "next_step": run.get("next_step") or run["wait_reason"] or "",
+                    "wait_kind": run.get("wait_kind"),
                     "wait_reason": run["wait_reason"],
                     "resume_at": stamp(run["next_check_at"]),
                     "due_at": stamp(run.get("due_at")) or time.time(),
@@ -79,13 +82,19 @@ class RemoteTasks:
             "id": t["task_id"],
             "revision": t["revision"],
             "state": t["lifecycle"],
+            "needs_attention": t["needs_attention"],
             "title": t["title"],
             "objective": spec["objective"],
             "success_criteria": spec["acceptance"]["criteria"],
+            "context": spec["context"],
+            "plan": spec["plan"],
+            "execution": value.get("execution", {}),
+            "evidence": (run["result"] or {}).get("evidence", []) if run else [],
             "schedule": spec["trigger"],
             "source": "agent",
             "kind": "reminder" if spec["executor"]["kind"] == "program" else "task",
             "updated_at": stamp(t["updated_at"]),
+            "next_due_at": stamp(t["next_due_at"]),
             "runs": runs,
             "for_user": True,
         }
@@ -172,7 +181,7 @@ def remote_task_routes(settings, sessions, service, bearer, body):
             if action == "list":
                 page = await service.oath(uid, "/tasks/list", {"lifecycle": "all", "limit": 100})
                 items = await asyncio.gather(
-                    *(service.get(uid, t["task_id"]) for t in page["items"])
+                    *(service.get(uid, t["task_id"], detail=False) for t in page["items"])
                 )
                 return JSONResponse({"tasks": items})
             if action == "get":

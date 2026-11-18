@@ -257,8 +257,9 @@ enum TaskLane: Hashable {
 func taskLane(_ item: JSON) -> TaskLane {
   let status = taskStatus(item)
   if ["blocked", "failed"].contains(status) { return .attention }
-  if ["running", "ready", "delivering"].contains(status) { return .active }
-  if ["succeeded", "cancelled", "expired"].contains(status) { return .finished }
+  if ["running", "ready", "delivering", "waiting"].contains(status) { return .active }
+  if ["succeeded", "cancelled", "expired", "closed"].contains(status) { return .finished }
+  if ["queued", "paused"].contains(status) { return .scheduled }
   if ["now", ""].contains(item["schedule"]["mode"].text) { return .inbox }
   return .scheduled
 }

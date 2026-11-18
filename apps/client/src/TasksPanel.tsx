@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Sheet, IconButton } from '@hymio/ui';
-import { X } from 'lucide-react';
+import { X, Cpu, UserRound, Circle, CircleDot, CheckCircle2 } from 'lucide-react';
 import type { LoginState } from './useLogin';
-import type { Work } from './taskModels';
+import type { ExecutionAgent, Work } from './taskModels';
 import './tasks.css';
 
 const labels: Record<string, string> = {
@@ -28,6 +28,7 @@ export function TasksPanel({
 }) {
   const [tasks, setTasks] = useState<Work[]>([]);
   const [selected, setSelected] = useState(initialSelected);
+  const [detail, setDetail] = useState<Work | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function request(data?: object) {
@@ -70,10 +71,32 @@ export function TasksPanel({
       clearInterval(timer);
     };
   }, [login.session?.access_token]);
+  useEffect(() => {
+    if (!selected) {
+      setDetail(null);
+      return;
+    }
+    let active = true;
+    const refresh = () =>
+      request({ action: 'get', task_id: selected })
+        .then((v: Work) => {
+          if (active) setDetail(v);
+        })
+        .catch(() => {
+          if (active) setError('暂时无法读取任务详情');
+        });
+    void refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [selected, login.session?.access_token]);
   async function control(task: Work, action: string) {
     setBusy(true);
     try {
-      await request({ action, task_id: task.id, expected_revision: task.revision });
+      const updated = await request({ action, task_id: task.id, expected_revision: task.revision });
+      setDetail(updated);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -81,7 +104,7 @@ export function TasksPanel({
       setBusy(false);
     }
   }
-  const chosen = tasks.find((t) => t.id === selected);
+  const chosen = detail?.id === selected ? detail : tasks.find((t) => t.id === selected);
   return (
     <Sheet className="tasks-dialog" labelledBy="tasks-title" onClose={onClose}>
       <header className="tasks-header">
@@ -99,8 +122,8 @@ export function TasksPanel({
           <button onClick={() => void load().catch((e) => setError(e.message))}>重试</button>
         </p>
       )}
-      <div className="tasks-layout">
-        <section aria-label="任务列表">
+      <div className={'tasks-layout' + (selected ? ' has-selection' : '')}>
+        <section className="tasks-list" aria-label="任务列表">
           {!tasks.length && <p>暂无任务。可以在对话中提出提醒、分析或持续跟进的要求。</p>}
           {tasks.map((task) => (
             <button
@@ -110,26 +133,106 @@ export function TasksPanel({
             >
               <strong>{task.title}</strong>
               <span>
-                {labels[task.state === 'active' ? task.runs[0]?.status || 'active' : task.state] ||
-                  task.state}
+                {labels[
+                  task.state === 'active'
+                    ? task.runs[0]?.status === 'succeeded' && task.next_due_at
+                      ? 'active'
+                      : task.runs[0]?.status || 'active'
+                    : task.state
+                ] || task.state}
               </span>
             </button>
           ))}
         </section>
         {chosen && (
           <section className="task-detail" aria-label="任务详情">
+            <button className="task-back" onClick={() => setSelected('')}>
+              返回任务列表
+            </button>
             <h3>{chosen.title}</h3>
-            <p>{chosen.objective}</p>
-            <h4>完成条件</h4>
-            <p>{chosen.success_criteria}</p>
+            <p className="task-objective-preview">{chosen.objective}</p>
+            <details>
+              <summary>任务要求</summary>
+              <p>{chosen.objective}</p>
+              <p>完成条件：{chosen.success_criteria}</p>
+            </details>
+            <ExecutionSteps task={chosen} />
             {chosen.runs.map((run) => (
               <div key={run.id}>
-                <p>{labels[run.status] || run.status}</p>
                 <p>{run.progress}</p>
-                {run.wait_reason && <p>等待：{run.wait_reason}</p>}
-                {run.result && <div style={{ whiteSpace: 'pre-wrap' }}>{run.result}</div>}
+                {run.wait_reason && <p className="task-waiting">◷ {run.wait_reason}</p>}
+                {run.result && (
+                  <details>
+                    <summary>查看成果</summary>
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{run.result}</div>
+                  </details>
+                )}
               </div>
             ))}
+            {chosen.execution?.task_agent && (
+              <section className="task-execution" aria-label="执行协作">
+                <h4>执行协作 · {1 + chosen.execution.subagents.length} 个 Agent</h4>
+                <AgentDetail agent={chosen.execution.task_agent} />
+                <div className="task-leaves">
+                  {chosen.execution.subagents.map((agent) => (
+                    <AgentDetail key={agent.agent_id} agent={agent} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {!!chosen.evidence?.length && (
+              <section>
+                <h4>完成依据</h4>
+                {chosen.evidence.map((e, i) => (
+                  <p key={i}>
+                    {e.summary}
+                    <small> · {e.ref}</small>
+                  </p>
+                ))}
+              </section>
+            )}
+            <details className="task-technical">
+              <summary>执行细节</summary>
+              <dl className="task-facts">
+                <div>
+                  <dt>执行方式</dt>
+                  <dd>{chosen.execution?.executor === 'program' ? '程序规则' : '专属 Agent'}</dd>
+                </div>
+                <div>
+                  <dt>模型用量</dt>
+                  <dd>
+                    {chosen.execution?.usage?.steps ?? 0} 步 ·{' '}
+                    {chosen.execution?.usage?.tokens ?? 0} tokens
+                  </dd>
+                </div>
+              </dl>
+              {chosen.context?.brief && (
+                <details>
+                  <summary>初始上下文</summary>
+                  <p>{chosen.context.brief}</p>
+                </details>
+              )}
+              {!!chosen.plan?.length && (
+                <details>
+                  <summary>执行计划</summary>
+                  <pre>{JSON.stringify(chosen.plan, null, 2)}</pre>
+                </details>
+              )}
+              {!!chosen.execution?.events?.length && (
+                <details className="task-journal">
+                  <summary>事件记录 · {chosen.execution.events.length} 条</summary>
+                  {chosen.execution.events.map((event) => (
+                    <details key={event.id}>
+                      <summary>
+                        <time>{new Date(event.created_at * 1000).toLocaleString()}</time> ·{' '}
+                        {event.type}
+                      </summary>
+                      <pre>{JSON.stringify(event.data, null, 2)}</pre>
+                    </details>
+                  ))}
+                </details>
+              )}
+            </details>
             {chosen.state !== 'closed' && (
               <div>
                 <button
@@ -150,5 +253,64 @@ export function TasksPanel({
         )}
       </div>
     </Sheet>
+  );
+}
+
+function AgentDetail({ agent }: { agent: ExecutionAgent }) {
+  const status = agent.execution_status || agent.status;
+  const Icon =
+    status === 'succeeded' ? CheckCircle2 : agent.role === 'task_agent' ? Cpu : UserRound;
+  return (
+    <details className="task-agent-node">
+      <summary>
+        <Icon size={22} aria-hidden="true" />
+        <strong>
+          {agent.title}
+          <small>{agent.role === 'task_agent' ? '任务 Agent' : '协作者'}</small>
+        </strong>
+        <span>{labels[status] || status}</span>
+      </summary>
+      {agent.result && <p className="task-agent-result">{agent.result}</p>}
+      <details>
+        <summary>过程与要求</summary>
+        <p>{agent.objective}</p>
+        <p>完成条件：{agent.success_criteria}</p>
+        {agent.notes?.map((note) => (
+          <p key={note.note_id}>{note.content}</p>
+        ))}
+        {agent.activity?.entries?.map((entry) => (
+          <div key={entry.id} className="task-agent-event">
+            <small>
+              {new Date(entry.created_at * 1000).toLocaleTimeString()} · {entry.tool || entry.kind}{' '}
+              · {entry.status}
+            </small>
+            {entry.content && <p>{entry.content}</p>}
+          </div>
+        ))}
+      </details>
+    </details>
+  );
+}
+
+function ExecutionSteps({ task }: { task: Work }) {
+  const run = task.runs[0];
+  const index =
+    run?.status === 'succeeded' ? 4 : ({ execute: 1, verify: 2, deliver: 3 }[run?.phase] ?? 0);
+  return (
+    <ol className="task-stage-track" aria-label="任务阶段">
+      {['安排', '执行', '验收', '交付'].map((label, i) => {
+        const Icon = i < index ? CheckCircle2 : i === index ? CircleDot : Circle;
+        return (
+          <li
+            key={label}
+            className={i <= index ? 'reached' : ''}
+            aria-current={i === index ? 'step' : undefined}
+          >
+            <Icon size={20} aria-hidden="true" />
+            <span>{label}</span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }

@@ -25,6 +25,29 @@ final class HymioUITests: XCTestCase {
     XCTAssertFalse(app.buttons["我的应用"].exists)
   }
 
+  @MainActor func testTaskExecutionGraphExpandsTaskAgentAndLeafResults() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioTaskPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["山间线 8 公里，湖边线 5 公里，均可当天往返。"].exists)
+    let overview = XCTAttachment(screenshot: app.screenshot())
+    overview.name = "task-progressive-overview"; overview.lifetime = .keepAlways; add(overview)
+    let coordinator = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "任务 Agent · 周末路线规划")).firstMatch
+    for _ in 0..<5 { if coordinator.isHittable { break }; app.swipeUp() }
+    XCTAssertTrue(coordinator.isHittable)
+    coordinator.tap()
+    XCTAssertTrue(app.staticTexts["已合并两份调查，保留两个可选方案。"].exists)
+    let leaf = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "协作者 · 路线调查")).firstMatch
+    for _ in 0..<5 { if leaf.isHittable { break }; app.swipeUp() }
+    XCTAssertTrue(leaf.isHittable)
+    leaf.tap()
+    XCTAssertTrue(app.staticTexts["山间线 8 公里，湖边线 5 公里，均可当天往返。"].exists)
+    app.swipeUp()
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "task-agent-leaf-expanded"; shot.lifetime = .keepAlways; add(shot)
+  }
+
   @MainActor func testTaskSnapshotRestoresAndFailedMutationRollsBack() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioTaskStorePreview"]
