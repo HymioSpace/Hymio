@@ -2,13 +2,12 @@ import SwiftUI
 
 func taskStatus(_ item: JSON) -> String {
   if item["state"].text == "active", item["runs"].items.first?["status"].text == "succeeded", item["next_due_at"].double > 0 { return "scheduled" }
-  if item["state"].text == "active", item["needs_attention"].flag { return "blocked" }
   return item["state"].text == "active"
     ? (item["runs"].items.first?["status"].text ?? "scheduled") : item["state"].text
 }
 func taskLabel(_ state: String) -> String {
   [
-    "queued": "等待执行", "waiting": "等待条件", "closed": "已结束", "scheduled": "已安排", "delivering": "正在送达", "ready": "等已安排", "running": "进行中", "blocked": "需要关注",
+    "queued": "等待执行", "waiting": "等待条件", "closed": "已结束", "scheduled": "已安排", "delivering": "正在送达", "ready": "等已安排", "running": "进行中", "blocked": "",
     "succeeded": "已完成", "failed": "未完成", "expired": "已过期", "cancelled": "已取消", "paused": "已暂停",
   ][state] ?? state
 }
@@ -647,23 +646,8 @@ private struct TaskExecutionSummary: View {
   let item: JSON
   private var execution: JSON { item["execution"] }
   private var run: JSON { item["runs"].items.first ?? .null }
-  private var stage: Int {
-    if run["status"].text == "succeeded" { return 4 }
-    if run == .null || run["status"].text == "queued" { return 0 }
-    return ["execute": 1, "verify": 2, "deliver": 3][run["phase"].text] ?? 1
-  }
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack(spacing: 4) {
-        ForEach(Array(["安排", "执行", "验收", "交付"].enumerated()), id: \.offset) { index, label in
-          VStack(spacing: 6) {
-            Image(systemName: index < stage ? "checkmark.circle.fill" : (index == stage ? "circle.inset.filled" : "circle"))
-              .font(.body).foregroundStyle(index <= stage ? Brand.blue : Brand.muted.opacity(0.4))
-            Text(label).font(.caption2).foregroundStyle(index <= stage ? Brand.ink : Brand.muted)
-          }.frame(maxWidth: .infinity)
-          if index < 3 { Rectangle().fill(index < stage ? Brand.blue.opacity(0.4) : Brand.line).frame(height: 1).padding(.bottom, 18) }
-        }
-      }.accessibilityLabel("任务阶段：" + ["安排", "执行", "验收", "交付", "已完成"][stage])
       let progress = execution["checkpoint"]["progress"].text.isEmpty ? run["progress"].text : execution["checkpoint"]["progress"].text
       if !progress.isEmpty { Text(progress).font(.subheadline).lineLimit(3) }
       if !execution["wait"]["condition"]["reason"].text.isEmpty {

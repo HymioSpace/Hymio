@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Sheet, IconButton } from '@hymio/ui';
-import { X, Cpu, UserRound, Circle, CircleDot, CheckCircle2 } from 'lucide-react';
+import { X, Cpu, UserRound, CheckCircle2 } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import type { ExecutionAgent, Work } from './taskModels';
 import './tasks.css';
@@ -156,7 +156,6 @@ export function TasksPanel({
               <p>{chosen.objective}</p>
               <p>完成条件：{chosen.success_criteria}</p>
             </details>
-            <ExecutionSteps task={chosen} />
             {chosen.runs.map((run) => (
               <div key={run.id}>
                 <p>{run.progress}</p>
@@ -289,28 +288,5 @@ function AgentDetail({ agent }: { agent: ExecutionAgent }) {
         ))}
       </details>
     </details>
-  );
-}
-
-function ExecutionSteps({ task }: { task: Work }) {
-  const run = task.runs[0];
-  const index =
-    run?.status === 'succeeded' ? 4 : ({ execute: 1, verify: 2, deliver: 3 }[run?.phase] ?? 0);
-  return (
-    <ol className="task-stage-track" aria-label="任务阶段">
-      {['安排', '执行', '验收', '交付'].map((label, i) => {
-        const Icon = i < index ? CheckCircle2 : i === index ? CircleDot : Circle;
-        return (
-          <li
-            key={label}
-            className={i <= index ? 'reached' : ''}
-            aria-current={i === index ? 'step' : undefined}
-          >
-            <Icon size={20} aria-hidden="true" />
-            <span>{label}</span>
-          </li>
-        );
-      })}
-    </ol>
   );
 }

@@ -67,7 +67,7 @@ class RemoteTasks:
                     "progress": run["progress"],
                     "result": (run["result"] or {}).get("summary", ""),
                     "phase": run["stage"],
-                    "next_step": run.get("next_step") or run["wait_reason"] or "",
+                    "next_step": run.get("next_step") or "",
                     "wait_kind": run.get("wait_kind"),
                     "wait_reason": run["wait_reason"],
                     "resume_at": stamp(run["next_check_at"]),
