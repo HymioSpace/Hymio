@@ -109,17 +109,27 @@ xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
   -only-testing:HymioUITests/HymioUITests/testTasksSwitchCalendarAndStatusViews test
 ```
 
-On 2026-11-18, all three task UI tests and 40 shared-core tests passed. The full app
-built and launched on iPhone 18 Pro Simulator. GitHub Git downloads timed out on that
-machine, so verification used official source files at the locked revisions through
-a temporary project with local dependencies. Repository dependency URLs and pins
-were unchanged. This does not verify production login, chat, or physical-device push.
+On 2026-11-18, the task UI and shared-core tests passed, and the full app built and
+launched on iPhone 18 Pro Simulator. The original Xcode project also resolved its
+remote packages and produced a signed Release archive for a physical iOS device.
+This does not verify a TestFlight upload or physical-device push.
 
 Core models and projection are independently testable through Swift Package Manager. The Xcode project is checked in; no project generator is needed. Xcode resolves the pinned [MarkdownUI 2.4.1](https://github.com/gonzalezreal/swift-markdown-ui/releases/tag/2.4.1) package on the first build. Images use app-owned providers, with no credentials sent to external image hosts.
 
+If Xcode reports `Missing package product 'MarkdownUI'`, resolve packages for the
+original project, then retry Archive:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -resolvePackageDependencies \
+  -project apps/ios/Hymio.xcodeproj -scheme Hymio
+```
+
 The privacy manifest declares app-scoped UserDefaults use for the installation ID ([Apple's required-reason API guidance](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype)). Complete the distribution privacy labels and privacy-policy URL for your actual backend: accounts and conversation content are sent to your deployment and model provider.
 
-Archive checks the configured HTTPS backend before building. After changing an endpoint, create a new archive and upload a higher build number; an existing archive retains its original endpoint.
+Release builds check the configured HTTPS backend in a build phase that fails the
+build for missing or placeholder endpoints. After changing an endpoint, create a new
+archive and upload a higher build number; an existing archive retains its original endpoint.
 
 ## TestFlight distribution
 

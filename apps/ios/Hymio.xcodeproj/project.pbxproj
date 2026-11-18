@@ -318,6 +318,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 10C18D3DDF5F74E669826077 /* Build configuration list for PBXNativeTarget "Hymio" */;
 			buildPhases = (
+				A320F63170DC4F438721B581 /* Validate release backend */,
 				89DE61F4D429F8098AFD1F6B /* Sources */,
 				7C1A08234A536A1C65EFD130 /* Frameworks */,
 				F6E59AAF787B8A5707E9C42C /* Resources */,
@@ -408,6 +409,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A320F63170DC4F438721B581 /* Validate release backend */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/validate-release-config.sh",
+			);
+			name = "Validate release backend";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  /bin/sh \"$SRCROOT/scripts/validate-release-config.sh\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		5D9D988DF331281F4DA7F34A /* Sources */ = {
