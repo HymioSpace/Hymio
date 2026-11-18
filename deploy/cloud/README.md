@@ -102,7 +102,8 @@ Set `signup_enabled = false` to close registration entirely. If registration is 
 without `invitation_codes_file`, registration remains open for backward compatibility.
 
 Kits application generation and Kit Host are retired. The generated stack contains no
-Kit service or mount. After the new stack becomes healthy, `start` removes only old
+Kit service or mount. Public `/kits` and `/kits/*` return 404 instead of falling back
+to the Web app. After the new stack becomes healthy, `start` removes only old
 `kit-host` containers belonging to the `hymio-cloud` Compose project; it does not remove
 legacy data volumes. Keep any old application data backed up outside the active product.
 

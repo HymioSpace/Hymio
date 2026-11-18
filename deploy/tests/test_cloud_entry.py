@@ -111,7 +111,11 @@ class CloudEntryTests(unittest.TestCase):
                 self.assertIn("/connectors/*", caddy.split("handle @backend")[0])
                 self.assertIn("/notifications", caddy.split("handle @backend")[0])
                 self.assertIn("/tasks", caddy.split("handle @backend")[0])
-                self.assertNotIn("/kits/*", caddy.split("handle @backend")[0])
+                backend_matcher = next(
+                    line for line in caddy.splitlines() if "@backend path" in line
+                )
+                self.assertNotIn("/kits", backend_matcher)
+                self.assertIn("@retired_kits path /kits /kits/*", caddy)
                 self.assertNotIn("kit-host", compose["services"])
                 self.assertNotIn("kit-data", compose["volumes"])
                 self.assertNotIn(

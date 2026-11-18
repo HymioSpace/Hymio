@@ -91,8 +91,10 @@ def generate(path):
     OUTPUT.mkdir(exist_ok=True, mode=0o700)
     (OUTPUT / "client.toml").write_text(f'backend_url = "https://{api}"\n')
     web_routes = " root * /srv\n try_files {path} /index.html\n file_server\n"
+    retired_routes = " @retired_kits path /kits /kits/*\n handle @retired_kits {\n  respond 404\n }\n"
     private_routes = (
         " @private path /internal/*\n handle @private {\n  respond 404\n }\n"
+        + retired_routes
     )
     if web == api:
         routes = (
@@ -109,7 +111,7 @@ def generate(path):
         )
     else:
         routes = (
-            f"{web} {{\n handle /admin/api/* {{\n  reverse_proxy backend:8080\n }}\n"
+            f"{web} {{\n{retired_routes} handle /admin/api/* {{\n  reverse_proxy backend:8080\n }}\n"
             " handle_path /admin/* {\n  root * /srv/admin\n"
             "  try_files {path} /index.html\n  file_server\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
