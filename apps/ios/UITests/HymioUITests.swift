@@ -10,6 +10,21 @@ final class HymioUITests: XCTestCase {
     shot.name = "artwork-optical-centers"; shot.lifetime = .keepAlways; add(shot)
   }
 
+  @MainActor func testTasksAreAgentManagedAndApplicationsAreRemoved() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioCalendarPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.buttons["新建安排"].exists)
+    XCTAssertFalse(app.buttons["添加安排"].exists)
+    app.terminate()
+    app.launchArguments = ["-HymioExperiencePreview"]
+    app.launch()
+    app.buttons["账号与设置"].tap()
+    XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["我的应用"].exists)
+  }
+
   @MainActor func testTaskSnapshotRestoresAndFailedMutationRollsBack() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioTaskStorePreview"]
@@ -104,9 +119,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     for (argument, name, addLabel) in [
       ("-HymioHomePreview", "home-menu", ""),
-      ("-HymioCalendarPreview", "calendar-toolbar", "新建安排"),
+      ("-HymioCalendarPreview", "calendar-toolbar", ""),
       ("-HymioContextPreview", "recollections-toolbar", "添加回忆"),
-      ("-HymioKitAppPreview", "application-toolbar", ""),
     ] {
       app.launchArguments = [argument]
       app.launch()
@@ -137,7 +151,7 @@ final class HymioUITests: XCTestCase {
     app.launchArguments = ["-HymioExperiencePreview"]
     app.launch()
     app.buttons["账号与设置"].tap()
-    for (entry, title) in [("任务与日程", "任务"), ("我的应用", "应用"), ("account.connectors", "连接来源"), ("任务与日程", "任务")] {
+    for (entry, title) in [("任务与日程", "任务"), ("account.connectors", "连接来源"), ("任务与日程", "任务")] {
       XCTAssertTrue(app.buttons[entry].waitForExistence(timeout: 5))
       app.buttons[entry].tap()
       XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
@@ -515,161 +529,6 @@ final class HymioUITests: XCTestCase {
     screenshot.name = "assistant-reaction-on-user-bubble"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-  }
-
-  @MainActor func testKitWebBridgeAndBusinessDataSync() throws {
-    continueAfterFailure = false
-    let environment = ProcessInfo.processInfo.environment
-    let base = environment["HYMIO_KIT_E2E_BACKEND"] ?? "http://127.0.0.1:8080"
-
-    let username = "kit_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(10)
-    let password = "Test-" + UUID().uuidString
-    defer { cleanupAccount(username: String(username), password: password) }
-    let created = requestJSON(
-      base, "auth/account",
-      body: [
-        "action": "signup", "username": String(username), "password": password,
-        "invitation_code": "",
-      ])
-    XCTAssertEqual(created.status, 200, String(describing: created.json))
-    let accessToken = try XCTUnwrap(created.json["access_token"] as? String)
-    let installed = requestJSON(
-      base, "kits/hymio.ledger/install", body: [:], bearer: accessToken)
-    XCTAssertEqual(installed.status, 200, String(describing: installed.json))
-    let dayFormat = DateFormatter()
-    dayFormat.locale = Locale(identifier: "en_US_POSIX")
-    dayFormat.dateFormat = "yyyy-MM-dd"
-    func daysAgo(_ count: Int) -> String {
-      dayFormat.string(from: Calendar.current.date(byAdding: .day, value: -count, to: Date())!)
-    }
-    let seed = [
-      ["amount": 68, "category": "food", "note": "和朋友吃午饭", "occurred_on": daysAgo(0)],
-      ["amount": 8, "category": "transport", "note": "地铁", "occurred_on": daysAgo(1)],
-      ["amount": 54, "category": "learning", "note": "一本想看很久的书", "occurred_on": daysAgo(2)],
-      ["amount": 39, "category": "life", "note": "洗衣液和鲜花", "occurred_on": daysAgo(4)],
-    ]
-    for item in seed {
-      let seeded = requestJSON(
-        base, "kits/hymio.ledger/actions/entries.create",
-        body: item, bearer: accessToken)
-      XCTAssertEqual(seeded.status, 200, String(describing: seeded.json))
-    }
-
-    let app = XCUIApplication()
-    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
-    app.launchEnvironment["HYMIO_BACKEND_URL_OVERRIDE"] = base
-    app.terminate()
-    app.launch()
-    logoutIfNeeded(app)
-    XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 15))
-    app.textFields["login.username"].tap()
-    app.textFields["login.username"].typeText(username)
-    app.secureTextFields["login.password"].tap()
-    app.secureTextFields["login.password"].typeText(password)
-    app.buttons["login.submit"].tap()
-
-    XCTAssertTrue(app.tabBars.buttons["应用"].waitForExistence(timeout: 30), app.debugDescription)
-    app.tabBars.buttons["应用"].tap()
-    let card = app.descendants(matching: .any)
-      .matching(identifier: "kit.card.hymio.ledger").firstMatch
-    XCTAssertTrue(card.waitForExistence(timeout: 20), app.debugDescription)
-    card.tap()
-    let web = app.webViews.firstMatch
-    XCTAssertTrue(web.waitForExistence(timeout: 20), app.debugDescription)
-    let open = web.buttons["记一笔"]
-    XCTAssertTrue(open.waitForExistence(timeout: 15), web.debugDescription)
-    open.tap()
-    let amount = web.textFields["金额"]
-    XCTAssertTrue(amount.waitForExistence(timeout: 10), web.debugDescription)
-    amount.tap()
-    amount.typeText("23.5")
-    let note = web.textFields["备注"]
-    XCTAssertTrue(note.waitForExistence(timeout: 10), web.debugDescription)
-    note.tap()
-    note.typeText("页面写入记录")
-    note.typeText("\n")
-    XCTAssertTrue(
-      web.staticTexts["页面写入记录"].waitForExistence(timeout: 20), web.debugDescription)
-
-    let afterPage = requestJSON(
-      base, "kits/hymio.ledger/actions/entries.list", body: [:], bearer: accessToken)
-    XCTAssertEqual(afterPage.status, 200, String(describing: afterPage.json))
-    XCTAssertTrue(notes(afterPage.json).contains("页面写入记录"))
-
-    let afterBusiness = requestJSON(
-      base, "kits/hymio.ledger/actions/entries.create",
-      body: [
-        "amount": 2, "category": "other", "note": "助手记录",
-      ],
-      bearer: accessToken)
-    XCTAssertEqual(afterBusiness.status, 200, String(describing: afterBusiness.json))
-
-    app.navigationBars["生活账本"].buttons.element(boundBy: 0).tap()
-    XCTAssertTrue(card.waitForExistence(timeout: 10), app.debugDescription)
-    card.tap()
-    XCTAssertTrue(web.waitForExistence(timeout: 20), app.debugDescription)
-    XCTAssertTrue(
-      web.staticTexts["助手记录"].waitForExistence(timeout: 20), web.debugDescription)
-    let screenshot = XCTAttachment(screenshot: app.screenshot())
-    screenshot.name = "kit-web-bridge-data-sync"
-    screenshot.lifetime = .keepAlways
-    add(screenshot)
-  }
-
-  @MainActor func testCloudGeneratedKitBridge() throws {
-    let defaults = UserDefaults.standard
-    guard
-      let base = defaults.string(forKey: "HYMIO_KIT_E2E_BACKEND"),
-      let username = defaults.string(forKey: "HYMIO_KIT_E2E_USERNAME"),
-      let password = defaults.string(forKey: "HYMIO_KIT_E2E_PASSWORD"),
-      let kitID = defaults.string(forKey: "HYMIO_KIT_E2E_KIT_ID"),
-      let kitName = defaults.string(forKey: "HYMIO_KIT_E2E_KIT_NAME")
-    else {
-      throw XCTSkip("Cloud Kit E2E defaults are not configured")
-    }
-    continueAfterFailure = false
-    let app = XCUIApplication()
-    app.launchEnvironment["HYMIO_UI_TEST"] = "1"
-    app.launchEnvironment["HYMIO_BACKEND_URL_OVERRIDE"] = base
-    app.terminate()
-    app.launch()
-    logoutIfNeeded(app)
-    XCTAssertTrue(app.buttons["login.submit"].waitForExistence(timeout: 20))
-    app.textFields["login.username"].tap()
-    app.textFields["login.username"].typeText(username)
-    app.secureTextFields["login.password"].tap()
-    app.secureTextFields["login.password"].typeText(password)
-    app.buttons["login.submit"].tap()
-    XCTAssertTrue(app.tabBars.buttons["应用"].waitForExistence(timeout: 40))
-    app.tabBars.buttons["应用"].tap()
-    let card = app.descendants(matching: .any)
-      .matching(identifier: "kit.card." + kitID).firstMatch
-    XCTAssertTrue(card.waitForExistence(timeout: 30), app.debugDescription)
-    card.tap()
-    let web = app.webViews.firstMatch
-    XCTAssertTrue(web.waitForExistence(timeout: 30), app.debugDescription)
-    let write = web.buttons["页面写入"]
-    XCTAssertTrue(write.waitForExistence(timeout: 20), web.debugDescription)
-    write.tap()
-    XCTAssertTrue(web.staticTexts["已保存"].waitForExistence(timeout: 30), web.debugDescription)
-
-    let session = requestJSON(
-      base, "auth/account",
-      body: ["action": "login", "username": username, "password": password])
-    XCTAssertEqual(session.status, 200, String(describing: session.json))
-    let accessToken = try XCTUnwrap(session.json["access_token"] as? String)
-    let records = requestJSON(
-      base, "kits/\(kitID)/actions/items.list",
-      body: ["limit": 20], bearer: accessToken)
-    XCTAssertEqual(records.status, 200, String(describing: records.json))
-    let notes = notes(records.json)
-    XCTAssertTrue(notes.contains("页面写入"), String(describing: records.json))
-    XCTAssertTrue(notes.contains("Agent写入"), String(describing: records.json))
-    let screenshot = XCTAttachment(screenshot: app.screenshot())
-    screenshot.name = "cloud-generated-kit-bridge"
-    screenshot.lifetime = .keepAlways
-    add(screenshot)
-    XCTAssertTrue(kitName.isEmpty == false)
   }
 
   @MainActor private func logoutIfNeeded(_ app: XCUIApplication) {
