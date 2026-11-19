@@ -5,6 +5,35 @@ from test_device_link import pair, stack  # noqa: F401, F811
 from hymio_backend.devices.store import DeviceConflict
 
 
+def test_cli_child_can_start_without_a_device_shell_lease(request):
+    client, link = request.getfixturevalue("stack")
+    paired, _ = pair(client)
+    store = link.store
+    user, device = "alice", paired["device_id"]
+
+    _, known = store.claim(
+        user,
+        device,
+        "cli-screenshot",
+        {
+            "capability": "computer",
+            "arguments": {"action": "screenshot"},
+            "parent_invocation_id": "cli-parent",
+        },
+        10,
+    )
+
+    assert known is None
+    with store.transaction() as db:
+        assert (
+            db.execute(
+                "select invocation_id from device_locks where device_id=?", (device,)
+            ).fetchone()[0]
+            == "cli-screenshot"
+        )
+    store.finish(user, "cli-screenshot", {"status": "succeeded"})
+
+
 def test_nested_device_operations_keep_the_parent_lease(request):
     client, link = request.getfixturevalue("stack")
     paired, _ = pair(client)

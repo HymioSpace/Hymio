@@ -375,8 +375,10 @@ class DeviceStore:
                     raise DeviceConflict("nested_device_action_busy")
                 deadline = min(deadline, lock["deadline"])
             else:
-                if parent:
-                    raise DeviceConflict("parent_device_execution_not_running")
+                # CLI tools can invoke browser/computer as child tools without first
+                # taking a device Shell lease. The parent then belongs to Oath's tool
+                # execution graph, not to an active device operation. With no existing
+                # device lock, start a directly serialized device command instead.
                 db.execute(
                     "INSERT INTO device_locks VALUES(?,?,?,?)",
                     (device_id, user_id, invocation_id, deadline),
