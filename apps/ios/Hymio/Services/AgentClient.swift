@@ -60,8 +60,10 @@ import UIKit
   private var telemetryUploading = false
   private var telemetryFlushAgain = false
   private let account: AccountService
+  private let previewConnected: Bool
   init(account: AccountService, previewConnected: Bool = false) {
     self.account = account
+    self.previewConnected = previewConnected
     if previewConnected {
       ready = true
       phase = "随时在这里"
@@ -530,6 +532,29 @@ import UIKit
     }
   }
   func command(_ type: String, _ payload: [String: JSON]) async throws {
+    if previewConnected, socket == nil {
+      let command = Command(type: type, payload: .object(payload))
+      if type == "user.message" {
+        var sent = model
+        sent.messages.append(
+          ChatMessage(
+            id: "preview:\(command.id)", role: "user",
+            content: payload["content"]?.text ?? "",
+            time: ISO8601DateFormatter().string(from: Date())))
+        model = sent
+        Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(180))
+          var received = model
+          received.messages.append(
+            ChatMessage(
+              id: "assistant:preview-\(command.id)", role: "assistant",
+              content: "收到，我正在处理。",
+              time: ISO8601DateFormatter().string(from: Date())))
+          model = received
+        }
+      }
+      return
+    }
     guard ready, let socket else { throw ServiceError.message("连接恢复后再发送，草稿会保留。") }
     var next = state
     var command = Command(type: type, payload: .object(payload))

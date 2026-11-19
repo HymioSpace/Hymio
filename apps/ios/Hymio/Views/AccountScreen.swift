@@ -213,13 +213,7 @@ struct AccountScreen: View {
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 22) {
           HStack(alignment: .center, spacing: 14) {
-            ZStack {
-              Circle().fill(Brand.softBlue)
-              Text(accountInitials)
-                .font(.system(.headline, design: .rounded, weight: .semibold))
-                .foregroundStyle(Brand.blue)
-            }.frame(width: 54, height: 54)
-              .overlay(Circle().strokeBorder(Brand.line, lineWidth: 0.5))
+            HymioProfileMark(initial: accountInitials, size: 52)
             VStack(alignment: .leading, spacing: 5) {
               Text(account.session?.displayName ?? "我的账号")
                 .font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
@@ -231,7 +225,7 @@ struct AccountScreen: View {
 
           accountSection("我的内容") {
             NavigationLink { tasksDestination } label: {
-              accountRow("任务与日程", detail: "默认查看任务列表，也可切换到日历", symbol: "checklist")
+              accountRow("任务", detail: "查看任务；有固定时间的任务也可以切换日历", symbol: "checklist")
             }
             Divider().overlay(Brand.line)
             Button { destination = .memories } label: {
@@ -267,7 +261,7 @@ struct AccountScreen: View {
             Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
           }
           .accessibilityIdentifier("device.connect")
-          ForEach(client.devices, id: \.self) { device in
+          ForEach(client.devices.filter { $0["kind"].text != "ios" }, id: \.self) { device in
             HStack(alignment: .top, spacing: 12) {
               Image(
                 systemName: device["kind"].text == "cloud_desktop"
@@ -336,9 +330,11 @@ struct AccountScreen: View {
               }
             }.padding(.vertical, 5)
           }
-          if client.devicesLoading && client.devices.isEmpty {
+          if client.devicesLoading && client.devices.allSatisfy({ $0["kind"].text == "ios" }) {
             ProgressView("正在读取设备…").font(.subheadline)
-          } else if client.devices.isEmpty && client.devicesError.isEmpty {
+          } else if client.devices.allSatisfy({ $0["kind"].text == "ios" })
+            && client.devicesError.isEmpty
+          {
             Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
           }
           if !client.devicesError.isEmpty {
@@ -348,7 +344,7 @@ struct AccountScreen: View {
         } header: {
           Text("我的设备")
         } footer: {
-          Text("Mac 和 Android 经 HymioDevice 接入。iPhone 用于对话、记忆和应用。")
+          Text("Mac、Android 和云电脑会出现在这里。当前 iPhone 不需要重复绑定。")
         }
           }.navigationTitle("我的设备").navigationBarTitleDisplayMode(.inline)
             .task {
@@ -548,6 +544,19 @@ struct AccountExperiencePreview: View {
 
   var body: some View {
     AccountScreen(account: account, client: client, taskBoard: board)
+      .onAppear {
+        guard client.devices.isEmpty else { return }
+        client.devices = [
+          .object([
+            "device_id": .string("preview-phone"), "name": .string("iPhone"),
+            "kind": .string("ios"), "provider": .string("channel"), "online": .bool(true),
+          ]),
+          .object([
+            "device_id": .string("preview-mac"), "name": .string("Mac mini"),
+            "kind": .string("personal_mac"), "provider": .string("link"), "online": .bool(true),
+          ]),
+        ]
+      }
   }
 }
 

@@ -1,6 +1,7 @@
 import Combine
 import CryptoKit
 import SwiftUI
+import UIKit
 
 @MainActor final class TaskBoard: ObservableObject {
   @Published var items: [JSON] = []
@@ -187,20 +188,30 @@ struct ProductShell: View, Equatable {
   @State private var notificationTask: JSON?
   @State private var showAccount = false
   @State private var showTasks = false
+  @State private var keyboardVisible = false
   @Environment(\.scenePhase) private var scene
 
   var body: some View {
-    TabView(selection: $selected) {
-      Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
+    VStack(spacing: 0) {
+      Group {
+        switch selected {
+        case .today:
         HomeScreen(
           account: account, client: client, board: board, selected: $selected,
-          onAccount: { showAccount = true }, onTasks: { showTasks = true })
+          onAccount: {}, onTasks: { showTasks = true })
+        case .chat:
+          ChatScreen(account: account, client: client, onAccount: {})
+        }
       }
-      Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
-        ChatScreen(account: account, client: client, onAccount: { showAccount = true })
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      if !keyboardVisible {
+        ProductDock(
+          selected: $selected,
+          name: account.session?.displayName ?? "",
+          onMy: { showAccount = true })
+          .transition(.move(edge: .bottom).combined(with: .opacity))
       }
     }
-    .toolbarBackground(.ultraThinMaterial, for: .tabBar)
     .task(id: scene) {
       #if DEBUG
       if previewMode { installExperienceFixture(board); return }
@@ -215,6 +226,12 @@ struct ProductShell: View, Equatable {
     .onChange(of: selected) { _, _ in Haptics.selection(); if !previewMode { Task { await board.refresh(account) } } }
     .onChange(of: notifications.destination) { _, destination in
       open(destination)
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+      withAnimation(.easeOut(duration: 0.16)) { keyboardVisible = true }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+      withAnimation(.easeOut(duration: 0.2)) { keyboardVisible = false }
     }
     .onAppear { open(notifications.destination) }
     .overlay(alignment: .bottom) {
@@ -246,21 +263,97 @@ struct ProductShell: View, Equatable {
   }
 }
 
+private struct ProductDock: View {
+  @Binding var selected: ProductTab
+  let name: String
+  let onMy: () -> Void
+
+  private var initials: String {
+    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty ? "H" : String(value.prefix(1)).uppercased()
+  }
+
+  var body: some View {
+    HStack(spacing: 4) {
+      dockButton(.today, title: "此刻") {
+        HymioNowMark(size: 24)
+      }
+      dockButton(.chat, title: "对话") {
+        Companion(size: 26)
+      }
+      Button {
+        Haptics.selection()
+        onMy()
+      } label: {
+        VStack(spacing: 3) {
+          HymioProfileMark(initial: initials, size: 27)
+          Text("我的").font(.system(size: 10, weight: .medium))
+        }
+        .foregroundStyle(Brand.muted)
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("我的")
+    }
+    .padding(6)
+    .background(.regularMaterial, in: Capsule())
+    .overlay(Capsule().strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.6))
+    .shadow(color: .black.opacity(0.06), radius: 12, y: 3)
+    .padding(.horizontal, 24)
+    .padding(.top, 7)
+    .padding(.bottom, 5)
+    .background(
+      LinearGradient(
+        colors: [Brand.surface.opacity(0), Brand.surface.opacity(0.96), Brand.surface],
+        startPoint: .top, endPoint: .bottom)
+    )
+  }
+
+  private func dockButton<Icon: View>(
+    _ tab: ProductTab, title: String, @ViewBuilder icon: () -> Icon
+  ) -> some View {
+    let isSelected = selected == tab
+    return Button {
+      Haptics.selection()
+      withAnimation(.snappy(duration: 0.24, extraBounce: 0.05)) {
+        selected = tab
+      }
+    } label: {
+      VStack(spacing: 3) {
+        icon()
+          .frame(height: 26)
+        Text(title).font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+      }
+      .foregroundStyle(isSelected ? Brand.blue : Brand.muted)
+      .frame(maxWidth: .infinity, minHeight: 48)
+      .background(isSelected ? Brand.softBlue : Color.clear, in: Capsule())
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
+  }
+}
+
 enum TaskLane: Hashable {
-  case attention, active, scheduled, inbox, finished
+  case attention, active, scheduled, other, finished
 }
 
 func taskLane(_ item: JSON) -> TaskLane {
   let status = taskStatus(item)
-  if ["blocked", "failed"].contains(status) { return .attention }
-  if ["running", "ready", "delivering", "waiting"].contains(status) { return .active }
-  if ["succeeded", "cancelled", "expired", "closed"].contains(status) { return .finished }
-  if ["queued", "paused"].contains(status) { return .scheduled }
-  if ["now", ""].contains(item["schedule"]["mode"].text) { return .inbox }
-  return .scheduled
+  if ["blocked", "failed", "expired"].contains(status) { return .attention }
+  if ["queued", "running", "ready", "delivering", "waiting"].contains(status) { return .active }
+  if ["succeeded", "cancelled", "closed"].contains(status) { return .finished }
+  if item["state"].text == "paused" { return .other }
+  let mode = item["schedule"]["mode"].text
+  if ["daily", "weekly", "once"].contains(mode), taskSortDate(item) < .greatestFiniteMagnitude {
+    return .scheduled
+  }
+  return .other
 }
 
 func taskSortDate(_ item: JSON) -> Double {
+  if item["next_due_at"].double > 0 { return item["next_due_at"].double }
   if let due = item["runs"].items.first?["due_at"].double, due > 0 { return due }
   if item["schedule"]["mode"].text == "once" {
     let text = item["schedule"]["at"].text
@@ -404,7 +497,6 @@ struct HomeScreen: View {
       }
       .navigationTitle("").navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(.regularMaterial, for: .navigationBar)
-      .toolbar { ToolbarItem(placement: .topBarLeading) { AccountButton(account: account, action: onAccount) }.accountUnframed() }
       .refreshable { await board.refresh(account) }
       .sheet(isPresented: Binding(get: { selectedIdea != nil }, set: { if !$0 { selectedIdea = nil } })) {
         if let idea = selectedIdea { inspirationDetail(idea) }
@@ -711,14 +803,14 @@ struct TaskSummaryCard: View {
   let item: JSON
   private var state: String { taskStatus(item) }
   private var run: JSON { item["runs"].items.first ?? .null }
-  private var attention: Bool { ["blocked", "failed"].contains(state) }
+  private var attention: Bool { ["blocked", "failed", "expired"].contains(state) }
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
-        Text(item["title"].text).font(.body.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(
+        Text(item["title"].text).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(
           2)
         Spacer(minLength: 12)
-        Label(taskLabel(state), systemImage: taskSymbol(state)).font(.caption2.weight(.medium))
+        Label(taskDisplayLabel(item), systemImage: taskSymbol(state)).font(.caption2.weight(.medium))
           .foregroundStyle(
             attention ? Brand.attention : state == "running" ? Brand.blue : Brand.muted
           )
@@ -732,9 +824,9 @@ struct TaskSummaryCard: View {
       if !run["next_step"].text.isEmpty {
         Text("下一步：" + run["next_step"].text).font(.caption).foregroundStyle(Brand.muted).lineLimit(
           2)
-      } else if ["scheduled", "ready", "paused"].contains(state) {
-        Label(taskSchedule(item["schedule"]), systemImage: "calendar").font(.caption)
-          .foregroundStyle(Brand.muted)
+      } else if let timing = taskTimingSummary(item) {
+        Label(timing, systemImage: "calendar")
+          .font(.caption).foregroundStyle(Brand.muted)
       }
     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14)
       .overlay(alignment: .bottom) { Rectangle().fill(Brand.base).frame(height: 1) }

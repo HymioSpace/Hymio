@@ -9,13 +9,15 @@ struct TraceRow: View, Equatable {
   let turn: Turn
   let tools: [String: JSON]
   var approvals: [Approval] = []
-  var onOpenTrace: (Turn) -> Void = { _ in }
+  var onExpansionChange: (Turn, Bool) -> Void = { _, _ in }
   var onAction: (String) async throws -> Void = { _ in }
   var onRetry: (String) -> Void = { _ in }
   var onDiscard: (String) -> Void = { _ in }
   @ObservedObject var account: AccountService
   /// 最新一条事件到达的时刻。用它把客户端的墙上时钟折回服务端，再让秒针自己走。
   @State private var anchored = Date()
+  @State private var expanded = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -23,20 +25,39 @@ struct TraceRow: View, Equatable {
       if turn.foldable {
         Button {
           Haptics.selection()
-          onOpenTrace(turn)
+          let next = !expanded
+          withAnimation(reduceMotion ? nil : .snappy(duration: 0.28, extraBounce: 0)) {
+            expanded = next
+          }
+          onExpansionChange(turn, next)
         } label: {
           HStack(spacing: 9) {
             Image(systemName: "checkmark").font(.caption2).foregroundStyle(Brand.muted)
             Text(worked(Date())).foregroundStyle(Brand.muted)
             Spacer(minLength: 4)
-            Text("查看探索").font(.caption2).foregroundStyle(Brand.muted)
-            Image(systemName: "arrow.up.right").font(.caption2.weight(.semibold))
+            Text(expanded ? "收起" : "查看探索").font(.caption2).foregroundStyle(Brand.muted)
+            Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
               .foregroundStyle(Brand.muted)
+              .rotationEffect(.degrees(expanded ? 180 : 0))
           }
-          .font(.caption).frame(minHeight: 44).contentShape(Rectangle())
+          .font(.caption).padding(.horizontal, expanded ? 12 : 0).frame(minHeight: 44)
+          .contentShape(Rectangle())
         }.buttonStyle(.plain)
           .accessibilityIdentifier("trace.fold")
-          .accessibilityHint("打开探索面板，不改变当前对话位置")
+          .accessibilityValue(expanded ? "已展开" : "已收起")
+          .accessibilityHint("直接在对话中展开或收起探索过程")
+        if expanded {
+          VStack(alignment: .leading, spacing: 10) {
+            ForEach(turn.activity) { activity in
+              TraceActivityStep(message: activity)
+            }
+          }
+          .padding(12)
+          .background(Brand.mist.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+          .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.line, lineWidth: 0.6))
+          .transition(.opacity.combined(with: .move(edge: .top)))
+          .accessibilityIdentifier("trace.activity")
+        }
       } else {
         if !turn.activity.isEmpty { live }
         ForEach(turn.activity) { row($0) }
@@ -77,74 +98,45 @@ struct TraceRow: View, Equatable {
   }
 }
 
-struct TraceActivityPanel: View {
-  let turn: Turn
-  let tools: [String: JSON]
-  var approvals: [Approval] = []
-  @ObservedObject var account: AccountService
-  var onAction: (String) async throws -> Void = { _ in }
-  var onRetry: (String) -> Void = { _ in }
-  var onDiscard: (String) -> Void = { _ in }
-  @Environment(\.dismiss) private var dismiss
+private struct TraceActivityStep: View {
+  let message: ChatMessage
 
-  private var messages: [ChatMessage] {
-    [turn.user].compactMap { $0 } + turn.activity + [turn.final].compactMap { $0 }
-      + turn.trailing
+  private var text: String {
+    let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !content.isEmpty { return content }
+    let reasoning = message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !reasoning.isEmpty { return reasoning }
+    guard let call = message.calls.first else { return "继续处理" }
+    let name = call["name"].text.lowercased()
+    if name.contains("calendar") { return "检查相关日程" }
+    if name.contains("task") { return "核对任务进展" }
+    if name.contains("browser") || name.contains("web") { return "查看相关网页" }
+    if name.contains("computer") || name.contains("bash") { return "操作相关应用" }
+    if name.contains("recall") || name.contains("remember") || name.contains("context") {
+      return "查看相关记忆"
+    }
+    return "继续处理下一步"
   }
 
   var body: some View {
-    NavigationStack {
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 14) {
-          VStack(alignment: .leading, spacing: 5) {
-            Text("这一次探索").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
-            Text("过程放在独立面板里，不会推动正在阅读的消息。")
-              .font(.caption).foregroundStyle(Brand.muted)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(16)
-          .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 16))
-
-          ForEach(messages) { message in
-            MessageRow(
-              message: message, tools: tools, approvals: approvals, onAction: onAction,
-              account: account, compact: false, showsTime: true,
-              onRetry: onRetry, onDiscard: onDiscard)
-          }
-
-          if !turn.trace.isEmpty {
-            NavigationLink {
-              TraceRecordScreen(traceID: turn.trace, account: account)
-            } label: {
-              HStack {
-                Label("查看完整执行记录", systemImage: "point.3.connected.trianglepath.dotted")
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption)
-              }
-              .font(.subheadline.weight(.medium))
-              .foregroundStyle(Brand.blue)
-              .padding(16)
-              .background(Brand.raised, in: RoundedRectangle(cornerRadius: 14))
-            }.buttonStyle(.plain)
-          }
-        }
-        .padding(18)
-      }
-      .background(Brand.surface)
-      .navigationTitle("探索过程")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .confirmationAction) {
-          Button("完成") { dismiss() }
-        }
-      }
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "sparkle")
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(Brand.blue)
+        .frame(width: 18, height: 20)
+      Text(text)
+        .font(.subheadline)
+        .foregroundStyle(Brand.ink)
+        .lineSpacing(3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textSelection(.enabled)
     }
+    .padding(.vertical, 2)
   }
 }
 
 #if DEBUG
-struct TracePanelExperiencePreview: View {
-  @State private var presented = true
+struct TraceInlineExperiencePreview: View {
   private let account = AccountService()
 
   private var turn: Turn {
@@ -171,12 +163,26 @@ struct TracePanelExperiencePreview: View {
   }
 
   var body: some View {
-    Color.clear
-      .sheet(isPresented: $presented) {
-        TraceActivityPanel(turn: turn, tools: [:], account: account)
-          .presentationDetents([.medium, .large])
-          .presentationDragIndicator(.visible)
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+          Text("先看一段已经结束的对话。")
+            .font(.subheadline).foregroundStyle(Brand.muted)
+          TraceRow(turn: turn, tools: [:], account: account)
+          HStack {
+            Spacer()
+            Text("你可以继续问下一件事。")
+              .font(.body)
+              .padding(.horizontal, 15).padding(.vertical, 11)
+              .background(Brand.userBubble, in: RoundedRectangle(cornerRadius: 18))
+          }
+          Spacer(minLength: 240)
+        }.padding(18)
       }
+      .background(Brand.surface)
+      .navigationTitle("对话")
+      .navigationBarTitleDisplayMode(.inline)
+    }
   }
 }
 #endif

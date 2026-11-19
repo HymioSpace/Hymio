@@ -117,6 +117,24 @@ def append(stack, text, key):
     return response.json()
 
 
+def test_unbound_user_sees_empty_memory_instead_of_retry_error(stack):
+    session = stack.sessions.create_session({"iss": "test", "sub": "unbound", "name": "Unbound"})
+    with httpx.Client(
+        base_url=stack.url,
+        headers={"Authorization": "Bearer " + session["access_token"]},
+        trust_env=False,
+        timeout=30,
+    ) as public:
+        for target in ("records", "artifacts"):
+            page = public.post("/context/browse", json={"target": target})
+            assert page.status_code == 200
+            assert page.json()["items"] == []
+            assert page.json()["next_cursor"] is None
+        assembly = public.get("/context/assembly")
+        assert assembly.status_code == 200
+        assert assembly.json()["available"] is False
+
+
 def test_identity_idempotence_and_closed_mapping(stack):
     first = append(stack, "original", "same")
     assert append(stack, "original", "same") == first

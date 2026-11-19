@@ -20,12 +20,13 @@ struct ChatScreen: View {
   @State private var photosOpen = false
   @State private var following = true
   @State private var atBottom = true
+  @State private var contentOverflows = false
   @State private var sendBusy = false
+  @State private var bottomRequest = 0
+  @State private var lastFollowingScroll = Date.distantPast
   @FocusState private var typing: Bool
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
-  @State private var scrollPosition = ScrollPosition(edge: .bottom)
-  @State private var traceTurn: Turn?
   private var visibleTurns: [Turn] {
     if client.turns.isEmpty, !client.model.messages.isEmpty {
       return client.model.turns
@@ -35,15 +36,16 @@ struct ChatScreen: View {
   var body: some View {
     NavigationStack {
       VStack(spacing: 0) {
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 18) {
+        ScrollViewReader { proxy in
+          ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.turns.first?.id
                 following = false
                 Task {
                   await client.loadHistory()
-                  if let first { scrollPosition.scrollTo(id: first, anchor: .top) }
+                  if let first { proxy.scrollTo(first, anchor: .top) }
                 }
               }
               .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).disabled(
@@ -75,7 +77,9 @@ struct ChatScreen: View {
                   uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
                     client.model.terminals[id].map { (id, $0) }
                   }), approvals: client.model.approvals,
-                onOpenTrace: { traceTurn = $0 },
+                onExpansionChange: { _, expanded in
+                  if expanded { following = false }
+                },
                 onAction: {
                   try await client.message($0)
                 }, onRetry: { client.retryDelivery($0) },
@@ -124,75 +128,92 @@ struct ChatScreen: View {
             Color.clear.frame(height: 1).id("bottom")
           }.scrollTargetLayout().padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
-        }
-        .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { typing = false })
-        .scrollDismissesKeyboard(.interactively)
-        .scrollPosition($scrollPosition)
-        .trackStreamGeometry()
-        .padding(.horizontal, 18)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-          geometry.contentSize.height - geometry.visibleRect.maxY < 12
-        } action: { _, near in
-          atBottom = near
-        }
-        .onScrollPhaseChange { _, phase in
-          if phase == .interacting { following = false }
-          if phase == .idle && atBottom && !following {
-            following = true
-            scrollPosition.scrollTo(edge: .bottom)
           }
-        }
-        .onChange(of: client.model.messages.count) { _, _ in
-          if client.model.messages.last?.role == "user" {
-            following = true
-            scrollPosition.scrollTo(edge: .bottom)
+          .scrollBounceBehavior(.basedOnSize)
+          .contentShape(Rectangle())
+          .simultaneousGesture(TapGesture().onEnded { typing = false })
+          .scrollDismissesKeyboard(.interactively)
+          .trackStreamGeometry()
+          .padding(.horizontal, 18)
+          .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height - geometry.visibleRect.maxY < 16
+          } action: { _, near in
+            atBottom = near
           }
-        }
-        .onChange(of: typing) { _, focused in
-          guard focused, following else { return }
-          withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-            scrollPosition.scrollTo(edge: .bottom)
+          .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height > geometry.containerSize.height + 1
+          } action: { _, overflows in
+            let becameScrollable = overflows && !contentOverflows
+            contentOverflows = overflows
+            if becameScrollable && following { bottomRequest += 1 }
           }
-        }
-        .overlay(alignment: .bottomTrailing) {
-          if client.model.approvals.contains(where: { $0.status == "pending" }) {
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-              let pending = pendingApprovalCount(at: timeline.date)
-              if !atBottom && !client.model.messages.isEmpty {
-                Button {
-                  following = true
-                  atBottom = true
-                  scrollPosition.scrollTo(edge: .bottom)
-                } label: {
-                  if pending > 0 {
-                    Label("\(pending) 个待确认", systemImage: "hand.raised")
-                      .font(.caption.weight(.medium))
-                      .foregroundStyle(.secondary)
-                      .padding(.horizontal, 12)
-                      .padding(.vertical, 10)
-                      .background(.regularMaterial, in: Capsule())
-                      .shadow(color: .black.opacity(0.05), radius: 8)
-                  } else {
-                    Image(systemName: "arrow.down").padding(12)
-                      .background(.regularMaterial, in: Circle())
-                      .shadow(color: .black.opacity(0.05), radius: 8)
-                  }
-                }
-                .padding(18)
-                .accessibilityLabel(pending > 0 ? "\(pending) 个操作等待确认" : "最新消息")
-              }
-            }
-          } else if !atBottom && !client.model.messages.isEmpty {
-            Button {
+          .onScrollPhaseChange { _, phase in
+            if phase == .interacting { following = false }
+            if phase == .idle && atBottom { following = true }
+          }
+          .onChange(of: client.model.messages.count) { _, _ in
+            if client.model.messages.last?.role == "user" || following {
               following = true
               atBottom = true
-              scrollPosition.scrollTo(edge: .bottom)
-            } label: {
-              Image(systemName: "arrow.down").padding(12).background(.regularMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.05), radius: 8)
+              bottomRequest += 1
             }
-            .padding(18).accessibilityLabel("最新消息")
+          }
+          .onChange(of: client.model.working) { _, working in
+            if working && following { bottomRequest += 1 }
+          }
+          .onChange(of: client.model.messages.last?.content) { _, _ in
+            guard following, contentOverflows else { return }
+            let now = Date()
+            guard now.timeIntervalSince(lastFollowingScroll) > 0.08 else { return }
+            lastFollowingScroll = now
+            proxy.scrollTo("bottom", anchor: .bottom)
+          }
+          .onChange(of: typing) { _, focused in
+            guard focused, following else { return }
+            bottomRequest += 1
+          }
+          .onChange(of: bottomRequest) { _, _ in
+            scrollToBottom(proxy)
+          }
+          .onAppear {
+            if following { bottomRequest += 1 }
+          }
+          .overlay(alignment: .bottomTrailing) {
+            if client.model.approvals.contains(where: { $0.status == "pending" }) {
+              TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                let pending = pendingApprovalCount(at: timeline.date)
+                if !atBottom && !client.model.messages.isEmpty {
+                  Button {
+                    jumpToBottom()
+                  } label: {
+                    if pending > 0 {
+                      Label("\(pending) 个待确认", systemImage: "hand.raised")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .shadow(color: .black.opacity(0.05), radius: 8)
+                    } else {
+                      Image(systemName: "arrow.down").padding(12)
+                        .background(.regularMaterial, in: Circle())
+                        .shadow(color: .black.opacity(0.05), radius: 8)
+                    }
+                  }
+                  .padding(18)
+                  .accessibilityLabel(pending > 0 ? "\(pending) 个操作等待确认" : "最新消息")
+                }
+              }
+            } else if !atBottom && !client.model.messages.isEmpty {
+              Button {
+                jumpToBottom()
+              } label: {
+                Image(systemName: "arrow.down").padding(12).background(
+                  .regularMaterial, in: Circle())
+                  .shadow(color: .black.opacity(0.05), radius: 8)
+              }
+              .padding(18).accessibilityLabel("最新消息")
+            }
           }
         }
         composer
@@ -202,9 +223,6 @@ struct ChatScreen: View {
       .toolbarBackground(.visible, for: .navigationBar)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {
-        ToolbarItemGroup(placement: .topBarLeading) {
-          AccountButton(account: account, action: onAccount)
-        }.accountUnframed()
         ToolbarItem(placement: .principal) {
           VStack(spacing: 2) {
             Text("hymio").font(.system(.headline, design: .rounded)).tracking(-0.5)
@@ -311,23 +329,26 @@ struct ChatScreen: View {
           maxSelectionCount: max(1, AttachmentLimits.maxCount - attachments.count)
         )
       )
-      .sheet(item: $traceTurn) { turn in
-        TraceActivityPanel(
-          turn: turn,
-          tools: Dictionary(
-            uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
-              client.model.terminals[id].map { (id, $0) }
-            }),
-          approvals: client.model.approvals,
-          account: account,
-          onAction: { try await client.message($0) },
-          onRetry: { client.retryDelivery($0) },
-          onDiscard: { client.discardDelivery($0) }
-        )
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-      }
       .sensoryFeedback(.selection, trigger: sentCount)
+    }
+  }
+
+  private func jumpToBottom() {
+    following = true
+    atBottom = true
+    bottomRequest += 1
+  }
+
+  private func scrollToBottom(_ proxy: ScrollViewProxy) {
+    guard following, contentOverflows else { return }
+    Task { @MainActor in
+      try? await Task.sleep(for: .milliseconds(16))
+      proxy.scrollTo("bottom", anchor: .bottom)
+      try? await Task.sleep(for: .milliseconds(260))
+      guard following else { return }
+      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+        proxy.scrollTo("bottom", anchor: .bottom)
+      }
     }
   }
 
@@ -465,6 +486,7 @@ struct ChatScreen: View {
     sendBusy = true
     atBottom = true
     following = true
+    bottomRequest += 1
     Task {
       do {
         try await client.message(value)
@@ -490,6 +512,7 @@ struct ChatScreen: View {
     attachments = []
     atBottom = true
     following = true
+    bottomRequest += 1
     Task {
       do {
         try await client.message(

@@ -20,9 +20,9 @@ OS permissions and Android screen-sharing consent remain explicit; Android expos
 
 ## iOS preview
 
-Start with Now for decisions, personal schedules and recent results, or continue the shared
-conversation. Tasks, schedules, recollections, connections and grouped settings live behind the
-leading profile/My entry.
+Start with Now for decisions, personal schedules and recent results, continue the shared
+conversation, or open My from the compact product dock. Tasks, recollections, connections and
+grouped settings live behind My.
 Web uses a labelled sidebar and a wider task inspector. Kits application generation and its
 runtime service have been retired from both clients and deployment.
 

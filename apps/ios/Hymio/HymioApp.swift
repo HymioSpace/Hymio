@@ -39,6 +39,8 @@ import SwiftUI
               .environment(\.dynamicTypeSize, ProcessInfo.processInfo.arguments.contains("-HymioHomeLargePreview") ? .accessibility3 : .large)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioCalendarPreview") {
             CalendarWorkspacePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMonoTaskPreview") {
+            MonoTaskStatesPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
             TaskExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
@@ -71,8 +73,8 @@ import SwiftUI
             AccountExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioLogoutPreview") {
             LogoutExperiencePreview()
-          } else if ProcessInfo.processInfo.arguments.contains("-HymioTracePanelPreview") {
-            TracePanelExperiencePreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTraceInlinePreview") {
+            TraceInlineExperiencePreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioNotificationPreview") {
             NavigationStack { NotificationSettingsScreen(account: account) }
           } else if account.session != nil {

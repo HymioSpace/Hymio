@@ -15,6 +15,13 @@ from .ingress import import_conversation
 def context_routes(settings, sessions, bearer, body, task_store=None):
     client = NostalgiaClient(settings)
 
+    def unavailable_without_context(error):
+        details = error.data.get("error") if isinstance(error.data, dict) else None
+        return isinstance(details, dict) and details.get("code") in {
+            "context_unbound",
+            "context_disabled",
+        }
+
     async def endpoint(request):
         try:
             origin = request.headers.get("origin")
@@ -89,13 +96,24 @@ def context_routes(settings, sessions, bearer, body, task_store=None):
                 return JSONResponse(result)
             if path in {"/context/assembly", "/context/events"}:
                 action = path.rsplit("/", 1)[-1]
-                return JSONResponse(
-                    (
-                        await asyncio.to_thread(
-                            client.call, user_id, action, query=dict(request.query_params)
+                try:
+                    return JSONResponse(
+                        (
+                            await asyncio.to_thread(
+                                client.call, user_id, action, query=dict(request.query_params)
+                            )
+                        )["data"]
+                    )
+                except ContextError as exc:
+                    if action == "assembly" and unavailable_without_context(exc):
+                        return JSONResponse(
+                            {
+                                "stable": {"content": ""},
+                                "dynamic": {"summary": {"content": ""}},
+                                "available": False,
+                            }
                         )
-                    )["data"]
-                )
+                    raise
             if path == "/context/records" and request.method == "GET":
                 return JSONResponse(
                     (
@@ -197,7 +215,14 @@ def context_routes(settings, sessions, bearer, body, task_store=None):
                 )
                 return JSONResponse(result["data"], result["status_code"])
             if path == "/context/browse":
-                return JSONResponse(await asyncio.to_thread(browse, client, user_id, data))
+                try:
+                    return JSONResponse(await asyncio.to_thread(browse, client, user_id, data))
+                except ContextError as exc:
+                    if unavailable_without_context(exc):
+                        return JSONResponse(
+                            {"items": [], "next_cursor": None, "partial": False, "available": False}
+                        )
+                    raise
             if path == "/context/search":
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "search", data=data))["data"]
