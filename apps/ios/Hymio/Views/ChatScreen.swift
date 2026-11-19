@@ -77,7 +77,7 @@ struct ChatScreen: View {
                   uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
                     client.model.terminals[id].map { (id, $0) }
                   }), approvals: client.model.approvals,
-                onExpansionChange: { _, expanded in
+                onExpansionWillChange: { _, expanded in
                   if expanded { following = false }
                 },
                 onAction: {
@@ -483,6 +483,7 @@ struct ChatScreen: View {
   private func sendQuick(_ text: String) {
     let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard client.connected, !sendBusy, !uploading, !value.isEmpty else { return }
+    typing = false
     sendBusy = true
     atBottom = true
     following = true
@@ -507,6 +508,7 @@ struct ChatScreen: View {
     let text = [draft.trimmingCharacters(in: .whitespacesAndNewlines), links].filter { !$0.isEmpty }
       .joined(separator: "\n\n")
     guard canSend else { return }
+    typing = false
     sendBusy = true
     draft = ""
     attachments = []

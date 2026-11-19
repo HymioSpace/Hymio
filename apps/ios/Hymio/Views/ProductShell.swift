@@ -173,7 +173,7 @@ import UIKit
   }
 }
 
-enum ProductTab: Hashable { case today, chat }
+enum ProductTab: Hashable { case today, chat, my }
 
 struct ProductShell: View, Equatable {
   static func == (lhs: Self, rhs: Self) -> Bool {
@@ -186,7 +186,6 @@ struct ProductShell: View, Equatable {
   @StateObject private var board = TaskBoard()
   @State private var selected: ProductTab = .today
   @State private var notificationTask: JSON?
-  @State private var showAccount = false
   @State private var showTasks = false
   @State private var keyboardVisible = false
   @Environment(\.scenePhase) private var scene
@@ -201,14 +200,16 @@ struct ProductShell: View, Equatable {
           onAccount: {}, onTasks: { showTasks = true })
         case .chat:
           ChatScreen(account: account, client: client, onAccount: {})
+        case .my:
+          AccountScreen(
+            account: account, client: client, taskBoard: board, showsCloseButton: false)
         }
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       if !keyboardVisible {
         ProductDock(
           selected: $selected,
-          name: account.session?.displayName ?? "",
-          onMy: { showAccount = true })
+          name: account.session?.displayName ?? "")
           .transition(.move(edge: .bottom).combined(with: .opacity))
       }
     }
@@ -237,9 +238,6 @@ struct ProductShell: View, Equatable {
     .overlay(alignment: .bottom) {
       ShellAgentStatus(account: account, client: client, board: board, selected: $selected)
     }
-    .sheet(isPresented: $showAccount) {
-      AccountScreen(account: account, client: client, taskBoard: board)
-    }
     .sheet(isPresented: $showTasks) {
       NavigationStack { TasksScreen(account: account, board: board, onAccount: {}, showAccountButton: false)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { showTasks = false } } } }
@@ -266,7 +264,6 @@ struct ProductShell: View, Equatable {
 private struct ProductDock: View {
   @Binding var selected: ProductTab
   let name: String
-  let onMy: () -> Void
 
   private var initials: String {
     let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -281,20 +278,9 @@ private struct ProductDock: View {
       dockButton(.chat, title: "对话") {
         Companion(size: 26)
       }
-      Button {
-        Haptics.selection()
-        onMy()
-      } label: {
-        VStack(spacing: 3) {
-          HymioProfileMark(initial: initials, size: 27)
-          Text("我的").font(.system(size: 10, weight: .medium))
-        }
-        .foregroundStyle(Brand.muted)
-        .frame(maxWidth: .infinity, minHeight: 48)
-        .contentShape(Rectangle())
+      dockButton(.my, title: "我的") {
+        HymioProfileMark(initial: initials, size: 27)
       }
-      .buttonStyle(.plain)
-      .accessibilityLabel("我的")
     }
     .padding(6)
     .background(.regularMaterial, in: Capsule())

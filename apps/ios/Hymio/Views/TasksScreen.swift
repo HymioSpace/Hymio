@@ -154,6 +154,17 @@ struct TasksScreen: View {
     .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
+      ToolbarItem(placement: .topBarTrailing) {
+        Button {
+          withAnimation(animation) {
+            mode = mode == .status ? .month : .status
+          }
+        } label: {
+          Label(mode == .status ? "日历" : "列表", systemImage: mode == .status ? "calendar" : "list.bullet")
+            .labelStyle(.iconOnly)
+        }
+        .accessibilityLabel(mode == .status ? "切换到日历" : "切换到任务列表")
+      }.accountUnframed()
     }
 
   }
@@ -184,22 +195,19 @@ struct TasksScreen: View {
             .labelStyle(.iconOnly).frame(width: 36, height: 44)
         }
       }
-      Picker(
-        "查看方式",
-        selection: Binding(
-          get: { mode },
-          set: { value in
-            withAnimation(animation) {
-              mode = value
-            }
-          })
-      ) {
-        ForEach([TaskDisplayMode.status, .month, .week, .day], id: \.rawValue) { value in
-          Text(value.title).tag(value)
-        }
-      }.pickerStyle(.segmented).accessibilityIdentifier("tasks.view")
-
       if mode != .status {
+        Picker(
+          "日历范围",
+          selection: Binding(
+            get: { mode },
+            set: { value in
+              withAnimation(animation) { mode = value }
+            })
+        ) {
+          ForEach([TaskDisplayMode.month, .week, .day], id: \.rawValue) { value in
+            Text(value.title).tag(value)
+          }
+        }.pickerStyle(.segmented).accessibilityIdentifier("tasks.calendar-scale")
         HStack(spacing: 12) {
           if mode != .month {
             Text(TimeZone.current.identifier).font(.caption2).foregroundStyle(Brand.muted)

@@ -9,7 +9,7 @@ struct TraceRow: View, Equatable {
   let turn: Turn
   let tools: [String: JSON]
   var approvals: [Approval] = []
-  var onExpansionChange: (Turn, Bool) -> Void = { _, _ in }
+  var onExpansionWillChange: (Turn, Bool) -> Void = { _, _ in }
   var onAction: (String) async throws -> Void = { _ in }
   var onRetry: (String) -> Void = { _ in }
   var onDiscard: (String) -> Void = { _ in }
@@ -26,10 +26,10 @@ struct TraceRow: View, Equatable {
         Button {
           Haptics.selection()
           let next = !expanded
+          onExpansionWillChange(turn, next)
           withAnimation(reduceMotion ? nil : .snappy(duration: 0.28, extraBounce: 0)) {
             expanded = next
           }
-          onExpansionChange(turn, next)
         } label: {
           HStack(spacing: 9) {
             Image(systemName: "checkmark").font(.caption2).foregroundStyle(Brand.muted)
@@ -49,13 +49,13 @@ struct TraceRow: View, Equatable {
         if expanded {
           VStack(alignment: .leading, spacing: 10) {
             ForEach(turn.activity) { activity in
-              TraceActivityStep(message: activity)
+              TraceActivityStep(message: activity, tools: tools)
             }
           }
           .padding(12)
           .background(Brand.mist.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
           .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.line, lineWidth: 0.6))
-          .transition(.opacity.combined(with: .move(edge: .top)))
+          .transition(.opacity)
           .accessibilityIdentifier("trace.activity")
         }
       } else {
@@ -100,44 +100,133 @@ struct TraceRow: View, Equatable {
 
 private struct TraceActivityStep: View {
   let message: ChatMessage
+  let tools: [String: JSON]
 
   private var text: String {
     let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
     if !content.isEmpty { return content }
     let reasoning = message.reasoning.trimmingCharacters(in: .whitespacesAndNewlines)
     if !reasoning.isEmpty { return reasoning }
-    guard let call = message.calls.first else { return "继续处理" }
-    let name = call["name"].text.lowercased()
-    if name.contains("calendar") { return "检查相关日程" }
-    if name.contains("task") { return "核对任务进展" }
-    if name.contains("browser") || name.contains("web") { return "查看相关网页" }
-    if name.contains("computer") || name.contains("bash") { return "操作相关应用" }
-    if name.contains("recall") || name.contains("remember") || name.contains("context") {
-      return "查看相关记忆"
-    }
-    return "继续处理下一步"
+    return ""
   }
 
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Image(systemName: "sparkle")
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(Brand.blue)
-        .frame(width: 18, height: 20)
-      Text(text)
-        .font(.subheadline)
-        .foregroundStyle(Brand.ink)
-        .lineSpacing(3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .textSelection(.enabled)
+    VStack(alignment: .leading, spacing: 9) {
+      if !text.isEmpty {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: "text.bubble")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Brand.blue)
+            .frame(width: 18, height: 20)
+          Text(text)
+            .font(.subheadline)
+            .foregroundStyle(Brand.ink)
+            .lineSpacing(3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+        }
+      }
+      ForEach(Array(message.calls.enumerated()), id: \.offset) { index, call in
+        let step = String(message.id.dropFirst("assistant:".count))
+        TraceToolCall(
+          call: call,
+          result: tools[step + "-\(index)"])
+      }
     }
     .padding(.vertical, 2)
+  }
+}
+
+private struct TraceToolCall: View {
+  let call: JSON
+  let result: JSON?
+
+  private var name: String { call["name"].text }
+  private var title: String {
+    [
+      "browser": "浏览网页", "computer": "操作电脑", "bash": "执行命令",
+      "devices": "查看设备", "device_command": "查询设备", "calendar": "查看日历",
+      "task": "查看任务", "notify": "发送提醒", "remember": "提炼并记下",
+      "recall": "查找记忆", "context": "查看相关记忆",
+    ][name] ?? name
+  }
+  private var description: String {
+    let arguments = call["arguments"]
+    return ["description", "summary", "query", "url", "action", "operation"]
+      .compactMap { key in
+        let value = arguments[key].text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+      }.first ?? ""
+  }
+  private var outcome: String { result?["outcome"].text ?? "running" }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 7) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: "wrench.and.screwdriver")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(Brand.muted)
+          .frame(width: 18)
+        Text(title)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(Brand.ink)
+        Spacer(minLength: 6)
+        ToolOutcomeLabel(outcome: outcome)
+      }
+      if !description.isEmpty {
+        Text(description)
+          .font(.caption)
+          .foregroundStyle(Brand.muted)
+          .lineSpacing(2)
+          .lineLimit(3)
+          .padding(.leading, 26)
+      }
+      DisclosureGroup("调用详情") {
+        VStack(alignment: .leading, spacing: 8) {
+          Text(call["arguments"].pretty)
+            .font(.system(.caption2, design: .monospaced))
+            .textSelection(.enabled)
+          if let result, result != .null {
+            Text(result.pretty)
+              .font(.system(.caption2, design: .monospaced))
+              .foregroundStyle(Brand.muted)
+              .textSelection(.enabled)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 10))
+      }
+      .font(.caption2)
+      .foregroundStyle(Brand.muted)
+      .padding(.leading, 26)
+    }
+    .padding(10)
+    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 12))
+    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.line, lineWidth: 0.5))
   }
 }
 
 #if DEBUG
 struct TraceInlineExperiencePreview: View {
   private let account = AccountService()
+
+  private var activity: ChatMessage {
+    var value = ChatMessage(
+      id: "assistant:preview-step", role: "assistant",
+      content: "我先看一下今天的日历与任务，再核对时间冲突。",
+      time: "2026-11-19T08:00:02Z")
+    value.calls = [
+      .object([
+        "name": .string("calendar"),
+        "arguments": .object([
+          "description": .string("检查今天下午是否已有安排"),
+          "date": .string("2026-11-19"),
+        ]),
+      ])
+    ]
+    return value
+  }
 
   private var turn: Turn {
     Turn(
@@ -149,12 +238,7 @@ struct TraceInlineExperiencePreview: View {
       final: ChatMessage(
         id: "preview-final", role: "assistant", content: "安排已经核对好，下午两点前没有冲突。",
         time: "2026-11-19T08:00:04Z"),
-      activity: [
-        ChatMessage(
-          id: "assistant:preview-step", role: "assistant",
-          content: "我先看一下今天的日历与任务，再核对时间冲突。",
-          time: "2026-11-19T08:00:02Z"),
-      ],
+      activity: [activity],
       trailing: [],
       startedAt: TurnClock.date("2026-11-19T08:00:00Z"),
       latestAt: TurnClock.date("2026-11-19T08:00:04Z"),
@@ -168,7 +252,15 @@ struct TraceInlineExperiencePreview: View {
         VStack(alignment: .leading, spacing: 20) {
           Text("先看一段已经结束的对话。")
             .font(.subheadline).foregroundStyle(Brand.muted)
-          TraceRow(turn: turn, tools: [:], account: account)
+          TraceRow(
+            turn: turn,
+            tools: [
+              "preview-step-0": .object([
+                "outcome": .string("succeeded"),
+                "available": .array([.string("14:00-15:00")]),
+              ]),
+            ],
+            account: account)
           HStack {
             Spacer()
             Text("你可以继续问下一件事。")

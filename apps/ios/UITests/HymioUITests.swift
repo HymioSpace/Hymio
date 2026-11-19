@@ -262,7 +262,7 @@ final class HymioUITests: XCTestCase {
     app.navigationBars.buttons.firstMatch.tap()
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "my-grouped-navigation"; shot.lifetime = .keepAlways; add(shot)
-    app.buttons["关闭我的"].tap()
+    app.buttons["此刻"].tap()
   }
 
   @MainActor func testRecollectionSourceLabelsAndDensity() throws {
@@ -303,10 +303,27 @@ final class HymioUITests: XCTestCase {
     input.name = "single-row-composer-keyboard"; input.lifetime = .keepAlways; add(input)
     app.buttons["chat.send"].tap()
     XCTAssertTrue(app.staticTexts["draft only"].waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), app.debugDescription)
     XCTAssertTrue(app.staticTexts["收到，我正在处理。"].waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertTrue(app.staticTexts["收到，我正在处理。"].isHittable, app.debugDescription)
     let sent = XCTAttachment(screenshot: app.screenshot())
     sent.name = "chat-after-send-no-blank"; sent.lifetime = .keepAlways; add(sent)
+  }
+
+  @MainActor func testProductDockReturnsAfterSend() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioExperiencePreview"]
+    app.launch()
+    app.buttons["对话"].tap()
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 10))
+    editor.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    editor.typeText("dock test")
+    app.buttons["chat.send"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+    XCTAssertTrue(app.buttons["我的"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["dock test"].exists)
   }
 
   @MainActor func testHomeLargeTextAndDarkAppearance() throws {
@@ -338,20 +355,21 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioCalendarPreview"]
     app.launch()
-    XCTAssertTrue(app.buttons["任务"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["切换到日历"].waitForExistence(timeout: 10))
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
         .firstMatch.exists)
     XCTAssertTrue(app.staticTexts["需要你处理"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["正在进行"].exists)
     XCTAssertTrue(app.staticTexts["按计划"].exists)
+    app.buttons["切换到日历"].tap()
     app.buttons["周"].tap()
     XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
     app.buttons["日"].tap()
     XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
     app.buttons["月"].tap()
-    XCTAssertTrue(app.buttons["任务"].waitForExistence(timeout: 5))
-    app.buttons["任务"].tap()
+    XCTAssertTrue(app.buttons["切换到任务列表"].waitForExistence(timeout: 5))
+    app.buttons["切换到任务列表"].tap()
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
         .firstMatch.waitForExistence(timeout: 5))
@@ -531,10 +549,24 @@ final class HymioUITests: XCTestCase {
     XCTAssertFalse(app.staticTexts["我先看一下今天的日历与任务，再核对时间冲突。"].exists)
     let fold = app.descendants(matching: .any).matching(identifier: "trace.fold").firstMatch
     XCTAssertTrue(fold.waitForExistence(timeout: 5))
+    let anchoredY = fold.frame.minY
     fold.tap()
     XCTAssertEqual(fold.value as? String, "已展开")
+    XCTAssertEqual(fold.frame.minY, anchoredY, accuracy: 4)
+    let activity = app.descendants(matching: .any).matching(identifier: "trace.activity").firstMatch
+    XCTAssertTrue(activity.waitForExistence(timeout: 5))
+    XCTAssertGreaterThanOrEqual(activity.frame.minY, fold.frame.maxY)
     XCTAssertTrue(
       app.staticTexts["我先看一下今天的日历与任务，再核对时间冲突。"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["查看日历"].exists)
+    XCTAssertTrue(app.staticTexts["检查今天下午是否已有安排"].exists)
+    let details = app.buttons["调用详情"]
+    XCTAssertTrue(details.exists)
+    details.tap()
+    XCTAssertTrue(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "2026-11-19"))
+        .firstMatch.waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["继续处理下一步"].exists)
     XCTAssertFalse(app.navigationBars["探索过程"].exists)
     XCTAssertFalse(app.buttons["完整执行记录"].exists)
     let shot = XCTAttachment(screenshot: app.screenshot())

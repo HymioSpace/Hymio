@@ -8,6 +8,7 @@ struct AccountScreen: View {
   @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var taskBoard: TaskBoard
+  var showsCloseButton = true
   private enum Destination: String, Identifiable {
     case tasks, connectors, memories
     var id: String { rawValue }
@@ -406,13 +407,15 @@ struct AccountScreen: View {
         }
       }
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button {
-            dismiss()
-          } label: {
-            Image(systemName: "xmark")
+        if showsCloseButton {
+          ToolbarItem(placement: .cancellationAction) {
+            Button {
+              dismiss()
+            } label: {
+              Image(systemName: "xmark")
+            }
+            .accessibilityLabel("关闭我的")
           }
-          .accessibilityLabel("关闭我的")
         }
       }
       .refreshable { await client.loadDevices() }
