@@ -119,14 +119,20 @@ struct AccountButton: View {
 
   var body: some View {
     Button(action: { Haptics.selection(); action() }) {
-      Image(systemName: "sidebar.left")
-        .font(.system(size: 18, weight: .regular)).foregroundStyle(Brand.ink)
-        .frame(width: 44, height: 44)
+      ZStack {
+        Circle().fill(Brand.softBlue)
+        Image(systemName: "person.crop.circle.fill")
+          .font(.system(size: 20, weight: .regular))
+          .foregroundStyle(Brand.blue)
+      }
+      .frame(width: 34, height: 34)
+      .overlay(Circle().strokeBorder(Brand.blue.opacity(0.13), lineWidth: 0.5))
+      .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())
     .contentShape(Rectangle())
-    .accessibilityLabel("账号与设置")
-    .accessibilityHint("打开个人资料、设备和偏好设置")
+    .accessibilityLabel("我的")
+    .accessibilityHint("打开任务、记忆、连接服务和设置")
   }
 }
 

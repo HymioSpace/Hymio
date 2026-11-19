@@ -22,10 +22,20 @@ def card(hit, value):
             (ALIASES[t] for t in hit.get("topics", []) if t in ALIASES), "uncategorized"
         )
     title = metadata.get("title") or context.get("title")
+    raw_labels = metadata.get("labels")
+    if not isinstance(raw_labels, list) or not raw_labels:
+        raw_labels = hit.get("topics")
+    labels = (
+        list(dict.fromkeys(label.strip() for label in raw_labels if isinstance(label, str) and label.strip()))
+        if isinstance(raw_labels, list)
+        else []
+    )
     return {
         **hit,
         "category": category,
-        "labels": metadata.get("labels") or [CATEGORIES[category]],
+        # Browsing labels come from Nostalgia's model output. Never invent a taxonomy
+        # merely because an older card only has the legacy category field.
+        "labels": labels,
         "domains": metadata.get("domains") or [],
         "title": title if isinstance(title, str) else "",
         "updated_at": value.get("updated_at"),

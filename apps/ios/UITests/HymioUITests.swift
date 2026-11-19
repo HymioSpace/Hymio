@@ -14,13 +14,13 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioCalendarPreview"]
     app.launch()
-    XCTAssertTrue(app.navigationBars["任务"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["任务与日程"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.buttons["新建安排"].exists)
     XCTAssertFalse(app.buttons["添加安排"].exists)
     app.terminate()
     app.launchArguments = ["-HymioExperiencePreview"]
     app.launch()
-    app.buttons["账号与设置"].tap()
+    app.buttons["我的"].tap()
     XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.buttons["我的应用"].exists)
   }
@@ -71,7 +71,7 @@ final class HymioUITests: XCTestCase {
     app.buttons["home.focus"].firstMatch.tap()
     XCTAssertTrue(app.buttons["任务操作"].waitForExistence(timeout: 5))
     app.buttons["任务操作"].tap()
-    app.buttons["删除任务"].tap()
+    app.buttons["取消任务"].tap()
     app.buttons["删除任务"].tap()
     XCTAssertTrue(app.buttons["home.decisions.all"].waitForExistence(timeout: 2))
     XCTAssertFalse(app.staticTexts["确认周五住哪家酒店"].exists)
@@ -93,11 +93,11 @@ final class HymioUITests: XCTestCase {
     XCTAssertFalse(app.buttons["context.empty.action"].exists)
     let footprints = XCTAttachment(screenshot: app.screenshot())
     footprints.name = "view-footprints-opens-visible-records"; footprints.lifetime = .keepAlways; add(footprints)
-    app.buttons["来源，Gmail"].tap()
-    XCTAssertTrue(app.buttons["context.empty.action"].waitForExistence(timeout: 5))
-    app.buttons["context.empty.action"].tap()
+    app.buttons["来源，苹果日历"].tap()
     XCTAssertTrue(app.staticTexts["产品体验复盘"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["产品体验复盘"].isHittable)
+    XCTAssertFalse(app.buttons["context.empty.action"].exists)
+    app.buttons["来源，全部"].tap()
     app.terminate()
     app.launchArguments = ["-HymioContextPreview", "-HymioContextInsightsOnly"]
     app.launch()
@@ -109,15 +109,36 @@ final class HymioUITests: XCTestCase {
     shot.name = "recollection-empty-action-opens-editor"; shot.lifetime = .keepAlways; add(shot)
   }
 
+  @MainActor func testNewAccountMemoryEmptyHasNoInventedSourcesOrRetry() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioContextPreview", "-HymioContextEmptyPreview"]
+    app.launch()
+    XCTAssertTrue(app.staticTexts["还没有记忆"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["暂时读不到记忆"].exists)
+    XCTAssertFalse(app.buttons["重试"].exists)
+    XCTAssertFalse(app.buttons["来源，Gmail"].exists)
+    XCTAssertFalse(app.buttons["来源，滴答清单"].exists)
+    XCTAssertTrue(app.buttons["来源，全部"].exists)
+    app.segmentedControls.buttons["记住的事"].tap()
+    XCTAssertTrue(app.staticTexts["还没有整理出的记忆"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.buttons["重试"].exists)
+    XCTAssertFalse(app.buttons["分类，工作"].exists)
+    XCTAssertFalse(app.buttons["分类，学习"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "memory-empty-without-invented-taxonomy"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   @MainActor func testHomeDecisionCarouselAndEmptySchedule() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioHomePreview", "-HymioHomeManyDecisions"]
     app.launch()
     let carousel = app.scrollViews["home.decisions"]
     XCTAssertTrue(carousel.waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["确认周五住哪家酒店"].isHittable)
+    XCTAssertTrue(app.buttons["home.focus"].firstMatch.isHittable)
     carousel.swipeLeft()
-    XCTAssertTrue(app.staticTexts["选一个周末出行方向"].isHittable)
+    XCTAssertTrue(app.buttons.matching(identifier: "home.focus").element(boundBy: 1).isHittable)
     var shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "home-decisions-second-page"; shot.lifetime = .keepAlways; add(shot)
     app.buttons["home.decisions.all"].tap()
@@ -134,8 +155,8 @@ final class HymioUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.staticTexts["暂无安排"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["没有定时安排"].exists)
-    let schedule = app.buttons["home.schedule"].frame
-    let agent = app.buttons["home.agent"].frame
+    let schedule = app.buttons.matching(identifier: "home.schedule").firstMatch.frame
+    let agent = app.buttons.matching(identifier: "home.agent").firstMatch.frame
     XCTAssertLessThanOrEqual(agent.maxY, schedule.minY)
     XCTAssertEqual(schedule.minX, agent.minX, accuracy: 0.5)
     XCTAssertEqual(schedule.width, agent.width, accuracy: 0.5)
@@ -167,8 +188,8 @@ final class HymioUITests: XCTestCase {
     }
     app.launchArguments = ["-HymioExperiencePreview"]
     app.launch()
-    XCTAssertTrue(app.buttons["账号与设置"].waitForExistence(timeout: 10))
-    app.buttons["账号与设置"].tap()
+    XCTAssertTrue(app.buttons["我的"].waitForExistence(timeout: 10))
+    app.buttons["我的"].tap()
     XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
     let my = XCTAttachment(screenshot: app.screenshot())
     my.name = "my-toolbar"; my.lifetime = .keepAlways; add(my)
@@ -178,8 +199,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioExperiencePreview"]
     app.launch()
-    app.buttons["账号与设置"].tap()
-    for (entry, title) in [("任务与日程", "任务"), ("account.connectors", "连接来源"), ("任务与日程", "任务")] {
+    app.buttons["我的"].tap()
+    for (entry, title) in [("任务与日程", "任务与日程"), ("account.connectors", "连接来源"), ("任务与日程", "任务与日程")] {
       XCTAssertTrue(app.buttons[entry].waitForExistence(timeout: 5))
       app.buttons[entry].tap()
       XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5))
@@ -189,24 +210,43 @@ final class HymioUITests: XCTestCase {
     }
   }
 
+  @MainActor func testAccountLogoutUsesDedicatedExplanationSheet() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioAccountPreview"]
+    app.launch()
+    let logout = app.buttons["account.logout"]
+    XCTAssertTrue(logout.waitForExistence(timeout: 10))
+    for _ in 0..<3 where !logout.isHittable { app.swipeUp() }
+    logout.tap()
+    XCTAssertTrue(app.staticTexts["云端的任务、记忆和连接不会删除"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["account.confirmLogout"].exists)
+    XCTAssertTrue(app.buttons["取消"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "account-logout-explanation"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   @MainActor func testThreeTabsAndGroupedMyNavigation() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioExperiencePreview"]
     app.launch()
     XCTAssertTrue(app.tabBars.buttons["此刻"].waitForExistence(timeout: 10))
-    XCTAssertEqual(app.tabBars.buttons.count, 3)
-    XCTAssertTrue(app.tabBars.buttons["回忆"].exists)
-    app.buttons["账号与设置"].tap()
+    XCTAssertEqual(app.tabBars.buttons.count, 2)
+    XCTAssertFalse(app.tabBars.buttons["回忆"].exists)
+    app.buttons["我的"].tap()
     XCTAssertTrue(app.buttons["任务与日程"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["记忆"].exists)
     XCTAssertTrue(app.buttons["对话模型"].exists)
+    app.buttons["记忆"].tap()
+    XCTAssertTrue(app.staticTexts["记忆"].waitForExistence(timeout: 5))
+    app.navigationBars.firstMatch.buttons.firstMatch.tap()
     app.buttons["对话模型"].tap()
     XCTAssertTrue(app.navigationBars["模型设置"].waitForExistence(timeout: 5))
     app.navigationBars.buttons.firstMatch.tap()
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "my-grouped-navigation"; shot.lifetime = .keepAlways; add(shot)
-    app.buttons["关闭账号设置"].tap()
-    app.tabBars.buttons["回忆"].tap()
-    XCTAssertTrue(app.staticTexts["回忆"].waitForExistence(timeout: 5))
+    app.buttons["关闭我的"].tap()
   }
 
   @MainActor func testRecollectionSourceLabelsAndDensity() throws {
@@ -219,6 +259,8 @@ final class HymioUITests: XCTestCase {
     shot.name = "recollections-source-icons"; shot.lifetime = .keepAlways; add(shot)
     app.segmentedControls.buttons["记住的事"].tap()
     XCTAssertTrue(app.buttons["context.collect"].exists)
+    XCTAssertTrue(app.buttons["分类，做事方式"].exists)
+    XCTAssertFalse(app.buttons["分类，工作"].exists)
   }
 
   @MainActor func testActualChatStreamingAnchor() throws {
@@ -240,6 +282,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
     editor.typeText("draft only")
     XCTAssertTrue((editor.value as? String)?.contains("draft only") == true)
+    XCTAssertTrue(final.isHittable, app.debugDescription)
     let input = XCTAttachment(screenshot: app.screenshot())
     input.name = "single-row-composer-keyboard"; input.lifetime = .keepAlways; add(input)
   }
@@ -252,7 +295,7 @@ final class HymioUITests: XCTestCase {
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "home-large-dark"; shot.lifetime = .keepAlways; add(shot)
     app.scrollViews.firstMatch.swipeUp()
-    XCTAssertTrue(app.staticTexts["正在推进"].exists)
+    XCTAssertTrue(app.staticTexts["正在发生"].exists)
   }
 
   @MainActor func testHomePrioritizesAttention() throws {
@@ -262,7 +305,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.buttons["home.focus"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["确认周五住哪家酒店"].exists)
     XCTAssertTrue(app.staticTexts["接下来"].exists)
-    XCTAssertTrue(app.staticTexts["正在推进"].exists)
+    XCTAssertTrue(app.staticTexts["正在发生"].exists)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "home-attention-hierarchy"
     screenshot.lifetime = .keepAlways
@@ -273,8 +316,8 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioCalendarPreview"]
     app.launch()
-    XCTAssertTrue(app.buttons["状态"].waitForExistence(timeout: 10))
-    app.buttons["状态"].tap()
+    XCTAssertTrue(app.buttons["任务"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["全部任务"].exists)
     XCTAssertTrue(app.staticTexts["等你决定"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["正在进行"].exists)
     XCTAssertTrue(app.staticTexts["接下来的安排"].exists)
@@ -283,7 +326,9 @@ final class HymioUITests: XCTestCase {
     app.buttons["日"].tap()
     XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
     app.buttons["月"].tap()
-    XCTAssertTrue(app.buttons["状态"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["任务"].waitForExistence(timeout: 5))
+    app.buttons["任务"].tap()
+    XCTAssertTrue(app.staticTexts["全部任务"].waitForExistence(timeout: 5))
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "tasks-status-view"
     screenshot.lifetime = .keepAlways
@@ -295,6 +340,10 @@ final class HymioUITests: XCTestCase {
     app.launchArguments = ["-HymioConnectorsPreview"]
     app.launch()
     XCTAssertTrue(app.buttons["connector.gmail"].waitForExistence(timeout: 10))
+    let gmailHeight = app.buttons["connector.gmail"].frame.height
+    let healthHeight = app.buttons["connector.apple_health"].frame.height
+    XCTAssertLessThan(gmailHeight, 100)
+    XCTAssertEqual(gmailHeight, healthHeight, accuracy: 1)
     let catalog = XCTAttachment(screenshot: app.screenshot())
     catalog.name = "connectors-ios-catalog"
     catalog.lifetime = .keepAlways
@@ -367,7 +416,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(
       app.staticTexts["Help me plan 15 min of reading. Do not call tools."].waitForExistence(
         timeout: 10))
-    app.buttons["打开菜单"].tap()
+    app.buttons["我的"].tap()
     app.buttons["探索记录"].tap()
     XCTAssertTrue(app.navigationBars["探索记录"].waitForExistence(timeout: 10))
     let traceScreenshot = XCTAttachment(screenshot: app.screenshot())
@@ -404,10 +453,10 @@ final class HymioUITests: XCTestCase {
 
     let fold = app.descendants(matching: .any).matching(identifier: "trace.fold").firstMatch
     XCTAssertTrue(fold.waitForExistence(timeout: 180), app.debugDescription)
-    let worked = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已工作"))
+    let worked = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "已探索"))
       .firstMatch
     XCTAssertTrue(worked.waitForExistence(timeout: 10), app.debugDescription)
-    XCTAssertTrue(worked.label.count > "已工作 ".count, worked.label)
+    XCTAssertTrue(worked.label.count > "已探索 ".count, worked.label)
     // 收起时过程不在无障碍树里。
     XCTAssertFalse(app.staticTexts["current_time"].exists, app.debugDescription)
     let folded = XCTAttachment(screenshot: app.screenshot())
@@ -416,12 +465,28 @@ final class HymioUITests: XCTestCase {
     add(folded)
 
     fold.tap()
+    XCTAssertTrue(app.navigationBars["探索过程"].waitForExistence(timeout: 5))
     XCTAssertTrue(
       app.staticTexts["current_time"].waitForExistence(timeout: 15), app.debugDescription)
     let expanded = XCTAttachment(screenshot: app.screenshot())
     expanded.name = "native-trace-expanded"
     expanded.lifetime = .keepAlways
     add(expanded)
+  }
+
+  @MainActor func testTraceActivityUsesIndependentPanel() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioTracePanelPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["探索过程"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["这一次探索"].exists)
+    XCTAssertTrue(app.staticTexts["安排已经核对好，下午两点前没有冲突。"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "trace-independent-panel"
+    shot.lifetime = .keepAlways
+    add(shot)
+    app.buttons["完成"].tap()
+    XCTAssertFalse(app.navigationBars["探索过程"].waitForExistence(timeout: 2))
   }
 
   @MainActor func testRealAccountChatAndReconnect() throws {
@@ -489,8 +554,8 @@ final class HymioUITests: XCTestCase {
     screenshot.name = "Hymio-iOS-chat"
     screenshot.lifetime = .keepAlways
     add(screenshot)
-    app.buttons["打开菜单"].tap()
-    XCTAssertTrue(app.navigationBars["账号"].waitForExistence(timeout: 5))
+    app.buttons["我的"].tap()
+    XCTAssertTrue(app.navigationBars["我的"].waitForExistence(timeout: 5))
     let account = XCTAttachment(screenshot: app.screenshot())
     account.name = "Hymio-iOS-account"
     account.lifetime = .keepAlways
@@ -561,7 +626,7 @@ final class HymioUITests: XCTestCase {
 
   @MainActor private func logoutIfNeeded(_ app: XCUIApplication) {
     guard app.tabBars.buttons["此刻"].waitForExistence(timeout: 8) else { return }
-    let menu = app.buttons["打开菜单"]
+    let menu = app.buttons["我的"]
     XCTAssertTrue(menu.waitForExistence(timeout: 5), app.debugDescription)
     menu.tap()
     let logout = app.buttons["account.logout"]

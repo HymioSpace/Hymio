@@ -25,6 +25,7 @@ struct ChatScreen: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
   @State private var scrollPosition = ScrollPosition(edge: .bottom)
+  @State private var traceTurn: Turn?
   private var visibleTurns: [Turn] {
     if client.turns.isEmpty, !client.model.messages.isEmpty {
       return client.model.turns
@@ -33,7 +34,7 @@ struct ChatScreen: View {
   }
   var body: some View {
     NavigationStack {
-      ScrollViewReader { proxy in
+      VStack(spacing: 0) {
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
@@ -42,7 +43,7 @@ struct ChatScreen: View {
                 following = false
                 Task {
                   await client.loadHistory()
-                  if let first { proxy.scrollTo(first, anchor: .top) }
+                  if let first { scrollPosition.scrollTo(id: first, anchor: .top) }
                 }
               }
               .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).disabled(
@@ -74,6 +75,7 @@ struct ChatScreen: View {
                   uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
                     client.model.terminals[id].map { (id, $0) }
                   }), approvals: client.model.approvals,
+                onOpenTrace: { traceTurn = $0 },
                 onAction: {
                   try await client.message($0)
                 }, onRetry: { client.retryDelivery($0) },
@@ -147,6 +149,12 @@ struct ChatScreen: View {
             scrollPosition.scrollTo(edge: .bottom)
           }
         }
+        .onChange(of: typing) { _, focused in
+          guard focused, following else { return }
+          withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            scrollPosition.scrollTo(edge: .bottom)
+          }
+        }
         .overlay(alignment: .bottomTrailing) {
           if client.model.approvals.contains(where: { $0.status == "pending" }) {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
@@ -187,6 +195,7 @@ struct ChatScreen: View {
             .padding(18).accessibilityLabel("最新消息")
           }
         }
+        composer
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
       .toolbarBackground(.regularMaterial, for: .navigationBar)
@@ -230,7 +239,7 @@ struct ChatScreen: View {
             for photo in photos {
               if let data = try await photo.loadTransferable(type: Data.self) {
                 guard
-                  let jpeg = try await Task.detached(
+                  let jpeg = await Task.detached(
                     priority: .userInitiated,
                     operation: {
                       ImagePipeline.attachment(data)
@@ -282,7 +291,7 @@ struct ChatScreen: View {
             defer { uploading = false }
             do {
               guard
-                let data = try await Task.detached(
+                let data = await Task.detached(
                   priority: .userInitiated,
                   operation: {
                     ImagePipeline.attachment(image)
@@ -302,7 +311,22 @@ struct ChatScreen: View {
           maxSelectionCount: max(1, AttachmentLimits.maxCount - attachments.count)
         )
       )
-      .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+      .sheet(item: $traceTurn) { turn in
+        TraceActivityPanel(
+          turn: turn,
+          tools: Dictionary(
+            uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
+              client.model.terminals[id].map { (id, $0) }
+            }),
+          approvals: client.model.approvals,
+          account: account,
+          onAction: { try await client.message($0) },
+          onRetry: { client.retryDelivery($0) },
+          onDiscard: { client.discardDelivery($0) }
+        )
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+      }
       .sensoryFeedback(.selection, trigger: sentCount)
     }
   }

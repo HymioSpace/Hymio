@@ -43,6 +43,8 @@ import SwiftUI
             TaskExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorDetailPreview") {
+            ConnectorDetailPreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
             ChatBubblePreview(account: account)
               .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioBubbleDarkPreview") ? .dark : nil)
@@ -65,6 +67,14 @@ import SwiftUI
             )
             .preferredColorScheme(
               ProcessInfo.processInfo.arguments.contains("-HymioContextDarkPreview") ? .dark : nil)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioAccountPreview") {
+            AccountExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioLogoutPreview") {
+            LogoutExperiencePreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTracePanelPreview") {
+            TracePanelExperiencePreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioNotificationPreview") {
+            NavigationStack { NotificationSettingsScreen(account: account) }
           } else if account.session != nil {
             ProductShell(account: account, client: client).equatable().id(account.session?.user_id)
           } else {

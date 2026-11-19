@@ -42,7 +42,7 @@ private enum TaskDisplayMode: Int, CaseIterable {
     case .month: return "月"
     case .week: return "周"
     case .day: return "日"
-    case .status: return "状态"
+    case .status: return "任务"
     }
   }
 
@@ -85,7 +85,7 @@ struct TasksScreen: View {
   var showAccountButton = true
   var previewMode = false
   @State private var focus = Date()
-  @State private var mode = TaskDisplayMode.month
+  @State private var mode = TaskDisplayMode.status
   @State private var statusFilter = TaskStatusFilter.all
   @State private var hourHeight: CGFloat = 72
   @State private var inbox = false
@@ -132,7 +132,7 @@ struct TasksScreen: View {
       guard next != current else { return }
       withAnimation(animation) { mode = TaskDisplayMode(rawValue: next) ?? mode }
     })
-    .navigationTitle("任务").navigationBarTitleDisplayMode(.inline)
+    .navigationTitle("任务与日程").navigationBarTitleDisplayMode(.inline)
     .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
@@ -145,10 +145,10 @@ struct TasksScreen: View {
         VStack(alignment: .leading, spacing: 4) {
           Text(
             mode == .status
-              ? "你的工作 · \(board.items.count) 项"
+              ? "按状态整理 · \(board.items.count) 项"
               : focus.formatted(.dateTime.year().month(.wide))
           ).font(.caption).foregroundStyle(Brand.muted)
-          Text(mode == .status ? "状态" : focus.formatted(.dateTime.month(.wide)))
+          Text(mode == .status ? "全部任务" : focus.formatted(.dateTime.month(.wide)))
             .font(.largeTitle.weight(.semibold)).tracking(-1)
         }
         Spacer()
@@ -173,7 +173,7 @@ struct TasksScreen: View {
             }
           })
       ) {
-        ForEach(TaskDisplayMode.allCases, id: \.rawValue) { value in
+        ForEach([TaskDisplayMode.status, .month, .week, .day], id: \.rawValue) { value in
           Text(value.title).tag(value)
         }
       }.pickerStyle(.segmented).accessibilityIdentifier("tasks.view")
@@ -842,7 +842,9 @@ struct TaskDetailScreen: View {
               {
                 Button("暂停日程", systemImage: "pause") { Task { await action("pause") } }
               }
-              Button("取消任务", systemImage: "xmark.circle") { Task { await action("cancel") } }
+              Button("取消任务", systemImage: "xmark.circle", role: .destructive) {
+                deleting = true
+              }
             }
             Text("请在对话中修改要求")
           } label: {

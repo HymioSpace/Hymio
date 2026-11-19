@@ -10,11 +10,12 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+. La
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
 - Foreground reconnect, offline progress, account/device management and connection diagnostics.
 - Pair personal Mac/Android devices from Account, then pause, resume or revoke them there.
-- A five-tab product shell with account settings behind a leading Companion avatar.
+- A two-tab product shell (Now and Chat) with Tasks, Recollections, Connections and settings grouped behind a leading profile avatar.
 - Tasks are managed through the main agent; the iOS task view displays progress and controls.
 
-The Memory tab (记忆) has understanding and original footprints, text search, direct text saving
-and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md).
+The Recollections screen under My → 记忆 has understanding and original footprints, dynamic
+model-produced filters, text search, direct text saving and an on-demand reference graph. See
+[memory space](../../spec/feature31-memory-space.md).
 iPhone connection settings include explicitly consented Calendar and HealthKit sources; HealthKit
 changes can schedule background refreshes through system-controlled observer events.
 

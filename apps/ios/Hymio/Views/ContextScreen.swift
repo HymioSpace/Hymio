@@ -1,12 +1,18 @@
 import SwiftUI
 
-private let memoryCategories: [(key: String, label: String)] = [
-  ("all", "全部"), ("work", "工作"), ("learning", "学习"), ("life", "生活"), ("uncategorized", "未分类"),
-]
-private let memorySources: [(key: String, label: String)] = [
-  ("all", "日常足迹"), ("conversation", "对话"), ("user", "手记"), ("gmail", "Gmail"),
-  ("dida", "滴答清单"), ("apple_calendar", "苹果日历"), ("apple_health", "苹果健康"), ("legacy", "其他"),
-]
+struct ContextSourceOption: Identifiable, Hashable {
+  let key: String
+  let label: String
+  var id: String { key }
+}
+
+func contextSourceLabel(_ key: String) -> String {
+  [
+    "conversation": "对话", "user": "手记", "connector": "连接来源",
+    "gmail": "Gmail", "dida": "滴答清单", "apple_calendar": "苹果日历",
+    "apple_health": "苹果健康", "kit": "应用记录", "legacy": "其他来源",
+  ][key] ?? key
+}
 
 /// A user-facing view of the context Hymio has assembled, with each synthesized
 /// statement still traceable to its source records.
@@ -38,7 +44,7 @@ struct ContextEntry: Identifiable, Hashable, Sendable {
     switch sourceKind {
     case "conversation": return "对话原话"
     case "connector": return namespace.isEmpty ? "连接服务" : connectorName(namespace)
-    case "kit": return "历史资料"
+    case "kit": return "应用记录"
     case "user": return "主动记下"
     default: return "其他来源"
     }
@@ -55,6 +61,10 @@ struct ContextEntry: Identifiable, Hashable, Sendable {
   var dateLabel: String {
     guard let date = contextDate(createdAt) else { return "" }
     return date.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+  }
+  var browsingLabels: [String] {
+    let labels = value["labels"].items.map(\.text).filter { !$0.isEmpty }
+    return labels.isEmpty ? topics : labels
   }
 
   init(_ value: JSON) {
@@ -103,6 +113,7 @@ final class ContextStore: ObservableObject {
   @Published private(set) var insightCursor = ""
   @Published private(set) var recordCursor = ""
   @Published private(set) var partial = false
+  @Published private(set) var availableSourceKeys: [String] = []
   private let account: AccountService?
   let accountService: AccountService
   private let preview: Bool
@@ -126,9 +137,25 @@ final class ContextStore: ObservableObject {
       #endif
       allPreviewInsights = insights
       allPreviewRecords = records
+      rememberSources(records)
     }
   }
   var isEmpty: Bool { insights.isEmpty && records.isEmpty }
+  var sourceOptions: [ContextSourceOption] {
+    [ContextSourceOption(key: "all", label: "全部")]
+      + availableSourceKeys.map { ContextSourceOption(key: $0, label: contextSourceLabel($0)) }
+  }
+
+  private func rememberSources(_ values: [ContextEntry]) {
+    let visible = values
+      .filter { !$0.namespace.hasPrefix("apple_health") }
+      .map(\.sourceProvider)
+      .filter { !$0.isEmpty }
+    guard !visible.isEmpty else { return }
+    availableSourceKeys = Array(Set(availableSourceKeys).union(visible)).sorted {
+      contextSourceLabel($0).localizedStandardCompare(contextSourceLabel($1)) == .orderedAscending
+    }
+  }
 
   private func search(_ target: String, cursor: String = "") async throws -> JSON {
     guard let account else { throw ServiceError.message("暂时读不到记忆。") }
@@ -165,13 +192,14 @@ final class ContextStore: ObservableObject {
     }
     if preview {
       insights = allPreviewInsights.filter {
-        (category == "all" || $0.category == category)
+        (category == "all" || $0.category == category || $0.browsingLabels.contains(category))
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
       records = allPreviewRecords.filter {
         (source == "all" || $0.sourceProvider == source)
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
       }
+      rememberSources(records)
       loading = false
       return
     }
@@ -182,6 +210,7 @@ final class ContextStore: ObservableObject {
       guard current == generation, !Task.isCancelled else { return }
       insights = a["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
       let fetched = r["items"].items.map(ContextEntry.init).filter { !$0.id.hasPrefix("_") }
+      rememberSources(fetched)
       let recent = confirmedSaves.filter {
         (source == "all" || $0.sourceProvider == source)
           && (next.isEmpty || $0.preview.localizedCaseInsensitiveContains(next))
@@ -222,6 +251,7 @@ final class ContextStore: ObservableObject {
         let known = Set(records.map(\.compositeID))
         records += items.filter { !known.contains($0.compositeID) }
         recordCursor = result["next_cursor"].text
+        rememberSources(items)
       }
     } catch { if current == generation { self.error = "未能读取更多记忆，请重试。" } }
   }
@@ -375,30 +405,21 @@ struct ContextScreen: View {
     self.onAccount = onAccount
   }
   var body: some View {
-    NavigationStack { ContextPage(store: store, onAccount: onAccount) }
+    ContextPage(store: store, onAccount: onAccount)
       .task { await store.load() }
   }
 }
 
 struct ContextPreviewScreen: View {
   @StateObject private var store: ContextStore
-  @State private var selected = ProductTab.moments
   init(account: AccountService?, empty: Bool = false) {
     _store = StateObject(
       wrappedValue: ContextStore(
         account: account ?? AccountService(), preview: true, installFixtures: !empty))
   }
   var body: some View {
-    TabView(selection: $selected) {
-      Tab("此刻", systemImage: "house.fill", value: ProductTab.today) { Color.clear }
-      Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
-        Color.clear
-      }
-      Tab("回忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
-        NavigationStack { ContextPage(store: store, onAccount: {}) }
-      }
-
-    }.tint(Brand.blue)
+    NavigationStack { ContextPage(store: store, onAccount: {}) }
+      .tint(Brand.blue)
   }
 }
 
@@ -510,11 +531,8 @@ private struct ContextPage: View {
     }
     .background(Brand.surface).navigationTitle("").navigationBarTitleDisplayMode(.inline)
     .toolbar {
-      ToolbarItem(placement: .topBarLeading) {
-        AccountButton(account: store.accountService, action: onAccount)
-      }.memoryUnframed()
       ToolbarItem(placement: .principal) {
-        Text("回忆").font(.headline).foregroundStyle(Brand.ink)
+        Text("记忆").font(.headline).foregroundStyle(Brand.ink)
       }
       ToolbarItem(placement: .topBarTrailing) {
         AddActionButton(title: "添加回忆") { showCollect = true }
@@ -547,13 +565,14 @@ private struct ContextPage: View {
 
   }
   private var understandingLabels: [(key: String, label: String)] {
-    let labels = Set(store.insights.flatMap { $0.value["labels"].items.map(\.text) })
+    let labels = Set(store.insights.flatMap(\.browsingLabels))
     return [("all", "全部")] + labels.sorted().map { ($0, $0) }
   }
   private var categoryPicker: some View {
     ScrollView(.horizontal, showsIndicators: false) {
       HStack(spacing: 9) {
-        ForEach(insights ? understandingLabels : memorySources, id: \.key) { option in
+        ForEach(insights ? understandingLabels.map { ContextSourceOption(key: $0.key, label: $0.label) }
+          : store.sourceOptions) { option in
           Button {
             Haptics.selection()
             Task {
@@ -639,11 +658,11 @@ private struct ContextPage: View {
     VStack(spacing: 16) {
       Image(systemName: insights ? "sparkle.magnifyingglass" : "bookmark")
         .font(.title2).foregroundStyle(Brand.blue)
-      Text(hasVisibleFilter ? "这里暂时没有匹配的内容" : insights ? "理解会慢慢形成" : "留下第一条足迹")
+      Text(hasVisibleFilter ? "这里暂时没有匹配的内容" : insights ? "还没有整理出的记忆" : "还没有记忆")
         .font(.title3.weight(.semibold))
       Text(hasVisibleFilter ? "清除筛选，看看其他已经留下的内容。" :
         canViewFootprints ? "原文已保存在足迹中，不必等待整理就能查看。" :
-        "想法、偏好，或一段值得保留的话，都可以从这里开始。")
+        "想法、偏好，或一段值得保留的话，都可以成为第一条记忆。")
         .font(.subheadline).foregroundStyle(Brand.muted).lineSpacing(4)
       Button(emptyActionTitle) {
         Haptics.selection()

@@ -1,4 +1,4 @@
-from hymio_backend.context.browse import browse
+from hymio_backend.context.browse import browse, card
 from hymio_backend.context.presentation import present_record, provider_of
 
 
@@ -13,6 +13,23 @@ def test_provider_labels_never_use_connection_identifiers():
     assert "4,200" in card["preview"]
     assert "private-connection" not in str(card)
     assert provider_of({"source": {"kind": "connector", "namespace": "unknown.id"}}) == "connector"
+
+
+def test_legacy_category_never_becomes_an_invented_browsing_label():
+    value = card(
+        {"id": "legacy", "kind": "artifact", "topics": []},
+        {"fields": {"category": "work", "title": "Old card"}},
+    )
+    assert value["category"] == "work"
+    assert value["labels"] == []
+
+
+def test_missing_labels_use_nostalgia_topics_without_builtin_dictionary_terms():
+    value = card(
+        {"id": "topic", "kind": "artifact", "topics": ["晚饭安排"]},
+        {"fields": {"category": "life", "title": "晚饭"}},
+    )
+    assert value["labels"] == ["晚饭安排"]
 
 
 def test_default_feed_skips_sensor_body_reads_and_provider_filter_is_specific():
