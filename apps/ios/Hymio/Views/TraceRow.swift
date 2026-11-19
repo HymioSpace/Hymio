@@ -158,6 +158,9 @@ private struct TraceToolCall: View {
         return value.isEmpty ? nil : value
       }.first ?? ""
   }
+  private var primaryLabel: String {
+    description.isEmpty ? title : description
+  }
   private var outcome: String { result?["outcome"].text ?? "running" }
 
   var body: some View {
@@ -167,18 +170,16 @@ private struct TraceToolCall: View {
           .font(.system(size: 12, weight: .medium))
           .foregroundStyle(Brand.muted)
           .frame(width: 18)
-        Text(title)
+        Text(primaryLabel)
           .font(.caption.weight(.semibold))
           .foregroundStyle(Brand.ink)
         Spacer(minLength: 6)
         ToolOutcomeLabel(outcome: outcome)
       }
-      if !description.isEmpty {
-        Text(description)
-          .font(.caption)
+      if !description.isEmpty, description != title {
+        Text(title)
+          .font(.caption2)
           .foregroundStyle(Brand.muted)
-          .lineSpacing(2)
-          .lineLimit(3)
           .padding(.leading, 26)
       }
       DisclosureGroup("调用详情") {

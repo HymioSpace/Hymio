@@ -17,6 +17,7 @@ public struct ChatMessage: Identifiable, Equatable {
   public var eventSeq = 0
   public var delivery: String?
   public var reactions: [String: String] = [:]
+  public var imageRefs: [String] = []
 }
 public struct ApprovalTarget: Equatable {
   public var kind: String
@@ -52,6 +53,7 @@ public struct Conversation {
   private var indices: [String: Int] = [:]
   /// step_id -> trace_id。step.status 先于该step 的任何输出到达，所以这里总是来得及。
   private var traces: [String: String] = [:]
+  private var pendingImageRefs: [String] = []
   public init(
     events: [Event], pending: [Command] = [], accepted: Set<String> = [], rejected: Set<String> = []
   ) {
@@ -131,6 +133,7 @@ public struct Conversation {
       }
     case "user.message":
       pauseNotice = ""
+      pendingImageRefs.removeAll()
       let id = p["user_context"]["hymio_message_id"].text
       if !id.isEmpty {
         messages.removeAll { $0.id == "local:\(id)" }
@@ -190,8 +193,21 @@ public struct Conversation {
       messages[i].streaming = false
       messages[i].thinking = false
       messages[i].calls = p["tool_calls"].items
-      if messages[i].calls.isEmpty { working = false }
-    case "tool.terminal": terminals[p["invocation_id"].text] = p
+      if messages[i].calls.isEmpty {
+        if !pendingImageRefs.isEmpty {
+          messages[i].imageRefs = pendingImageRefs
+          pendingImageRefs.removeAll()
+        }
+        working = false
+      }
+    case "tool.terminal":
+      terminals[p["invocation_id"].text] = p
+      let refs =
+        p["image_refs"].items.map(\.text)
+        + p["content"]["image_refs"].items.map(\.text)
+      pendingImageRefs = pendingImageRefs + refs.filter {
+        !$0.isEmpty && !pendingImageRefs.contains($0)
+      }
     case "permission.requested":
       let target = p["target"]
       let description = p["arguments"]["description"].text.trimmingCharacters(
