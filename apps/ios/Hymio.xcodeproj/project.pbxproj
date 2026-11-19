@@ -39,7 +39,6 @@
 		B87BB39B3154337D804A5C42 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C904342F375E042265BCE773 /* PrivacyInfo.xcprivacy */; };
 		BA5EF39B352AA1FDA3068188 /* LiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4577B88C8A0BA2E242461A90 /* LiveActivityController.swift */; };
 		BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31402 /* ProductShell.swift */; };
-		BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA902D5620B4EAE99A31404 /* KitsScreen.swift */; };
 		C037C0000000000000000001 /* ConnectorsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C037C0000000000000000002 /* ConnectorsScreen.swift */; };
 		C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */; };
 		C0A3E7A11F4B427AB8D11209 /* HealthEventSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */; };
@@ -117,7 +116,6 @@
 		B975772EABFDCDF38EC03F80 /* Release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		BCB7B404ED893162D34730F1 /* HymioWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = HymioWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		BDA902D5620B4EAE99A31402 /* ProductShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProductShell.swift; path = Views/ProductShell.swift; sourceTree = "<group>"; };
-		BDA902D5620B4EAE99A31404 /* KitsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KitsScreen.swift; path = Views/KitsScreen.swift; sourceTree = "<group>"; };
 		C037C0000000000000000002 /* ConnectorsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ConnectorsScreen.swift; sourceTree = "<group>"; };
 		C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ContextScreen.swift; path = Views/ContextScreen.swift; sourceTree = "<group>"; };
 		C0A3E7A11F4B427AB8D11208 /* HealthEventSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/HealthEventSync.swift; sourceTree = "<group>"; };
@@ -228,7 +226,6 @@
 				A08D683071705B687119808D /* ChatScreen.swift */,
 				B491A065D5A6AC13DD7E0712 /* TasksScreen.swift */,
 				BDA902D5620B4EAE99A31402 /* ProductShell.swift */,
-				BDA902D5620B4EAE99A31404 /* KitsScreen.swift */,
 				C0A3E7A11F4B427AB8D11202 /* ContextScreen.swift */,
 				14915AB0360238B6E30C3640 /* Companion.swift */,
 				1419663CB9F728D5B1A10D48 /* TraceRow.swift */,
@@ -321,6 +318,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 10C18D3DDF5F74E669826077 /* Build configuration list for PBXNativeTarget "Hymio" */;
 			buildPhases = (
+				A320F63170DC4F438721B581 /* Validate release backend */,
 				89DE61F4D429F8098AFD1F6B /* Sources */,
 				7C1A08234A536A1C65EFD130 /* Frameworks */,
 				F6E59AAF787B8A5707E9C42C /* Resources */,
@@ -412,6 +410,25 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		A320F63170DC4F438721B581 /* Validate release backend */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/validate-release-config.sh",
+			);
+			name = "Validate release backend";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$CONFIGURATION\" = \"Release\" ]; then\n  /bin/sh \"$SRCROOT/scripts/validate-release-config.sh\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		5D9D988DF331281F4DA7F34A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -452,7 +469,6 @@
 				74C0E0503C7075741A87F421 /* ChatScreen.swift in Sources */,
 				B491A065D5A6AC13DD7E0711 /* TasksScreen.swift in Sources */,
 				BDA902D5620B4EAE99A31401 /* ProductShell.swift in Sources */,
-				BDA902D5620B4EAE99A31403 /* KitsScreen.swift in Sources */,
 				C0A3E7A11F4B427AB8D11201 /* ContextScreen.swift in Sources */,
 				2C7DEF380E999F886E17F4CC /* Companion.swift in Sources */,
 				527B6826FDCFF522A709E551 /* TraceRow.swift in Sources */,

@@ -39,9 +39,11 @@ def generate(path):
         else service_token.resolve()
     )
     try:
-        service_token_container = "/config/" + service_token.relative_to(config).as_posix()
+        service_token.relative_to(config)
     except ValueError as exc:
-        raise ValueError("service_token_file must be inside backend_config_dir") from exc
+        raise ValueError(
+            "service_token_file must be inside backend_config_dir"
+        ) from exc
     if backend.get("computer_provider") not in ("daytona", "e2b", "device_api"):
         raise ValueError("Cloud computer_provider must be daytona, device_api or e2b")
     if backend.get("host") != "0.0.0.0" or backend.get("port", 8080) != 8080:
@@ -89,8 +91,10 @@ def generate(path):
     OUTPUT.mkdir(exist_ok=True, mode=0o700)
     (OUTPUT / "client.toml").write_text(f'backend_url = "https://{api}"\n')
     web_routes = " root * /srv\n try_files {path} /index.html\n file_server\n"
+    retired_routes = " @retired_kits path /kits /kits/*\n handle @retired_kits {\n  respond 404\n }\n"
     private_routes = (
         " @private path /internal/*\n handle @private {\n  respond 404\n }\n"
+        + retired_routes
     )
     if web == api:
         routes = (
@@ -100,14 +104,14 @@ def generate(path):
             "  try_files {path} /index.html\n  file_server\n }\n"
             " @backend path /health /auth/* /agent/* /context/* /oath-biz/* "
             "/devices /devices/* "
-            "/connectors /connectors/* /tasks /notifications /kits /kits/* "
+            "/connectors /connectors/* /tasks /notifications "
             "/attachments /attachments/* /settings/* /telemetry/*\n"
             " handle @backend {\n  reverse_proxy backend:8080\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
         )
     else:
         routes = (
-            f"{web} {{\n handle /admin/api/* {{\n  reverse_proxy backend:8080\n }}\n"
+            f"{web} {{\n{retired_routes} handle /admin/api/* {{\n  reverse_proxy backend:8080\n }}\n"
             " handle_path /admin/* {\n  root * /srv/admin\n"
             "  try_files {path} /index.html\n  file_server\n }\n"
             f" handle {{\n{web_routes} }}\n}}\n"
@@ -119,29 +123,12 @@ def generate(path):
     compose = {
         "name": "hymio-cloud",
         "services": {
-            "kit-host": {
-                "build": {
-                    "context": str(ROOT),
-                    "dockerfile": "services/kit-host/Dockerfile",
-                },
-                "restart": "unless-stopped",
-                "volumes": [f"{config}:/config:ro", "kit-data:/data"],
-                "environment": {
-                    "KIT_HOST_DATABASE": "/data/kits.sqlite3",
-                    "KIT_HOST_HOST": "0.0.0.0",
-                    "KIT_HOST_PORT": "8090",
-                    "KIT_HOST_TOKEN_FILE": service_token_container,
-                },
-                "security_opt": ["no-new-privileges:true"],
-                "cap_drop": ["ALL"],
-            },
             "backend": {
                 "build": {
                     "context": str(ROOT),
                     "dockerfile": "deploy/cloud/Backend.Dockerfile",
                 },
                 "restart": "unless-stopped",
-                "depends_on": {"kit-host": {"condition": "service_healthy"}},
                 "volumes": [f"{config}:/config:ro", "backend-data:/data"],
                 "ports": [f"{bind}:{ports[1]}:8080"],
                 "extra_hosts": ["host.docker.internal:host-gateway"],
@@ -168,7 +155,6 @@ def generate(path):
             name: {}
             for name in (
                 "backend-data",
-                "kit-data",
                 "caddy-data",
                 "caddy-config",
             )
@@ -197,7 +183,6 @@ def generate(path):
             if runtime_network
             else "http://host.docker.internal:19090"
         ),
-        "HYMIO_KITS_URL": "http://kit-host:8090",
         "GMAIL_CLIENT_ID": "${GMAIL_CLIENT_ID:-}",
         "GMAIL_CLIENT_SECRET": "${GMAIL_CLIENT_SECRET:-}",
         "DIDA_CLIENT_ID": "${DIDA_CLIENT_ID:-}",
@@ -236,6 +221,29 @@ def generate(path):
     return target
 
 
+def remove_retired_kit_host():
+    """Retire this project's old application service without deleting stored data."""
+    result = subprocess.run(
+        [
+            "docker",
+            "ps",
+            "-aq",
+            "--filter",
+            "label=com.docker.compose.project=hymio-cloud",
+            "--filter",
+            "label=com.docker.compose.service=kit-host",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    containers = result.stdout.split()
+    if any(not re.fullmatch(r"[0-9a-f]{12,64}", value) for value in containers):
+        raise ValueError("Unexpected retired container identifier")
+    if containers:
+        subprocess.run(["docker", "rm", "-f", *containers], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -262,6 +270,8 @@ def main():
     subprocess.run(
         ["docker", "compose", "-f", str(target), *commands[args.command]], check=True
     )
+    if args.command == "start":
+        remove_retired_kit_host()
 
 
 if __name__ == "__main__":

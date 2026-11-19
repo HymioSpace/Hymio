@@ -1,6 +1,6 @@
 # Hymio for iOS
 
-A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, built with Xcode 26.2.
+A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+. Last verified with Xcode 27.2 and an iOS 27.2 Simulator.
 
 - Account login and registration using the same Hymio backend as Web/Desktop.
 - Native interaction cards from the shared Hymio UI catalog, with explicit chat actions and presentation-only streaming buffers.
@@ -10,13 +10,14 @@ A native SwiftUI channel for your one continuous Hymio conversation. iOS 18+, bu
 - Per-account durable event cache, secure credentials in Keychain and command replay with stable IDs.
 - Foreground reconnect, offline progress, account/device management and connection diagnostics.
 - Pair personal Mac/Android devices from Account, then pause, resume or revoke them there.
-- A five-tab product shell with account settings behind a leading Companion avatar.
-- Installed or generated React applications with bounded Python operations and an
-  account-scoped `HymioKit.call` bridge.
-- Per-application coding conversations with published version summaries.
+- A compact Now / Chat / My product dock with branded marks; Tasks, Recollections, Connections and settings are grouped behind My.
+- Tasks are managed through the main agent; the iOS task view displays progress and controls.
 
-The Memory tab (记忆) has understanding and original footprints, text search, direct text saving
-and an on-demand reference graph. See [memory space](../../spec/feature31-memory-space.md).
+The Recollections screen under My → 记忆 has understanding and original footprints, dynamic
+model-produced filters, text search, direct text saving and an on-demand reference graph. See
+[memory space](../../spec/feature31-memory-space.md).
+Exploration activity expands inline as a plain-language process summary; raw trace and execution
+debugging stay outside the conversation.
 iPhone connection settings include explicitly consented Calendar and HealthKit sources; HealthKit
 changes can schedule background refreshes through system-controlled observer events.
 
@@ -100,29 +101,38 @@ xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
 
 The UI test registers a synthetic account against the configured local backend, chats twice across app termination/relaunch, and signs out. It requires the running stack and a working model configuration. The test revokes its own devices after running; generated accounts remain in the development identity provider. Automatically provisioned cloud computers use real deployment resources, so run against a development deployment.
 
-The focused Kit bridge test installs the first-party ledger, writes from its Web page through WKWebView,
-checks the same record through the authenticated business API, writes from the business API, and
-reopens the page to verify the same data appears. It needs the local Backend and Kit Host but no
-model call:
-
-The Kit Host React build uses pinned local Node dependencies. Install them once:
-
-```sh
-npm ci --prefix services/kit-host/web
-```
+Task smoke tests do not need a running backend:
 
 ```sh
 xcodebuild -project apps/ios/Hymio.xcodeproj -scheme Hymio \
-  -destination 'platform=iOS Simulator,name=iPhone 16e' \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-  -only-testing:HymioUITests/HymioUITests/testKitWebBridgeAndBusinessDataSync test
+  -only-testing:HymioUITests/HymioUITests/testTasksAreAgentManagedAndApplicationsAreRemoved \
+  -only-testing:HymioUITests/HymioUITests/testTaskSnapshotRestoresAndFailedMutationRollsBack \
+  -only-testing:HymioUITests/HymioUITests/testTasksSwitchCalendarAndStatusViews test
 ```
+
+On 2026-11-18, the task UI and shared-core tests passed, and the full app built and
+launched on iPhone 18 Pro Simulator. The original Xcode project also resolved its
+remote packages and produced a signed Release archive for a physical iOS device.
+This does not verify a TestFlight upload or physical-device push.
 
 Core models and projection are independently testable through Swift Package Manager. The Xcode project is checked in; no project generator is needed. Xcode resolves the pinned [MarkdownUI 2.4.1](https://github.com/gonzalezreal/swift-markdown-ui/releases/tag/2.4.1) package on the first build. Images use app-owned providers, with no credentials sent to external image hosts.
 
+If Xcode reports `Missing package product 'MarkdownUI'`, resolve packages for the
+original project, then retry Archive:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -resolvePackageDependencies \
+  -project apps/ios/Hymio.xcodeproj -scheme Hymio
+```
+
 The privacy manifest declares app-scoped UserDefaults use for the installation ID ([Apple's required-reason API guidance](https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype)). Complete the distribution privacy labels and privacy-policy URL for your actual backend: accounts and conversation content are sent to your deployment and model provider.
 
-Archive checks the configured HTTPS backend before building. After changing an endpoint, create a new archive and upload a higher build number; an existing archive retains its original endpoint.
+Release builds check the configured HTTPS backend in a build phase that fails the
+build for missing or placeholder endpoints. After changing an endpoint, create a new
+archive and upload a higher build number; an existing archive retains its original endpoint.
 
 ## TestFlight distribution
 
@@ -166,9 +176,6 @@ Use `-HymioApprovalPreview` for a synthetic approval request. Add
 accessibility text sizing without signing in.
 For actual persistence across clients, `backend/scripts/memory_preview.py` serves a loopback-only
 synthetic Hymio/Nostalgia stack; the Web preview origin is restricted to `http://127.0.0.1:1422`.
-
-Application previews use `-HymioKitAppPreview` for the WebView shell and
-`-HymioKitEditorPreview` for the coding conversation and published version history.
 
 Use `-HymioLiveActivityPreview` to start a synthetic aggregate Live Activity without signing in.
 Return to the Home Screen to inspect the Dynamic Island, then lock the Simulator to inspect the

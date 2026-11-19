@@ -113,20 +113,76 @@ struct ConnectionStatus: View {
   }
 }
 
+struct HymioNowMark: View {
+  var size: CGFloat = 24
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .fill(
+          LinearGradient(
+            colors: [Brand.blue.opacity(0.16), Brand.softBlue],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+      Circle()
+        .trim(from: 0.08, to: 0.82)
+        .stroke(Brand.blue.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
+        .rotationEffect(.degrees(-90))
+        .padding(2.5)
+      Image(systemName: "sparkles")
+        .font(.system(size: size * 0.42, weight: .semibold))
+        .foregroundStyle(Brand.blue)
+    }
+    .frame(width: size, height: size)
+    .accessibilityHidden(true)
+  }
+}
+
+struct HymioProfileMark: View {
+  let initial: String
+  var size: CGFloat = 28
+
+  var body: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: size * 0.33, style: .continuous)
+        .fill(
+          LinearGradient(
+            colors: [Brand.ink, Brand.blue],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+      RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+        .stroke(Color.white.opacity(0.34), lineWidth: 0.7)
+        .padding(size * 0.12)
+      Text(initial)
+        .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+        .foregroundStyle(.white)
+      Circle()
+        .fill(Brand.noteLine)
+        .frame(width: size * 0.18, height: size * 0.18)
+        .overlay(Circle().stroke(Brand.raised, lineWidth: 1))
+        .offset(x: size * 0.38, y: -size * 0.38)
+    }
+    .frame(width: size, height: size)
+    .accessibilityHidden(true)
+  }
+}
+
 struct AccountButton: View {
   @ObservedObject var account: AccountService
   let action: () -> Void
 
   var body: some View {
     Button(action: { Haptics.selection(); action() }) {
-      Image(systemName: "sidebar.left")
-        .font(.system(size: 18, weight: .regular)).foregroundStyle(Brand.ink)
-        .frame(width: 44, height: 44)
+      HymioProfileMark(
+        initial: {
+          let name = account.session?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+          return name.isEmpty ? "H" : String(name.prefix(1)).uppercased()
+        }(),
+        size: 31)
+      .frame(width: 44, height: 44)
     }
     .buttonStyle(AccountAvatarStyle())
     .contentShape(Rectangle())
-    .accessibilityLabel("账号与设置")
-    .accessibilityHint("打开个人资料、设备和偏好设置")
+    .accessibilityLabel("我的")
+    .accessibilityHint("打开任务、记忆、连接服务和设置")
   }
 }
 

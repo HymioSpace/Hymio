@@ -773,3 +773,123 @@
   font-size: 14px;
   line-height: 1.6;
 }
+
+/* Dense owner-scoped execution graph. */
+.task-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.task-facts div {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.task-facts dt,
+.task-agent-event small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-facts dd {
+  margin: 5px 0 0;
+  font-size: 13px;
+}
+.task-detail details {
+  padding: 10px 0;
+}
+.task-detail summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.task-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  max-height: 320px;
+  overflow: auto;
+}
+.task-agent-node {
+  border-top: 1px solid var(--line);
+}
+.task-agent-node summary span {
+  margin-left: 10px;
+  color: var(--muted);
+}
+.task-agent-node p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.task-leaves {
+  margin-left: 18px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+.task-agent-event {
+  padding: 8px 0;
+}
+
+.task-stage-track {
+  display: flex;
+  padding: 16px 0;
+  list-style: none;
+  gap: 8px;
+}
+.task-stage-track li {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  position: relative;
+  font-size: 11px;
+}
+.task-stage-track li:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: calc(50% + 18px);
+  width: calc(100% - 28px);
+  height: 1px;
+  background: var(--line);
+}
+.task-stage-track li.reached {
+  color: var(--blue);
+}
+.task-agent-node > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.task-agent-node > summary strong {
+  flex: 1;
+  font-weight: 500;
+}
+.task-agent-node > summary strong small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
+.task-agent-node > summary::after {
+  content: '›';
+  font-size: 22px;
+}
+.task-agent-node[open] > summary::after {
+  transform: rotate(90deg);
+}
+.task-objective-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+}
+.task-technical {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  color: var(--muted);
+}

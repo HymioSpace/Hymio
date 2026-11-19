@@ -96,6 +96,17 @@ struct MessageRow: View {
               in: UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 6,
                 bottomTrailingRadius: 20, topTrailingRadius: 20))
           }
+          if !message.imageRefs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              ForEach(Array(message.imageRefs.enumerated()), id: \.offset) { _, reference in
+                ProtectedImage(
+                  source: "/devices/media/" + reference,
+                  account: account)
+                  .frame(maxWidth: 520)
+                  .accessibilityLabel("工具截图")
+              }
+            }
+          }
           if !message.calls.isEmpty {
             DisclosureGroup(isExpanded: $expanded) {
               VStack(alignment: .leading, spacing: 6) {
@@ -193,7 +204,7 @@ struct MessageRow: View {
   }
   private func toolTitle(name: String, arguments: JSON) -> String {
     let description = arguments["description"].text.trimmingCharacters(in: .whitespacesAndNewlines)
-    return name == "bash" && !description.isEmpty ? description : toolName(name)
+    return !description.isEmpty ? description : toolName(name)
   }
 }
 struct ProtectedImage: View {

@@ -84,7 +84,7 @@ export function calendarEvents(tasks: Work[], days: Date[], now = new Date()): C
       }
     };
     for (const run of task.runs)
-      if (run.due_at > 0) insert(new Date(run.due_at * 1000), run.status);
+      if (run.due_at != null && run.due_at > 0) insert(new Date(run.due_at * 1000), run.status);
     if (task.schedule.mode === 'once' && task.schedule.at)
       insert(
         new Date(task.schedule.at),

@@ -1,6 +1,7 @@
 import Combine
 import CryptoKit
 import SwiftUI
+import UIKit
 
 @MainActor final class TaskBoard: ObservableObject {
   @Published var items: [JSON] = []
@@ -172,7 +173,7 @@ import SwiftUI
   }
 }
 
-enum ProductTab: Hashable { case today, chat, tasks, moments, kits }
+enum ProductTab: Hashable { case today, chat, my }
 
 struct ProductShell: View, Equatable {
   static func == (lhs: Self, rhs: Self) -> Bool {
@@ -185,27 +186,33 @@ struct ProductShell: View, Equatable {
   @StateObject private var board = TaskBoard()
   @State private var selected: ProductTab = .today
   @State private var notificationTask: JSON?
-  @State private var showAccount = false
   @State private var showTasks = false
-  @State private var showKits = false
+  @State private var keyboardVisible = false
   @Environment(\.scenePhase) private var scene
 
   var body: some View {
-    TabView(selection: $selected) {
-      Tab("此刻", systemImage: "house.fill", value: ProductTab.today) {
+    VStack(spacing: 0) {
+      Group {
+        switch selected {
+        case .today:
         HomeScreen(
           account: account, client: client, board: board, selected: $selected,
-          onAccount: { showAccount = true }, onTasks: { showTasks = true }, onKits: { showKits = true })
+          onAccount: {}, onTasks: { showTasks = true })
+        case .chat:
+          ChatScreen(account: account, client: client, onAccount: {})
+        case .my:
+          AccountScreen(
+            account: account, client: client, taskBoard: board, showsCloseButton: false)
+        }
       }
-      Tab("对话", systemImage: "bubble.left.and.bubble.right.fill", value: ProductTab.chat) {
-        ChatScreen(account: account, client: client, onAccount: { showAccount = true })
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      if !keyboardVisible {
+        ProductDock(
+          selected: $selected,
+          name: account.session?.displayName ?? "")
+          .transition(.move(edge: .bottom).combined(with: .opacity))
       }
-      Tab("回忆", systemImage: "book.closed.fill", value: ProductTab.moments) {
-        ContextScreen(account: account, onAccount: { showAccount = true })
-      }
-
     }
-    .toolbarBackground(.ultraThinMaterial, for: .tabBar)
     .task(id: scene) {
       #if DEBUG
       if previewMode { installExperienceFixture(board); return }
@@ -221,18 +228,20 @@ struct ProductShell: View, Equatable {
     .onChange(of: notifications.destination) { _, destination in
       open(destination)
     }
+    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+      withAnimation(.easeOut(duration: 0.16)) { keyboardVisible = true }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+      withAnimation(.easeOut(duration: 0.2)) { keyboardVisible = false }
+    }
     .onAppear { open(notifications.destination) }
     .overlay(alignment: .bottom) {
       ShellAgentStatus(account: account, client: client, board: board, selected: $selected)
-    }
-    .sheet(isPresented: $showAccount) {
-      AccountScreen(account: account, client: client, taskBoard: board)
     }
     .sheet(isPresented: $showTasks) {
       NavigationStack { TasksScreen(account: account, board: board, onAccount: {}, showAccountButton: false)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { showTasks = false } } } }
     }
-    .sheet(isPresented: $showKits) { KitsScreen(account: account, onAccount: {}, showAccountButton: false) }
     .sheet(isPresented: Binding(get: { notificationTask != nil }, set: { if !$0 { notificationTask = nil } })) {
       if let item = notificationTask {
         NavigationStack { TaskDetailScreen(account: account, taskID: item["id"].text, initial: item, board: board) }
@@ -252,20 +261,85 @@ struct ProductShell: View, Equatable {
   }
 }
 
+private struct ProductDock: View {
+  @Binding var selected: ProductTab
+  let name: String
+
+  private var initials: String {
+    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return value.isEmpty ? "H" : String(value.prefix(1)).uppercased()
+  }
+
+  var body: some View {
+    HStack(spacing: 4) {
+      dockButton(.today, title: "此刻") {
+        HymioNowMark(size: 24)
+      }
+      dockButton(.chat, title: "对话") {
+        Companion(size: 26)
+      }
+      dockButton(.my, title: "我的") {
+        HymioProfileMark(initial: initials, size: 27)
+      }
+    }
+    .padding(6)
+    .background(.regularMaterial, in: Capsule())
+    .overlay(Capsule().strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.6))
+    .shadow(color: .black.opacity(0.06), radius: 12, y: 3)
+    .padding(.horizontal, 24)
+    .padding(.top, 7)
+    .padding(.bottom, 5)
+    .background(
+      LinearGradient(
+        colors: [Brand.surface.opacity(0), Brand.surface.opacity(0.96), Brand.surface],
+        startPoint: .top, endPoint: .bottom)
+    )
+  }
+
+  private func dockButton<Icon: View>(
+    _ tab: ProductTab, title: String, @ViewBuilder icon: () -> Icon
+  ) -> some View {
+    let isSelected = selected == tab
+    return Button {
+      Haptics.selection()
+      withAnimation(.snappy(duration: 0.24, extraBounce: 0.05)) {
+        selected = tab
+      }
+    } label: {
+      VStack(spacing: 3) {
+        icon()
+          .frame(height: 26)
+        Text(title).font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+      }
+      .foregroundStyle(isSelected ? Brand.blue : Brand.muted)
+      .frame(maxWidth: .infinity, minHeight: 48)
+      .background(isSelected ? Brand.softBlue : Color.clear, in: Capsule())
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
+  }
+}
+
 enum TaskLane: Hashable {
-  case attention, active, scheduled, inbox, finished
+  case attention, active, scheduled, other, finished
 }
 
 func taskLane(_ item: JSON) -> TaskLane {
   let status = taskStatus(item)
-  if ["blocked", "failed"].contains(status) { return .attention }
-  if ["running", "ready", "delivering"].contains(status) { return .active }
-  if ["succeeded", "cancelled", "expired"].contains(status) { return .finished }
-  if ["now", ""].contains(item["schedule"]["mode"].text) { return .inbox }
-  return .scheduled
+  if ["blocked", "failed", "expired"].contains(status) { return .attention }
+  if ["queued", "running", "ready", "delivering", "waiting"].contains(status) { return .active }
+  if ["succeeded", "cancelled", "closed"].contains(status) { return .finished }
+  if item["state"].text == "paused" { return .other }
+  let mode = item["schedule"]["mode"].text
+  if ["daily", "weekly", "once"].contains(mode), taskSortDate(item) < .greatestFiniteMagnitude {
+    return .scheduled
+  }
+  return .other
 }
 
 func taskSortDate(_ item: JSON) -> Double {
+  if item["next_due_at"].double > 0 { return item["next_due_at"].double }
   if let due = item["runs"].items.first?["due_at"].double, due > 0 { return due }
   if item["schedule"]["mode"].text == "once" {
     let text = item["schedule"]["at"].text
@@ -285,9 +359,7 @@ struct HomeScreen: View {
   @Binding var selected: ProductTab
   let onAccount: () -> Void
   var onTasks: () -> Void = {}
-  var onKits: () -> Void = {}
   var previewMode = false
-  @State private var applications: [JSON] = []
   @State private var openedTask: JSON?
   @State private var agent = HomeAgentSnapshot()
   @State private var decisionPage: String?
@@ -333,26 +405,14 @@ struct HomeScreen: View {
   var body: some View {
     NavigationStack {
       ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 6) {
-              Text(Date.now.formatted(.dateTime.month().day().weekday(.wide)))
-                .font(.caption).foregroundStyle(Brand.muted)
-              Text("Hymio").font(.system(size: 38, weight: .semibold)).tracking(-1.4)
-              if agent.working || !active.isEmpty {
-                Label("正在推进 \(max(active.count, 1)) 件事", systemImage: "circle.dotted")
-                  .font(.subheadline).foregroundStyle(Brand.blue)
-              }
-            }
-            Spacer()
-            VStack(spacing: 5) {
-              Companion(size: 86, mood: agent.working ? .working : .greeting)
-            }
-          }.padding(.top, 12).unredacted()
+        LazyVStack(alignment: .leading, spacing: 14) {
+          HomeHeader(
+            date: Date.now.formatted(.dateTime.weekday(.wide).month().day()),
+            working: agent.working || !active.isEmpty,
+            activeCount: max(active.count, 1))
           if !decisions.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            HomeModule("等你决定", caption: "只需要回一个选择") {
               HStack {
-                Text("等你决定").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
                 Spacer()
                 Button("查看全部 · \(decisions.count)") { allDecisions = true }
                   .font(.caption).frame(minHeight: 36).accessibilityIdentifier("home.decisions.all")
@@ -368,7 +428,7 @@ struct HomeScreen: View {
               if decisions.count > 1 {
                 HStack(spacing: 6) {
                   ForEach(Array(decisions.prefix(7))) { item in
-                    Circle().fill((decisionPage ?? decisions.first?.id) == item.id ? Brand.blue : Brand.line)
+                    Circle().fill(decisionDotColor(item))
                       .frame(width: 5, height: 5)
                   }
                   Spacer()
@@ -377,42 +437,52 @@ struct HomeScreen: View {
               }
             }
           } else if board.items.isEmpty && agent.lastReply.isEmpty && !agent.working {
-            Button(action: startConversation) {
-              HStack {
-                Text("开始一段对话").font(.headline)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-              }.foregroundStyle(Brand.blue).padding(20)
-                .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-            }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+            HomeModule("从一句话开始", caption: "不用先想清楚，我会陪你整理") {
+              Button(action: startConversation) {
+                HStack(spacing: 12) {
+                  Companion(size: 42)
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text("现在想做什么？").font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
+                    Text("说出下一步，或只是告诉我此刻发生的事。")
+                      .font(.caption).foregroundStyle(Brand.muted)
+                  }
+                  Spacer(minLength: 0)
+                  Image(systemName: "arrow.up.right").foregroundStyle(Brand.blue)
+                }
+              }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
+            }
           }
-          agentTile
-          scheduleTile
-            .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line, lineWidth: 0.5))
-          if !applications.isEmpty { commonApplications }
+          HomeModule(!active.isEmpty || agent.working ? "正在发生" : "最近进展",
+            caption: active.isEmpty && !agent.working ? nil : "\(active.count) 件事在推进") {
+            agentOverview
+          }.accessibilityIdentifier("home.agent")
+          HomeModule("接下来", caption: upcoming.isEmpty ? "还没有安排" : "最近的日程") {
+            scheduleOverview
+          }.accessibilityIdentifier("home.schedule")
           if let idea = board.suggestions.first(where: {
             $0["state"].text == "pending" && !$0["proposal"]["record_ids"].items.isEmpty
               && !$0["proposal"]["dream_id"].text.isEmpty && !$0["proposal"]["title"].text.isEmpty
-          }) { inspiration(idea) }
+          }) {
+            HomeModule("一点想法", caption: "从最近的记忆里长出来") {
+              inspirationContent(idea)
+            }
+          }
           if !board.error.isEmpty {
             Button(board.error + " 点击重试") { Task { await board.refresh(account) } }
               .font(.caption).foregroundStyle(Brand.muted).frame(minHeight: 44)
           }
-        }.padding(.horizontal, 22).padding(.bottom, 28).frame(maxWidth: 620).frame(maxWidth: .infinity)
+        }.padding(.horizontal, 18).padding(.top, 4).padding(.bottom, 30)
+          .frame(maxWidth: 620).frame(maxWidth: .infinity)
           .redacted(reason: !board.loaded && board.error.isEmpty ? .placeholder : [])
           .allowsHitTesting(board.loaded || !board.error.isEmpty)
       }
       .background(Brand.base)
       .onReceive(client.$ready.combineLatest(client.$phase, client.$model).map(HomeAgentSnapshot.init).removeDuplicates()) { agent = $0 }
       .task {
-        if let result = try? await account.request("kits") {
-          applications = Array(result["kits"].items.filter { $0["installed"].flag }.prefix(4))
-        }
+
       }
       .navigationTitle("").navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(.regularMaterial, for: .navigationBar)
-      .toolbar { ToolbarItem(placement: .topBarLeading) { AccountButton(account: account, action: onAccount) }.accountUnframed() }
       .refreshable { await board.refresh(account) }
       .sheet(isPresented: Binding(get: { selectedIdea != nil }, set: { if !$0 { selectedIdea = nil } })) {
         if let idea = selectedIdea { inspirationDetail(idea) }
@@ -430,6 +500,79 @@ struct HomeScreen: View {
       }
     }
   }
+
+  @ViewBuilder private var agentOverview: some View {
+    if let task = active.first ?? recent.first {
+      Button { Haptics.selection(); openedTask = task } label: {
+        HomeStatusRow(
+          symbol: agent.working || !active.isEmpty ? "waveform" : "checkmark.circle",
+          tint: agent.working || !active.isEmpty ? Brand.blue : Brand.muted,
+          title: task["title"].text,
+          detail: taskHomeDetail(task),
+          showsChevron: true)
+      }.buttonStyle(.plain)
+    } else if !agent.lastReply.isEmpty {
+      Button { Haptics.selection(); selected = .chat } label: {
+        HomeStatusRow(
+          symbol: "bubble.left", tint: Brand.blue, title: "最近一次对话",
+          detail: agent.lastReply, showsChevron: true)
+      }.buttonStyle(.plain)
+    } else {
+      Button { Haptics.selection(); selected = .chat } label: {
+        HomeStatusRow(
+          symbol: "moon.zzz", tint: Brand.muted, title: "现在很安静",
+          detail: "有新进展时会出现在这里。", showsChevron: true)
+      }.buttonStyle(.plain)
+    }
+  }
+
+  @ViewBuilder private var scheduleOverview: some View {
+    if upcoming.isEmpty {
+      Button { Haptics.selection(); onTasks() } label: {
+        HomeStatusRow(
+          symbol: "calendar", tint: Brand.muted, title: "暂无安排",
+          detail: "需要时可以再和我说。", showsChevron: true)
+      }.buttonStyle(.plain)
+    } else {
+      ForEach(Array(upcoming.prefix(3)), id: \.self) { item in
+        Button { Haptics.selection(); openedTask = item } label: {
+          HomeStatusRow(
+            symbol: "calendar", tint: Brand.blue,
+            title: item["title"].text,
+            detail: taskScheduleLabel(item),
+            showsChevron: true)
+        }.buttonStyle(.plain)
+      }
+    }
+  }
+
+  private func taskHomeDetail(_ item: JSON) -> String {
+    let run = item["runs"].items.first ?? .null
+    return [run["next_step"].text, run["progress"].text, item["objective"].text]
+      .first { !$0.isEmpty } ?? "正在处理"
+  }
+
+  private func decisionDotColor(_ item: Decision) -> Color {
+    (decisionPage ?? decisions.first?.id) == item.id ? Brand.blue : Brand.line
+  }
+
+  private func taskScheduleLabel(_ item: JSON) -> String {
+    let due = taskSortDate(item)
+    guard due.isFinite else { return "时间待确认" }
+    return Date(timeIntervalSince1970: due).formatted(
+      .dateTime.month(.abbreviated).day().hour().minute())
+  }
+
+  private func inspirationContent(_ idea: JSON) -> some View {
+    Button { selectedIdea = idea } label: {
+      HomeStatusRow(
+        symbol: "sparkles", tint: Brand.blue,
+        title: idea["proposal"]["title"].text,
+        detail: "基于 \(idea["proposal"]["record_ids"].items.count) 条足迹",
+        showsChevron: true)
+    }.buttonStyle(.plain).accessibilityIdentifier("home.inspiration")
+  }
+
   private func decisionCard(_ item: Decision) -> some View {
     Button {
       Haptics.selection()
@@ -477,75 +620,6 @@ struct HomeScreen: View {
       .contentShape(Rectangle()).accessibilityIdentifier("home.decision.row." + item.id)
   }
 
-  private func moduleHeading(_ title: String) -> some View {
-    HStack {
-      Text(title).font(.headline).foregroundStyle(Brand.ink)
-      Spacer(minLength: 0)
-      Image(systemName: "chevron.right").font(.system(size: 10, weight: .medium)).foregroundStyle(Brand.muted)
-    }.frame(minHeight: 24)
-  }
-  private var scheduleTile: some View {
-    Button { Haptics.selection(); onTasks() } label: {
-      VStack(alignment: .leading, spacing: 18) {
-        moduleHeading("接下来")
-        if upcoming.isEmpty {
-          HStack {
-            Text("暂无安排").font(.subheadline).foregroundStyle(Brand.muted)
-            Spacer()
-            Text("添加安排").font(.subheadline.weight(.medium)).foregroundStyle(Brand.blue)
-          }.padding(.vertical, 6)
-        } else {
-          ForEach(Array(upcoming.prefix(3)), id: \.self) { item in
-            let due = taskSortDate(item)
-            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(alignment: .top, spacing: 14))
-            layout {
-              VStack(alignment: .leading, spacing: 3) {
-                Text(due.isFinite ? Date(timeIntervalSince1970: due).formatted(.dateTime.hour().minute()) : "待定")
-                  .font(.system(.subheadline, design: .rounded, weight: .semibold)).monospacedDigit().foregroundStyle(Brand.ink).lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                if due.isFinite && !Calendar.current.isDateInToday(Date(timeIntervalSince1970: due)) {
-                  Text(Date(timeIntervalSince1970: due).formatted(.dateTime.month().day()))
-                    .font(.caption2).foregroundStyle(Brand.muted)
-                }
-              }.frame(width: typeSize.isAccessibilitySize ? nil : 58, alignment: .leading)
-              if !typeSize.isAccessibilitySize { RoundedRectangle(cornerRadius: 2).fill(Brand.blue).frame(width: 3, height: 34) }
-              Text(item["title"].text).font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
-                .lineLimit(typeSize.isAccessibilitySize ? nil : 2).frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(.vertical, 3)
-          }
-        }
-      }.padding(20).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-    }.buttonStyle(.plain).accessibilityIdentifier("home.schedule")
-  }
-  private var agentTile: some View {
-    Button { Haptics.selection(); selected = .chat } label: {
-      VStack(alignment: .leading, spacing: 14) {
-        moduleHeading(!active.isEmpty || agent.working ? "正在推进" : "最近进展")
-        HStack(alignment: .top, spacing: 12) {
-          Image(systemName: agent.working ? "waveform" : !active.isEmpty ? "circle.dotted" : "checkmark.circle")
-            .font(.system(size: 18)).foregroundStyle(agent.working || !active.isEmpty ? Brand.blue : Brand.muted)
-            .frame(width: 22, height: 22)
-          if let task = active.first ?? recent.first {
-            Text(task["title"].text).font(.subheadline).foregroundStyle(Brand.ink).lineLimit(2)
-          } else if !agent.lastReply.isEmpty {
-            Text(agent.lastReply).font(.subheadline).foregroundStyle(Brand.ink).lineLimit(2)
-          } else {
-            Text(agent.working ? "正在处理" : "还没有新进展").font(.subheadline).foregroundStyle(Brand.muted)
-          }
-          Spacer(minLength: 0)
-        }
-      }.padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-    }.buttonStyle(.plain).accessibilityIdentifier("home.agent")
-  }
-  private func inspiration(_ idea: JSON) -> some View {
-    Button { selectedIdea = idea } label: {
-      VStack(alignment: .leading, spacing: 12) {
-        moduleHeading("灵感")
-        Text(idea["proposal"]["title"].text).font(.body).foregroundStyle(Brand.ink)
-          .lineLimit(2).multilineTextAlignment(.leading)
-      }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Brand.paper, in: RoundedRectangle(cornerRadius: 20))
-    }.buttonStyle(.plain).accessibilityIdentifier("home.inspiration")
-  }
   private func inspirationDetail(_ idea: JSON) -> some View {
     NavigationStack {
       ScrollView {
@@ -568,22 +642,7 @@ struct HomeScreen: View {
     }
   }
 
-  private var commonApplications: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack { Text("常用应用").font(.subheadline.weight(.semibold)); Spacer(); Button("全部", action: onKits).font(.caption).frame(minHeight: 44) }
-      HStack(spacing: 12) {
-        ForEach(applications, id: \.["id"]) { item in
-          NavigationLink { KitAppScreen(account: account, item: item) } label: {
-            VStack(spacing: 8) {
-              Image(systemName: "square.stack.3d.up.fill").font(.title3).frame(width: 48, height: 48)
-                .foregroundStyle(Brand.blue).background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 14))
-              Text(item["title"].text.isEmpty ? item["name"].text : item["title"].text).font(.caption).foregroundStyle(Brand.ink).lineLimit(1)
-            }.frame(maxWidth: .infinity)
-          }.buttonStyle(.plain)
-        }
-      }
-    }.padding(.top, 22)
-  }
+
 
   private func handleSuggestion(_ item: JSON, accept: Bool) async {
     let removed = board.hideSuggestion(item["id"].text)
@@ -599,6 +658,109 @@ struct HomeScreen: View {
     } catch {
       if let removed { board.restoreSuggestion(removed) }
     }
+  }
+}
+
+private struct HomeHeader: View {
+  let date: String
+  let working: Bool
+  let activeCount: Int
+
+  var body: some View {
+    HStack(alignment: .center, spacing: 16) {
+      VStack(alignment: .leading, spacing: 5) {
+        Text(date).font(.caption).foregroundStyle(Brand.muted)
+        Text("此刻")
+          .font(.system(size: 34, weight: .semibold, design: .rounded))
+          .tracking(-1)
+          .foregroundStyle(Brand.ink)
+        if working {
+          HStack(spacing: 6) {
+            Circle().fill(Brand.blue).frame(width: 5, height: 5)
+            Text("正在推进 \(activeCount) 件事")
+              .font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+          }
+        } else {
+          Text("今天也可以慢一点。").font(.caption).foregroundStyle(Brand.muted)
+        }
+      }
+      Spacer(minLength: 12)
+      Companion(size: 52, mood: working ? .working : .greeting)
+        .accessibilityHidden(true)
+    }
+    .padding(.vertical, 8)
+    .accessibilityElement(children: .combine)
+  }
+}
+
+private struct HomeModule<Content: View>: View {
+  let title: String
+  let caption: String?
+  @ViewBuilder let content: Content
+
+  init(_ title: String, caption: String? = nil, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.caption = caption
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(title).font(.headline).foregroundStyle(Brand.ink)
+        Spacer(minLength: 8)
+        if let caption {
+          Text(caption).font(.caption).foregroundStyle(Brand.muted)
+            .lineLimit(1)
+        }
+      }
+      content
+    }
+    .padding(17)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 20, style: .continuous)
+        .strokeBorder(Brand.line, lineWidth: 0.7)
+    }
+  }
+}
+
+private struct HomeStatusRow: View {
+  let symbol: String
+  let tint: Color
+  let title: String
+  let detail: String
+  let showsChevron: Bool
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(tint)
+        .frame(width: 26, height: 24)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title).font(.subheadline.weight(.medium)).foregroundStyle(Brand.ink)
+          .lineLimit(2).multilineTextAlignment(.leading)
+        if !detail.isEmpty {
+          Text(detail).font(.caption).foregroundStyle(Brand.muted)
+            .lineLimit(2).multilineTextAlignment(.leading)
+        }
+      }
+      Spacer(minLength: 6)
+      if showsChevron {
+        Image(systemName: "chevron.right")
+          .font(.system(size: 10, weight: .semibold))
+          .foregroundStyle(Brand.muted)
+          .padding(.top, 5)
+      }
+    }
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+    .overlay(alignment: .bottom) {
+      Rectangle().fill(Brand.line.opacity(0.75)).frame(height: 0.5)
+    }
+    .contentShape(Rectangle())
   }
 }
 
@@ -627,14 +789,14 @@ struct TaskSummaryCard: View {
   let item: JSON
   private var state: String { taskStatus(item) }
   private var run: JSON { item["runs"].items.first ?? .null }
-  private var attention: Bool { ["blocked", "failed"].contains(state) }
+  private var attention: Bool { ["blocked", "failed", "expired"].contains(state) }
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .firstTextBaseline) {
-        Text(item["title"].text).font(.body.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(
+        Text(item["title"].text).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(
           2)
         Spacer(minLength: 12)
-        Label(taskLabel(state), systemImage: taskSymbol(state)).font(.caption2.weight(.medium))
+        Label(taskDisplayLabel(item), systemImage: taskSymbol(state)).font(.caption2.weight(.medium))
           .foregroundStyle(
             attention ? Brand.attention : state == "running" ? Brand.blue : Brand.muted
           )
@@ -648,9 +810,9 @@ struct TaskSummaryCard: View {
       if !run["next_step"].text.isEmpty {
         Text("下一步：" + run["next_step"].text).font(.caption).foregroundStyle(Brand.muted).lineLimit(
           2)
-      } else if ["scheduled", "ready", "paused"].contains(state) {
-        Label(taskSchedule(item["schedule"]), systemImage: "calendar").font(.caption)
-          .foregroundStyle(Brand.muted)
+      } else if let timing = taskTimingSummary(item) {
+        Label(timing, systemImage: "calendar")
+          .font(.caption).foregroundStyle(Brand.muted)
       }
     }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14)
       .overlay(alignment: .bottom) { Rectangle().fill(Brand.base).frame(height: 1) }

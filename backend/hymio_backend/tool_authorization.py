@@ -98,20 +98,41 @@ _READ_ONLY_GIT = {
     "status",
 }
 _READ_ONLY_PACKAGE_SCRIPTS = {"check", "lint", "test", "typecheck"}
-_READ_ONLY_KIT_OPERATIONS = {
-    "get",
-    "list",
-    "read",
-    "search",
-    "snapshot",
-    "status",
-}
 _CRITICAL_ACTION_WORDS = re.compile(
     r"\b(?:buy|checkout|delete|destroy|invite|pay|payment|publish|purchase|"
     r"refund|remove|send|submit|submit-order|transfer|upload)\b|"
     r"(?:支付|付款|购买|下单|删除|退款|转账|发送|提交|发布|上传)",
     re.IGNORECASE,
 )
+
+# Core enforces task ownership, role, budget and executor permissions. These operations
+# manage durable work; any external action still has its own tool policy check.
+_TASK_READ_TOOLS = frozenset(
+    {
+        "task_list",
+        "task_get",
+        "task_fetch",
+        "subagent_list",
+        "subagent_get",
+    }
+)
+_TASK_REPORT_TOOLS = frozenset({"task_report", "subagent_notify"})
+_TASK_WRITE_TOOLS = frozenset(
+    {
+        "task_create",
+        "task_update",
+        "task_message",
+        "task_pause",
+        "task_resume",
+        "task_cancel",
+        "task_retry",
+        "subagent_spawn",
+        "subagent_continue",
+        "subagent_cancel",
+    }
+)
+_RETIRED_TOOLS = frozenset({"kit_call", "kit_build", "kit_dev"})
+
 
 _SAFE_INTERNAL_ACTIONS = {
     "tasks": {"list", "get", "capture", "progress", "complete", "fail", "block", "start"},
@@ -153,20 +174,9 @@ def _grant_key(user_id, tool, arguments):
             or arguments.get("device_id")
             or ""
         )
-    elif tool == "kit_call":
-        target = ":".join(
-            [
-                str(arguments.get("kit_id", "")),
-                str(arguments.get("operation", "")),
-            ]
-        )
     else:
         target = (
-            arguments.get("task_id")
-            or arguments.get("device_id")
-            or arguments.get("page_id")
-            or arguments.get("kit_id")
-            or ""
+            arguments.get("task_id") or arguments.get("device_id") or arguments.get("page_id") or ""
         )
     raw = json.dumps(
         [user_id, tool, action, target],
@@ -290,7 +300,7 @@ def _requires_explicit_confirmation(tool, arguments):
         return isinstance(command, str) and bool(
             _ALWAYS_CONFIRM_COMMAND.search(command) or _CRITICAL_ACTION_WORDS.search(command)
         )
-    if tool in {"browser", "computer", "kit_call"}:
+    if tool in {"browser", "computer"}:
         values = json.dumps(arguments, ensure_ascii=False, sort_keys=True)
         return bool(_CRITICAL_ACTION_WORDS.search(values))
     return False
@@ -316,12 +326,6 @@ def _display_target(tool, arguments):
             "id": str(arguments.get("device_id", "")),
             "label": "所选电脑",
         }
-    if tool == "kit_call":
-        return {
-            "kind": "app",
-            "id": str(arguments.get("kit_id", "")),
-            "label": str(arguments.get("operation", "应用操作")),
-        }
     return {"kind": "tool", "id": tool, "label": tool}
 
 
@@ -342,8 +346,6 @@ def _read_only_action(tool, arguments):
             "switch_tab",
             "tabs",
         }
-    if tool == "kit_call":
-        return str(arguments.get("operation", "")) in _READ_ONLY_KIT_OPERATIONS
     return False
 
 
@@ -424,9 +426,6 @@ class ToolAuthorizationService:
         elif tool == "browser":
             title = f"允许操作 {target_label}"
             summary = "相同站点和操作会自动执行。"
-        elif tool == "kit_call":
-            title = f"允许 {target_label}"
-            summary = "相同应用操作会自动执行。"
         else:
             title = f"允许使用 {tool}"
             summary = "相同工具操作会自动执行。"
@@ -506,6 +505,15 @@ class ToolAuthorizationService:
         mode = self.mode(user_id)
         action = arguments.get("action")
         reason = ""
+
+        if tool in _RETIRED_TOOLS:
+            return self._deny("Kits applications are retired")
+        if tool in _TASK_READ_TOOLS or tool in _TASK_REPORT_TOOLS:
+            return self._allow("Bounded task read or execution report")
+        if tool in _TASK_WRITE_TOOLS:
+            if mode == MODE_READ_ONLY:
+                return self._deny("Read-only mode does not change or start background work")
+            return self._allow("Bounded durable work; external actions retain their own checks")
 
         if tool == "bash":
             command = arguments.get("command")
@@ -631,43 +639,6 @@ class ToolAuthorizationService:
                 scopes=["once", "run", "exact_rule"],
             )
 
-        if tool == "kit_call":
-            operation = str(arguments.get("operation", ""))
-            if operation in _READ_ONLY_KIT_OPERATIONS:
-                return self._allow("Bounded application read")
-            if mode == MODE_READ_ONLY:
-                return self._deny("Read-only mode does not invoke application operations")
-            critical = _requires_explicit_confirmation(tool, arguments)
-            if critical:
-                return self._ask(
-                    user_id,
-                    tool,
-                    arguments,
-                    title="允许执行不可逆的应用操作？",
-                    summary="该操作可能删除、提交或对外发布数据。",
-                    risk="critical",
-                    tier="critical",
-                    effects=["app_write"],
-                    target=_display_target(tool, arguments),
-                    scopes=["once"],
-                )
-            if mode == MODE_AUTONOMOUS:
-                return self._allow("Autonomous application operation")
-            if self._matching_rule(user_id, tool, arguments):
-                return self._allow("Existing always-allow rule")
-            return self._ask(
-                user_id,
-                tool,
-                arguments,
-                title="允许调用应用操作？",
-                summary="该操作可能修改你在应用里的数据。",
-                risk="medium",
-                tier="write",
-                effects=["app_write"],
-                target=_display_target(tool, arguments),
-                scopes=["once", "run", "exact_rule"],
-            )
-
         if tool == "tasks" and action not in _SAFE_INTERNAL_ACTIONS["tasks"]:
             if mode == MODE_READ_ONLY:
                 return self._deny("Read-only mode does not change tasks")
@@ -704,7 +675,7 @@ class ToolAuthorizationService:
             if mode == MODE_READ_ONLY:
                 return self._deny("Read-only mode does not change task state")
             return self._allow("Bounded task progress")
-        if tool in {"remember", "notify_user", "react", "image_generate", "kit_build", "kit_dev"}:
+        if tool in {"remember", "notify_user", "react", "image_generate"}:
             if mode == MODE_READ_ONLY:
                 return self._deny("Read-only mode does not perform writes or generation")
             return self._allow("Bounded reversible product action")

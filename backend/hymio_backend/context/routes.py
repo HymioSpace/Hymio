@@ -1,6 +1,5 @@
 import asyncio
 import hmac
-import json
 import uuid
 
 from starlette.responses import JSONResponse
@@ -13,8 +12,15 @@ from .dream_proposal import propose
 from .ingress import import_conversation
 
 
-def context_routes(settings, sessions, bearer, body, kits=None, task_store=None):
+def context_routes(settings, sessions, bearer, body, task_store=None):
     client = NostalgiaClient(settings)
+
+    def unavailable_without_context(error):
+        details = error.data.get("error") if isinstance(error.data, dict) else None
+        return isinstance(details, dict) and details.get("code") in {
+            "context_unbound",
+            "context_disabled",
+        }
 
     async def endpoint(request):
         try:
@@ -33,43 +39,6 @@ def context_routes(settings, sessions, bearer, body, kits=None, task_store=None)
                 channel = data.get("channel", "unknown")
                 if not isinstance(channel, str):
                     channel = "unknown"
-                agent_id = data.get("agent_id", "")
-                if kits is not None and channel == "ios" and isinstance(agent_id, str) and agent_id:
-                    try:
-                        coding = await kits.dev_context(uid, agent_id)
-                        return JSONResponse(
-                            {
-                                "content": (
-                                    "## Application coding context\n"
-                                    + coding["instructions"]
-                                    + "\n\nCurrent source revision: "
-                                    + coding["source_revision"]
-                                    + "\n\nFiles:\n"
-                                    + coding["tree"]
-                                    + "\n\nDisplay:\n"
-                                    + json.dumps(
-                                        coding["display"],
-                                        ensure_ascii=False,
-                                        separators=(",", ":"),
-                                    )
-                                    + "\n\nAPI contract:\n"
-                                    + json.dumps(
-                                        coding["operations"],
-                                        ensure_ascii=False,
-                                        separators=(",", ":"),
-                                    )
-                                )[:16000]
-                            }
-                        )
-                    except Exception:
-                        return JSONResponse(
-                            {
-                                "content": (
-                                    "Application coding tools are temporarily unavailable. "
-                                    "Do not invent files or claim a change was published."
-                                )
-                            }
-                        )
                 parts = []
                 try:
                     assembled = (await asyncio.to_thread(client.call, uid, "assembly"))["data"]
@@ -89,44 +58,6 @@ def context_routes(settings, sessions, bearer, body, kits=None, task_store=None)
                         "Personal context is temporarily unavailable. "
                         "Do not invent prior knowledge."
                     )
-                if kits is not None and channel == "ios":
-                    try:
-                        application = await kits.agent_context(uid)
-                        parts.append(
-                            "## Applications\n"
-                            "- Read the `kit-builder` skill before calling `kit_build`. Give the "
-                            "application coding agent a concrete product brief, stable data "
-                            "expectations and acceptance criteria. Do not write source code or a "
-                            "full page in the main conversation.\n"
-                            "- Use the unified "
-                            "`kit_call({kit_id, operation, arguments})` proxy only "
-                            "for an operation listed below. Do not request a catalog or operation "
-                            "list. Static applications intentionally have no operations.\n"
-                            "- Use the exact injected schemas. A failed or uncertain write "
-                            "must not "
-                            "be repeated under a new invocation.\n\n"
-                            '- Edit generated applications with `kit_build(action="edit")`. '
-                            "The dedicated coding context reads and changes source, then runs "
-                            "checks and publishes. Only call `app.delete` after the user "
-                            "explicitly confirms permanent deletion, with confirmation "
-                            "`DELETE`.\n\n"
-                            "- If a coding turn for a newly accepted app fails or times out, "
-                            "repair the same `kit_id` with action=edit. Do not create a duplicate "
-                            "application for the same request.\n\n"
-                            + application["content"][:7000]
-                            + "\n- A successful user action can appear later as an "
-                            "`app.kit.interaction` event in the user queue. Treat it as passive "
-                            "background context, not a new request. If the user did not "
-                            "proactively "
-                            "mention it, do not announce it or comment on it; use it only when it "
-                            "is directly relevant to the user's current request."
-                        )
-                    except Exception:
-                        parts.append(
-                            "## Applications\n"
-                            "Application services are temporarily unavailable. Do not invent, call "
-                            "or claim to have created an application operation."
-                        )
                 return JSONResponse({"content": "\n\n".join(parts)})
             if request.url.path == "/internal/context/assemble":
                 expected = settings.service_token_file.read_text().strip()
@@ -165,13 +96,24 @@ def context_routes(settings, sessions, bearer, body, kits=None, task_store=None)
                 return JSONResponse(result)
             if path in {"/context/assembly", "/context/events"}:
                 action = path.rsplit("/", 1)[-1]
-                return JSONResponse(
-                    (
-                        await asyncio.to_thread(
-                            client.call, user_id, action, query=dict(request.query_params)
+                try:
+                    return JSONResponse(
+                        (
+                            await asyncio.to_thread(
+                                client.call, user_id, action, query=dict(request.query_params)
+                            )
+                        )["data"]
+                    )
+                except ContextError as exc:
+                    if action == "assembly" and unavailable_without_context(exc):
+                        return JSONResponse(
+                            {
+                                "stable": {"content": ""},
+                                "dynamic": {"summary": {"content": ""}},
+                                "available": False,
+                            }
                         )
-                    )["data"]
-                )
+                    raise
             if path == "/context/records" and request.method == "GET":
                 return JSONResponse(
                     (
@@ -273,7 +215,14 @@ def context_routes(settings, sessions, bearer, body, kits=None, task_store=None)
                 )
                 return JSONResponse(result["data"], result["status_code"])
             if path == "/context/browse":
-                return JSONResponse(await asyncio.to_thread(browse, client, user_id, data))
+                try:
+                    return JSONResponse(await asyncio.to_thread(browse, client, user_id, data))
+                except ContextError as exc:
+                    if unavailable_without_context(exc):
+                        return JSONResponse(
+                            {"items": [], "next_cursor": None, "partial": False, "available": False}
+                        )
+                    raise
             if path == "/context/search":
                 return JSONResponse(
                     (await asyncio.to_thread(client.call, user_id, "search", data=data))["data"]

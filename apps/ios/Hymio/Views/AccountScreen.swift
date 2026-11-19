@@ -8,8 +8,9 @@ struct AccountScreen: View {
   @EnvironmentObject private var notifications: PushNotificationManager
   @Environment(\.dismiss) private var dismiss
   @ObservedObject var taskBoard: TaskBoard
+  var showsCloseButton = true
   private enum Destination: String, Identifiable {
-    case tasks, applications, connectors
+    case tasks, connectors, memories
     var id: String { rawValue }
   }
   @State private var destination: Destination?
@@ -184,40 +185,62 @@ struct AccountScreen: View {
     }.padding(.vertical, 12).contentShape(Rectangle())
       .accessibilityElement(children: .ignore).accessibilityLabel(title).accessibilityHint(detail)
   }
+  private var accountInitials: String {
+    let name = account.session?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return name.isEmpty ? "H" : String(name.prefix(1)).uppercased()
+  }
+  private var tasksDestination: some View {
+    TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
+      .task { taskBoard.bind(account); await taskBoard.refresh(account) }
+  }
+  private func accountSection<Content: View>(
+    _ title: String, @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text(title)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(Brand.muted)
+        .padding(.leading, 4)
+      VStack(spacing: 0) {
+        content()
+      }
+      .padding(.horizontal, 14)
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
+      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line, lineWidth: 0.6))
+    }
+  }
   var body: some View {
     NavigationStack {
       ScrollView {
-        VStack(alignment: .leading, spacing: 24) {
-          HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 8) {
-              Text(account.session?.displayName ?? "我的账号").font(.title.weight(.semibold)).foregroundStyle(Brand.ink)
+        LazyVStack(alignment: .leading, spacing: 22) {
+          HStack(alignment: .center, spacing: 14) {
+            HymioProfileMark(initial: accountInitials, size: 52)
+            VStack(alignment: .leading, spacing: 5) {
+              Text(account.session?.displayName ?? "我的账号")
+                .font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
+              Text("任务、记忆和连接都从这里管理")
+                .font(.caption).foregroundStyle(Brand.muted)
             }
-            Spacer(minLength: 8)
-            Companion(size: 72)
-          }.padding(.top, 12)
-          HStack(spacing: 0) {
-            Button { destination = .tasks } label: {
-              accountTile("任务与日程", detail: "安排与进展", artwork: .calendar)
+            Spacer(minLength: 4)
+          }.padding(.top, 8)
+
+          accountSection("我的内容") {
+            NavigationLink { tasksDestination } label: {
+              accountRow("任务", detail: "查看任务；有固定时间的任务也可以切换日历", symbol: "checklist")
             }
-            Rectangle().fill(Brand.line).frame(width: 1, height: 56)
-            Button { destination = .applications } label: {
-              accountTile("我的应用", detail: "为日常添些工具", artwork: .archive)
+            Divider().overlay(Brand.line)
+            Button { destination = .memories } label: {
+              accountRow("记忆", detail: "查看足迹与整理后的理解", symbol: "book.closed")
             }
-          }.padding(.vertical, 4)
-          Button { destination = .connectors } label: {
-            HStack(spacing: 14) {
-              FeatureArtwork(kind: .mail, size: 64)
-              VStack(alignment: .leading, spacing: 5) {
-                Text("连接服务").font(.headline).foregroundStyle(Brand.ink)
-                Text("Gmail · 滴答清单 · 健康 · 日历")
-                  .font(.caption).foregroundStyle(Brand.muted).fixedSize(horizontal: false, vertical: true)
-              }
-              Spacer(minLength: 0)
-              Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
-            }.padding(16).background(Brand.paper, in: RoundedRectangle(cornerRadius: 22))
-          }.accessibilityIdentifier("account.connectors")
-          VStack(alignment: .leading, spacing: 6) {
-            Text("偏好设置").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
+          }
+
+          accountSection("连接") {
+            Button { destination = .connectors } label: {
+              accountRow("连接服务", detail: "邮件、清单、日历与健康", symbol: "link")
+            }.accessibilityIdentifier("account.connectors")
+          }
+
+          accountSection("设置") {
             NavigationLink { Form { modelSection }.navigationTitle("模型设置").navigationBarTitleDisplayMode(.inline) } label: {
               accountRow("对话模型", detail: "选择对话模型与上下文长度", symbol: "slider.horizontal.3")
             }
@@ -230,8 +253,7 @@ struct AccountScreen: View {
               accountRow("通知与实时活动", detail: "重要进展，及时知道", symbol: "bell")
             }
           }
-          VStack(alignment: .leading, spacing: 6) {
-            Text("设备").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).padding(.bottom, 6)
+          accountSection("更多") {
           NavigationLink { List {
         Section {
           Button {
@@ -240,7 +262,7 @@ struct AccountScreen: View {
             Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
           }
           .accessibilityIdentifier("device.connect")
-          ForEach(client.devices, id: \.self) { device in
+          ForEach(client.devices.filter { $0["kind"].text != "ios" }, id: \.self) { device in
             HStack(alignment: .top, spacing: 12) {
               Image(
                 systemName: device["kind"].text == "cloud_desktop"
@@ -309,9 +331,11 @@ struct AccountScreen: View {
               }
             }.padding(.vertical, 5)
           }
-          if client.devicesLoading && client.devices.isEmpty {
+          if client.devicesLoading && client.devices.allSatisfy({ $0["kind"].text == "ios" }) {
             ProgressView("正在读取设备…").font(.subheadline)
-          } else if client.devices.isEmpty && client.devicesError.isEmpty {
+          } else if client.devices.allSatisfy({ $0["kind"].text == "ios" })
+            && client.devicesError.isEmpty
+          {
             Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
           }
           if !client.devicesError.isEmpty {
@@ -321,7 +345,7 @@ struct AccountScreen: View {
         } header: {
           Text("我的设备")
         } footer: {
-          Text("Mac 和 Android 经 HymioDevice 接入。iPhone 用于对话、记忆和应用。")
+          Text("Mac、Android 和云电脑会出现在这里。当前 iPhone 不需要重复绑定。")
         }
           }.navigationTitle("我的设备").navigationBarTitleDisplayMode(.inline)
             .task {
@@ -331,8 +355,6 @@ struct AccountScreen: View {
               }
             }
           } label: { accountRow("我的设备", detail: "Mac、手机与云电脑", symbol: "desktopcomputer") }
-
-          }
           NavigationLink {
             ScrollView {
               VStack(spacing: 12) {
@@ -347,9 +369,28 @@ struct AccountScreen: View {
           } label: {
             accountRow("调试与诊断", detail: "需要排查问题时再来这里", symbol: "wrench.adjustable")
           }
-          Button(role: .destructive) { loggingOut = true } label: {
-            Text("退出登录").font(.subheadline).frame(minHeight: 44)
-          }.accessibilityIdentifier("account.logout").padding(.top, 8)
+          }
+
+          Button { loggingOut = true } label: {
+            HStack(spacing: 11) {
+              Image(systemName: "rectangle.portrait.and.arrow.right")
+                .font(.system(size: 16, weight: .medium))
+              VStack(alignment: .leading, spacing: 3) {
+                Text("退出当前账号").font(.subheadline.weight(.medium))
+                Text("本机缓存会清除，云端内容不受影响")
+                  .font(.caption).foregroundStyle(Brand.muted)
+              }
+              Spacer(minLength: 4)
+              Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
+            }
+            .foregroundStyle(Brand.ink)
+            .padding(15)
+            .background(Brand.raised, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.line, lineWidth: 0.6))
+            .contentShape(Rectangle())
+          }.buttonStyle(.plain)
+            .accessibilityIdentifier("account.logout")
+            .padding(.top, 2)
         }.padding(.horizontal, 24).padding(.bottom, 28)
           .frame(maxWidth: 620).frame(maxWidth: .infinity)
       }.background(Brand.base).buttonStyle(.plain)
@@ -359,20 +400,22 @@ struct AccountScreen: View {
         case .tasks:
           TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
             .task { taskBoard.bind(account); await taskBoard.refresh(account) }
-        case .applications:
-          KitsScreen(account: account, onAccount: {}, showAccountButton: false)
         case .connectors:
           ConnectorsScreen(account: account)
+        case .memories:
+          ContextScreen(account: account)
         }
       }
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button {
-            dismiss()
-          } label: {
-            Image(systemName: "xmark")
+        if showsCloseButton {
+          ToolbarItem(placement: .cancellationAction) {
+            Button {
+              dismiss()
+            } label: {
+              Image(systemName: "xmark")
+            }
+            .accessibilityLabel("关闭我的")
           }
-          .accessibilityLabel("关闭账号设置")
         }
       }
       .refreshable { await client.loadDevices() }
@@ -396,16 +439,19 @@ struct AccountScreen: View {
       } message: {
         Text("会立即停止新的远程操作。已开始的点击或命令不能撤销；HymioDevice 的本机文件和操作历史会保留。")
       }
-      .confirmationDialog(
-        "退出后会清除本机缓存，云端探索仍会继续。", isPresented: $loggingOut, titleVisibility: .visible
-      ) {
-        Button("退出登录", role: .destructive) {
-          client.reset()
-          Task {
-            await notifications.detach()
-            await account.logout()
-          }
-        }.accessibilityIdentifier("account.confirmLogout")
+      .sheet(isPresented: $loggingOut) {
+        LogoutSheet(
+          name: account.session?.displayName ?? "当前账号",
+          onLogout: {
+            loggingOut = false
+            client.reset()
+            Task {
+              await notifications.detach()
+              await account.logout()
+            }
+          })
+          .presentationDetents([.height(360)])
+          .presentationDragIndicator(.visible)
       }
       .navigationDestination(isPresented: $diagnostics) {
         List {
@@ -439,6 +485,96 @@ struct AccountScreen: View {
     }
   }
 }
+
+private struct LogoutSheet: View {
+  let name: String
+  let onLogout: () -> Void
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      HStack {
+        VStack(alignment: .leading, spacing: 5) {
+          Text("退出当前账号").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
+          Text(name).font(.caption).foregroundStyle(Brand.muted)
+        }
+        Spacer()
+        Button {
+          dismiss()
+        } label: {
+          Image(systemName: "xmark")
+            .font(.caption.weight(.semibold))
+            .frame(width: 36, height: 36)
+            .background(Brand.base, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("取消退出")
+      }
+      VStack(alignment: .leading, spacing: 12) {
+        Label("这台 iPhone 会回到登录页", systemImage: "iphone")
+        Label("本机对话缓存与待发送内容会清除", systemImage: "internaldrive")
+        Label("云端的任务、记忆和连接不会删除", systemImage: "cloud")
+      }
+      .font(.subheadline)
+      .foregroundStyle(Brand.muted)
+      .padding(16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(Brand.base, in: RoundedRectangle(cornerRadius: 16))
+      Spacer(minLength: 0)
+      Button(role: .destructive, action: onLogout) {
+        Text("退出登录").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48)
+      }
+      .buttonStyle(.bordered)
+      .tint(Brand.attention)
+      .accessibilityIdentifier("account.confirmLogout")
+      Button("取消") { dismiss() }.frame(maxWidth: .infinity, minHeight: 44)
+    }
+    .padding(22)
+    .background(Brand.surface)
+  }
+}
+
+#if DEBUG
+struct AccountExperiencePreview: View {
+  let account: AccountService
+  @StateObject private var client: AgentClient
+  @StateObject private var board = TaskBoard()
+
+  init(account: AccountService) {
+    self.account = account
+    _client = StateObject(wrappedValue: AgentClient(account: account, previewConnected: true))
+  }
+
+  var body: some View {
+    AccountScreen(account: account, client: client, taskBoard: board)
+      .onAppear {
+        guard client.devices.isEmpty else { return }
+        client.devices = [
+          .object([
+            "device_id": .string("preview-phone"), "name": .string("iPhone"),
+            "kind": .string("ios"), "provider": .string("channel"), "online": .bool(true),
+          ]),
+          .object([
+            "device_id": .string("preview-mac"), "name": .string("Mac mini"),
+            "kind": .string("personal_mac"), "provider": .string("link"), "online": .bool(true),
+          ]),
+        ]
+      }
+  }
+}
+
+struct LogoutExperiencePreview: View {
+  @State private var presented = true
+  var body: some View {
+    Color.clear
+      .sheet(isPresented: $presented) {
+        LogoutSheet(name: "Jialiang", onLogout: {})
+          .presentationDetents([.height(360)])
+          .presentationDragIndicator(.visible)
+      }
+  }
+}
+#endif
 
 struct ToolAuthorizationRulesScreen: View {
   @ObservedObject var account: AccountService

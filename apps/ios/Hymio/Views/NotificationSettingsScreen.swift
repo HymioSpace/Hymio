@@ -35,12 +35,12 @@ struct NotificationSettingsScreen: View {
             .foregroundStyle(.secondary)
         }
       } footer: {
-        Text("通知只用于工作开始、需要你确认和结果已准备好，不会同步对话进度。")
+        Text("通知由任务状态或 Agent 的 notify_user 调用产生。这里只决定哪些提醒送达，不会改写通知正文。")
       }
 
-      Section("通知内容") {
+      Section {
         preference(
-          "开始后台工作", key: "start_enabled", value: $notifications.preferences.startEnabled,
+          "后台工作开始", key: "start_enabled", value: $notifications.preferences.startEnabled,
           symbol: "play.circle")
         preference(
           "任务完成", key: "completion_enabled", value: $notifications.preferences.completionEnabled,
@@ -52,8 +52,12 @@ struct NotificationSettingsScreen: View {
           "对话回复已准备好", key: "reply_enabled", value: $notifications.preferences.replyEnabled,
           symbol: "bubble.left")
         preference(
-          "在锁屏显示任务标题", key: "show_details", value: $notifications.preferences.showDetails,
+          "在锁屏显示标题与摘要", key: "show_details", value: $notifications.preferences.showDetails,
           symbol: "text.quote")
+      } header: {
+        Text("提醒类型")
+      } footer: {
+        Text("Agent 调用 notify_user 时只能选择以上类型并提供摘要；服务器会按这里的选择拦掉关闭的类型。任务开始、完成和需确认由任务流程生成，不靠 Agent 猜。关闭锁屏详情后，系统通知只显示“Hymio”。")
       }
 
       Section {

@@ -3,6 +3,39 @@ import XCTest
 @testable import HymioCore
 
 final class ConversationTests: XCTestCase {
+  func testToolScreenshotAttachesToFollowingFinalReply() {
+    let model = Conversation(events: [
+      event(1, "user.message", ["content": .string("给我看截图")]),
+      event(
+        2, "assistant.message",
+        [
+          "step_id": .string("tool-step"), "content": .string(""),
+          "tool_calls": .array([
+            .object([
+              "id": .string("call-1"), "name": .string("computer"),
+              "arguments": .object([
+                "action": .string("screenshot"), "description": .string("截取当前桌面"),
+              ]),
+            ])
+          ]),
+        ]),
+      event(
+        3, "tool.terminal",
+        [
+          "invocation_id": .string("call-1"), "outcome": .string("succeeded"),
+          "content": .object([
+            "image_refs": .array([.string("0123456789abcdef0123456789abcdef")])
+          ]),
+        ]),
+      event(
+        4, "assistant.message",
+        ["step_id": .string("final-step"), "content": .string("这是刚才的截图")]),
+    ])
+    let final = model.messages.last
+    XCTAssertEqual(final?.content, "这是刚才的截图")
+    XCTAssertEqual(final?.imageRefs, ["0123456789abcdef0123456789abcdef"])
+  }
+
   func testAssistantReactionAttachesToUserMessage() {
     let model = Conversation(events: [
       event(1, "user.message", ["content": .string("done")]),

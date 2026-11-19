@@ -88,11 +88,3 @@ export function memoryProposal(value: ContextDetail): string {
     ? memory.summary
     : '';
 }
-
-export const memoryCategories = [
-  ['all', '全部'],
-  ['work', '工作'],
-  ['learning', '学习'],
-  ['life', '生活'],
-  ['uncategorized', '未分类'],
-] as const;

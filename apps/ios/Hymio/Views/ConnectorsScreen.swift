@@ -118,11 +118,11 @@ struct ConnectorsScreen: View {
   }
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 26) {
-        VStack(alignment: .leading, spacing: 10) {
-          Text("连接你的日常").font(.system(.title, design: .rounded, weight: .semibold)).tracking(-0.8)
-          Text("把邮件、计划与生活节奏，\n带进同一段对话。").font(.subheadline).foregroundStyle(Brand.muted)
-            .lineSpacing(4)
+      LazyVStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("连接服务").font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
+          Text("每个来源单独授权，Hymio 只读同步。")
+            .font(.subheadline).foregroundStyle(Brand.muted)
         }.padding(.top, 8)
         if !model.error.isEmpty {
           VStack(alignment: .leading, spacing: 8) {
@@ -130,34 +130,12 @@ struct ConnectorsScreen: View {
             Button("重新读取") { Task { await model.load() } }
           }
         }
-        VStack(alignment: .leading, spacing: 13) {
-          sectionTitle("云端服务", caption: "账号授权后，由云端同步新的变化。")
-          ForEach(model.providers.filter { $0["transport"].text == "oauth" }, id: \.self) {
-            provider in
-            NavigationLink {
-              ConnectorDetail(provider: provider, model: model)
-            } label: {
-              if provider["id"].text == "gmail" { gmailCard(provider) } else { cloudRow(provider) }
-            }.buttonStyle(.plain).accessibilityIdentifier("connector.\(provider["id"].text)")
-          }
-        }
-        VStack(alignment: .leading, spacing: 13) {
-          sectionTitle("来自 iPhone", caption: "权限留在设备上，分享哪些由你选择。")
-          LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-            spacing: 12
-          ) {
-            ForEach(model.providers.filter { $0["transport"].text == "device" }, id: \.self) {
-              provider in
-              NavigationLink {
-                ConnectorDetail(provider: provider, model: model)
-              } label: {
-                deviceCard(provider)
-              }
-              .buttonStyle(.plain).accessibilityIdentifier("connector.\(provider["id"].text)")
-            }
-          }
-        }
+        connectorGroup(
+          "云端服务", caption: "账号授权后，由云端同步新的变化。",
+          providers: model.providers.filter { $0["transport"].text == "oauth" })
+        connectorGroup(
+          "这台 iPhone", caption: "权限留在设备上，分享哪些由你选择。",
+          providers: model.providers.filter { $0["transport"].text == "device" })
         if model.providers.isEmpty && model.error.isEmpty {
           ProgressView().frame(maxWidth: .infinity)
         }
@@ -178,7 +156,7 @@ struct ConnectorsScreen: View {
   }
   private func sectionTitle(_ title: String, caption: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-      Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+      Text(title).font(.caption.weight(.medium)).foregroundStyle(Brand.muted)
       Text(caption).font(.caption).foregroundStyle(Brand.muted)
     }
   }
@@ -206,65 +184,45 @@ struct ConnectorsScreen: View {
       .padding(.vertical, 6)
       .background(ready ? Color.green.opacity(0.07) : Brand.blue.opacity(0.065), in: Capsule())
   }
-  private func gmailCard(_ provider: JSON) -> some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack(spacing: 13) {
-        SourceMark(id: "gmail", size: 54)
-        VStack(alignment: .leading, spacing: 5) {
-          Text("Gmail").font(.headline).foregroundStyle(Brand.ink)
-          Text(connection(provider)?["name"].text ?? "邮件里的安排与线索").font(.caption).foregroundStyle(
-            Brand.muted)
+  private func connectorGroup(_ title: String, caption: String, providers: [JSON]) -> some View {
+    VStack(alignment: .leading, spacing: 9) {
+      sectionTitle(title, caption: caption)
+      VStack(spacing: 0) {
+        ForEach(providers, id: \.self) { provider in
+          NavigationLink {
+            ConnectorDetail(provider: provider, model: model)
+          } label: {
+            connectorRow(provider)
+          }
+          .buttonStyle(.plain)
+          .accessibilityIdentifier("connector.\(provider["id"].text)")
+          if provider != providers.last {
+            Divider().overlay(Brand.line).padding(.leading, 58)
+          }
         }
-        Spacer(minLength: 4)
-        badge(provider)
       }
-      Text(provider["summary"].text).font(.footnote).foregroundStyle(Brand.muted).lineSpacing(3)
-      HStack {
-        Label(
-          connection(provider).map { "\($0["item_count"].int) 条来源记录" } ?? "由你授权，只读同步",
-          systemImage: "tray")
-        Spacer()
-        Image(systemName: "arrow.up.right").foregroundStyle(Brand.blue.opacity(0.75))
-      }.font(.caption).foregroundStyle(Brand.muted).padding(.top, 12)
-        .overlay(alignment: .top) { Rectangle().fill(Brand.blue.opacity(0.07)).frame(height: 1) }
-    }.padding(18).background(
-      LinearGradient(
-        colors: [Brand.surface, Brand.blue.opacity(0.035)], startPoint: .topLeading,
-        endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 22)
-    )
-    .overlay(RoundedRectangle(cornerRadius: 22).stroke(Brand.blue.opacity(0.11)))
-    .shadow(color: Brand.blue.opacity(0.035), radius: 12, y: 5)
+      .padding(.horizontal, 13)
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
+      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line, lineWidth: 0.6))
+    }
   }
-  private func cloudRow(_ provider: JSON) -> some View {
-    HStack(spacing: 13) {
-      SourceMark(id: provider["id"].text, size: 50)
-      VStack(alignment: .leading, spacing: 6) {
-        Text(provider["name"].text).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
-        Text("任务与清单，随时接续").font(.caption).foregroundStyle(Brand.muted)
+  private func connectorRow(_ provider: JSON) -> some View {
+    HStack(spacing: 12) {
+      SourceMark(id: provider["id"].text, size: 42)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(provider["name"].text)
+          .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+        Text(provider["summary"].text)
+          .font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
       }
-      Spacer(minLength: 4)
+      Spacer(minLength: 6)
       badge(provider)
-    }.padding(17).background(Brand.surface, in: RoundedRectangle(cornerRadius: 21))
-      .overlay(RoundedRectangle(cornerRadius: 21).stroke(Brand.line.opacity(0.7)))
-      .shadow(color: .black.opacity(0.025), radius: 10, y: 4)
-  }
-  private func deviceCard(_ provider: JSON) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      SourceMark(id: provider["id"].text, size: 48)
-      VStack(alignment: .leading, spacing: 6) {
-        Text(provider["id"].text == "apple_health" ? "健康" : "日历").font(
-          .subheadline.weight(.semibold)
-        ).foregroundStyle(Brand.ink)
-        Text(provider["id"].text == "apple_health" ? "每日步数与活动量，\n了解生活的节奏。" : "读懂安排，\n留出合适的空隙。")
-          .font(.caption).foregroundStyle(Brand.muted).lineSpacing(3).fixedSize(
-            horizontal: false, vertical: true)
-      }
-      Spacer(minLength: 0)
-      badge(provider)
-    }.frame(maxWidth: .infinity, minHeight: 164, alignment: .topLeading).padding(16)
-      .background(Brand.surface, in: RoundedRectangle(cornerRadius: 21))
-      .overlay(RoundedRectangle(cornerRadius: 21).stroke(Brand.line.opacity(0.65)))
-      .shadow(color: .black.opacity(0.025), radius: 10, y: 4)
+      Image(systemName: "chevron.right")
+        .font(.system(size: 10, weight: .semibold)).foregroundStyle(Brand.muted)
+    }
+    .padding(.vertical, 12)
+    .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+    .contentShape(Rectangle())
   }
 }
 
@@ -288,9 +246,9 @@ private struct ConnectorDetail: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         HStack(alignment: .center, spacing: 17) {
-          SourceMark(id: id, size: 72)
+          SourceMark(id: id, size: 48)
           VStack(alignment: .leading, spacing: 7) {
-            Text(provider["name"].text).font(.title2.weight(.semibold)).tracking(-0.6)
+            Text(provider["name"].text).font(.title3.weight(.semibold)).tracking(-0.4)
             Text(provider["summary"].text).font(.footnote).foregroundStyle(Brand.muted).lineSpacing(
               3)
           }
@@ -653,3 +611,30 @@ private struct ConnectorBrowser: UIViewControllerRepresentable {
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) { close() }
   }
 }
+
+#if DEBUG
+struct ConnectorDetailPreview: View {
+  @StateObject private var model: ConnectionsModel
+
+  init() {
+    let account = AccountService()
+    _model = StateObject(wrappedValue: ConnectionsModel(account: account, preview: true))
+  }
+
+  var body: some View {
+    NavigationStack {
+      ConnectorDetail(
+        provider: .object([
+          "id": .string("gmail"), "name": .string("Gmail"),
+          "summary": .string("让邮件里的安排和线索，有迹可循。"),
+          "transport": .string("oauth"), "configured": .bool(true),
+          "permissions": .array([
+            .string("读取最近收件箱及后续变化"),
+            .string("不发送、修改或删除邮件"),
+          ]),
+        ]),
+        model: model)
+    }
+  }
+}
+#endif

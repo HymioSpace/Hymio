@@ -55,12 +55,16 @@ def call(invocation, operation, capability=None):
             failure = json.loads(error.read(65536))
         except (ValueError, OSError):
             failure = {}
-        if failure.get("error") == "not_a_device_invocation":
+        reason = failure.get("error") if isinstance(failure, dict) else ""
+        if reason == "not_a_device_invocation":
             raise ToolExecutionError(
                 "This call is not a device operation. Inspect its ToolSystem state with "
                 "oath-cli status."
             ) from error
-        raise ToolExecutionError("Device service rejected request: " + str(error.code)) from error
+        detail = f": {reason}" if isinstance(reason, str) and reason else ""
+        raise ToolExecutionError(
+            "Device service rejected request: " + str(error.code) + detail
+        ) from error
     except (URLError, TimeoutError) as error:
         if operation == "list":
             raise ToolExecutionError(

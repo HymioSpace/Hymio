@@ -1,38 +1,21 @@
 ---
 name: tasks
-description: Track accepted work, schedules, progress and delegated outcomes.
+description: Manage durable tasks through Oath task tools.
 ---
 
-# Tasks
+Use Oath task_create for accepted background work. Use task_list/get for status,
+task_update/message for changes and replies, and task_pause/resume/cancel for control.
+Reuse intent_key and existing task IDs. Do not create a task for ordinary immediate answers.
 
-Use `oath-cli tasks` to maintain work with an outcome. Read `oath-cli help tasks` for schemas.
-Use a task for a substantial deliverable, an explicit reminder or future follow-up. Do not create
-one for greetings, quick questions, memory updates, small device operations or temporary retries.
-Reuse one task when the method changes; a failed attempt does not justify a duplicate task.
-Capture work already accepted using action=capture; creating a task dispatches independent background work (now or later),
-so it is different from recording a task you are already doing. Reuse the returned task_id and
-run_id for progress and completion.
+Fixed reminders use executor.kind=program, action=notify and a time trigger.
+Do not create a TaskAgent or subagent for them; execution at trigger time calls no model.
+Recurring schedules use completion=maintain. Agent execution is for work that actually
+needs fresh information, reasoning or adaptive steps.
 
-```sh
-oath-cli tasks --action list
-oath-cli tasks --action get --task-id TASK_ID
-```
-
-For app.task.due, start the specified run before acting. Record meaningful intermediate progress
-and complete/fail/block it with the outcome. Reminders deliver a message; general work needs an
-explicit result. Scheduling uses an IANA timezone and explicit once/daily/weekly fields.
-
-Delegate a task's started run with `oath-cli tasks --action delegate --run-id RUN_ID` so execution
-and history remain linked. Generic independent assignments can use `oath-cli subagent_spawn --json`
-with objective, success_criteria and bounds; the returned agent_id identifies its separate context. Use subagent_get/list/cancel to
-manage it and subagent_notify for important intermediate findings from a child. Completion is an
-event. Child agents cannot delegate or manage the owner's tasks.
-
-For blocked work use action=wait with a concrete wait_reason (user/time/external/device/retry),
-content and next_step. Provide resume_at as a UTC Unix timestamp only when a later check is useful.
-Waiting for a user decision resumes explicitly; do not poll for it. A follow-up event asks you to
-check the prerequisite, not repeat a side effect. Use action=progress on the existing run when
-actionable again, or explain the remaining blocker. Inspect automatic child history with
-action=activity and task_id. Task state describes the outcome; tool status still comes from Oath.
-
-Use `for_user: true` for explicit personal reminders/appointments requested by the user. Keep agent follow-ups, maintenance and monitoring false. Do not infer audience from task titles.
+TaskAgent reports meaningful progress, explicit waits and results with task_report.
+Completion is the executor's decision; no generic parent review tool exists.
+If a user decision is necessary, explicitly wait for the user and continue after their reply.
+Only provide semantic fields supported by actual work; omit absent progress or next steps.
+Do not poll in a loop. Significant events return through app.task messages.
+Task result notification is owned by the task system; do not send it again through notify_user.
+No application generation, Kits or Kit Host tools are provided.

@@ -4,7 +4,7 @@
 
 Hymio is the application layer of [HymioSpace](https://github.com/HymioSpace). It brings the agent, personal context, connectors and everyday applications into one experience across desktop, web, iOS and Chrome.
 
-[Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, Kits, clients and deployment.
+[Oath](https://github.com/HymioSpace/Oath) runs the agent. [Nostalgia](https://github.com/HymioSpace/Nostalgia) manages personal context. Hymio owns the product: accounts, authorization, imports and sync, clients and deployment.
 
 **Status:** Web/Tauri client MVP. Connect to a running Oath deployment for one persistent conversation, streamed replies, offline replay and event/Trace inspection. The OIDC login backend is available; a local stack launcher is available; Nostalgia integrates source-aware context, Agent-facing `remember` / `recall` tools, and internally scheduled dreaming. A single-host cloud deployment entry is available; production rollout still requires domain, identity and network setup.
 
@@ -20,15 +20,15 @@ OS permissions and Android screen-sharing consent remain explicit; Android expos
 
 ## iOS preview
 
-Start with Now for decisions, personal schedules and recent results, continue the shared conversation,
-or revisit Recollections. iOS uses three native tabs; Tasks, Applications and grouped settings live
-behind the leading three-line My menu.
-Web uses a labelled sidebar and a wider task inspector and does not expose Kits. iOS applications
-may be generated as versioned React + bounded Python projects with a dedicated Oath coding context.
+Start with Now for decisions, personal schedules and recent results, continue the shared
+conversation, or open My from the compact product dock. Tasks, recollections, connections and
+grouped settings live behind My.
+Web uses a labelled sidebar and a wider task inspector. Kits application generation and its
+runtime service have been retired from both clients and deployment.
 
 The native SwiftUI client lives in [apps/ios](apps/ios/README.md). It supports the same account and
 continuous conversation as Web/Desktop, streaming replies, tool approvals, screenshots, foreground
-reconnection and self-contained HTML applications in WKWebView.
+reconnection and attachment viewing.
 
 ```sh
 hymio start --client web
@@ -41,7 +41,7 @@ Use Xcode 26.2 and an iPhone Simulator. Configure your deployed HTTPS backend an
 
 Web and the Tauri desktop app share one frontend. Chrome can reuse shared web components and protocol packages while keeping its own background tasks and permissions. iOS has a separate platform implementation within the same repository.
 
-A user has one ongoing agent conversation across clients. Closing a client does not end work accepted by Oath; reconnecting clients receive persisted progress. Context and Kit data are shared through their service APIs.
+A user has one ongoing agent conversation across clients. Closing a client does not end work accepted by Oath; reconnecting clients receive persisted progress. Context and task results are shared through their service APIs.
 
 Account settings now manage devices and a cloud desktop. Bash, browser DOM automation and desktop
 controls share one configured cloud environment, with an explicit execution device and independent message
@@ -62,8 +62,6 @@ without replaying commands, and browser tools support explicit tabs and navigati
 | [packages](packages/README.md) | Shared UI, A2UI rendering, protocols and client communication |
 | [backend](backend/README.md) | Accounts, authorization, connectors, context ingress and product APIs |
 | [extensions](extensions/README.md) | Hymio-specific Oath skills, tools and CLI commands |
-| [kits](kits/README.md) | Application API contract and trusted built-in packages |
-| [services/kit-host](services/kit-host/README.md) | React/Python build, source revisions, installation, data and APIs |
 | [deploy](deploy/README.md) | Product deployment and dependency composition |
 | [spec](spec/README.md) | Architecture and feature designs |
 

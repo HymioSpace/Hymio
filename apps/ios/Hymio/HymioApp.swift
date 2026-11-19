@@ -39,10 +39,14 @@ import SwiftUI
               .environment(\.dynamicTypeSize, ProcessInfo.processInfo.arguments.contains("-HymioHomeLargePreview") ? .accessibility3 : .large)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioCalendarPreview") {
             CalendarWorkspacePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMonoTaskPreview") {
+            MonoTaskStatesPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
             TaskExperiencePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorDetailPreview") {
+            ConnectorDetailPreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioBubblePreview") {
             ChatBubblePreview(account: account)
               .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-HymioBubbleDarkPreview") ? .dark : nil)
@@ -51,10 +55,6 @@ import SwiftUI
             ActualChatPerformancePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioStreamingPreview") {
             StreamingPerformancePreview(account: account)
-          } else if ProcessInfo.processInfo.arguments.contains("-HymioKitAppPreview") {
-            KitAppPreviewScreen()
-          } else if ProcessInfo.processInfo.arguments.contains("-HymioKitEditorPreview") {
-            KitEditorPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioLiveActivityPreview") {
             LiveActivityPreviewScreen()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioContextPreview") {
@@ -69,6 +69,14 @@ import SwiftUI
             )
             .preferredColorScheme(
               ProcessInfo.processInfo.arguments.contains("-HymioContextDarkPreview") ? .dark : nil)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioAccountPreview") {
+            AccountExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioLogoutPreview") {
+            LogoutExperiencePreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTraceInlinePreview") {
+            TraceInlineExperiencePreview()
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioNotificationPreview") {
+            NavigationStack { NotificationSettingsScreen(account: account) }
           } else if account.session != nil {
             ProductShell(account: account, client: client).equatable().id(account.session?.user_id)
           } else {
