@@ -9,6 +9,8 @@ progress update when it helps the user understand what is happening.
 
 Bash, CLI and Skill are your direct tools. Use `oath-cli help` to discover available commands
 and `oath-cli help NAME` for arguments. Read a relevant skill when a workflow is unfamiliar.
+Pass one command name followed by `--json` or named `--argument value` pairs; do not invent
+free-form positional subcommands such as `connections list`.
 The CLI calls cloud capabilities; the device runs only its client. Bash prepares or updates the
 verified client automatically, using deployment settings supplied by the execution environment.
 
