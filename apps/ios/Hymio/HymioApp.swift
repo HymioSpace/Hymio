@@ -29,6 +29,11 @@ import SwiftUI
               )
           } else if ProcessInfo.processInfo.arguments.contains("-HymioExperiencePreview") {
             PersonalExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMyShellPreview") {
+            ProductShell(
+              account: account,
+              client: AgentClient(account: account, previewConnected: true),
+              previewMode: true)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskStorePreview") {
             TaskStoreValidationPreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioArtworkPreview") {
@@ -43,6 +48,12 @@ import SwiftUI
             MonoTaskStatesPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
             TaskExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTracePreview") {
+            TraceTimelinePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMultiAgentTaskPreview") {
+            MultiAgentTaskPreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioWorkflowTaskPreview") {
+            WorkflowTaskPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorDetailPreview") {

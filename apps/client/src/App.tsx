@@ -42,6 +42,7 @@ import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 import { ApprovalCard } from './ApprovalCard';
 import { rememberApproval } from './authorization';
+import { scheduleLatestScroll } from './bottomAnchor';
 const client = new OathClient();
 client.channelKind = desktop ? 'desk' : 'web';
 export default function App() {
@@ -387,6 +388,8 @@ export default function App() {
   }, [draft]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const historyAnchor = useRef<{ top: number; height: number } | null>(null);
+  const transcript = useRef<HTMLDivElement>(null);
+  const bottomAnchor = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = viewport.current;
     const anchor = historyAnchor.current;
@@ -417,6 +420,15 @@ export default function App() {
   }
   const following = useRef(true);
   const scrollFrame = useRef(0);
+  function pinToLatest() {
+    following.current = true;
+    setNearBottom(true);
+    scheduleLatestScroll({
+      viewport: viewport.current,
+      anchor: bottomAnchor.current,
+      shouldFollow: () => following.current,
+    });
+  }
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
@@ -424,11 +436,11 @@ export default function App() {
       cancelAnimationFrame(scrollFrame.current);
       if (!following.current) return;
       scrollFrame.current = requestAnimationFrame(() => {
-        if (following.current) el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+        if (following.current) el.scrollTop = el.scrollHeight;
       });
     });
     observer.observe(el);
-    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    if (transcript.current) observer.observe(transcript.current);
     return () => {
       observer.disconnect();
       cancelAnimationFrame(scrollFrame.current);
@@ -550,18 +562,13 @@ export default function App() {
     setSending(true);
     setDraft('');
     setAttachments([]);
-    following.current = true;
-    setNearBottom(true);
+    pinToLatest();
     try {
       await client.message(
         content,
         sentAttachments.map((file) => file.attachment_id),
       );
-      following.current = true;
-      setNearBottom(true);
-      requestAnimationFrame(() =>
-        viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' }),
-      );
+      pinToLatest();
       input.current?.focus();
     } catch (e) {
       setDraft((current) => current || content);
@@ -578,13 +585,10 @@ export default function App() {
       return;
     }
     setSending(true);
-    following.current = true;
-    setNearBottom(true);
+    pinToLatest();
     try {
       await client.message(text, []);
-      requestAnimationFrame(() =>
-        viewport.current?.scrollTo({ top: viewport.current.scrollHeight, behavior: 'instant' }),
-      );
+      pinToLatest();
       input.current?.focus();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -663,14 +667,7 @@ export default function App() {
           className="approval-reminder"
           onClick={() => {
             navigate('chat');
-            following.current = true;
-            setNearBottom(true);
-            requestAnimationFrame(() =>
-              viewport.current?.scrollTo({
-                top: viewport.current.scrollHeight,
-                behavior: 'instant',
-              }),
-            );
+            pinToLatest();
           }}
         >
           <ShieldAlert size={17} />
@@ -722,13 +719,6 @@ export default function App() {
           onWheel={(event) => {
             if (event.deltaY < 0) following.current = false;
           }}
-          onTouchStart={() => {
-            following.current = false;
-          }}
-          onPointerDown={() => {
-            input.current?.blur();
-            following.current = false;
-          }}
           onScroll={() => {
             const el = viewport.current;
             if (el) {
@@ -767,7 +757,7 @@ export default function App() {
               </div>
             </section>
           ) : (
-            <div className="transcript">
+            <div className="transcript" ref={transcript}>
               {state.history?.hasMore && (
                 <button
                   className="load-history"
@@ -806,9 +796,9 @@ export default function App() {
                     login={login}
                     approvals={model.approvals}
                     onAction={async (text) => {
-                      following.current = true;
-                      setNearBottom(true);
+                      pinToLatest();
                       await client.message(text);
+                      pinToLatest();
                     }}
                   />
                 </div>
@@ -903,6 +893,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <div ref={bottomAnchor} className="conversation-end" aria-hidden="true" />
             </div>
           )}
         </div>
@@ -915,17 +906,7 @@ export default function App() {
             </div>
           )}
           {!nearBottom && !welcome && (
-            <button
-              className="jump-bottom"
-              onClick={() => {
-                following.current = true;
-                setNearBottom(true);
-                viewport.current?.scrollTo({
-                  top: viewport.current.scrollHeight,
-                  behavior: 'instant',
-                });
-              }}
-            >
+            <button className="jump-bottom" onClick={pinToLatest}>
               <ArrowDown size={15} />
               最新消息
             </button>

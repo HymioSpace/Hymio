@@ -51,6 +51,13 @@ import UIKit
   func apply(_ item: JSON) {
     guard !item["id"].text.isEmpty, !removals.contains(item["id"].text), !deletedIDs.contains(item["id"].text) else { return }
     revision += 1
+    if taskIsArchived(item) {
+      items.removeAll { $0["id"] == item["id"] }
+      deletedIDs.insert(item["id"].text)
+      rebuildChanges()
+      persistSnapshot()
+      return
+    }
     if let index = items.firstIndex(where: { $0["id"] == item["id"] }) { items[index] = item }
     else { items.insert(item, at: 0) }
     rebuildChanges(); persistSnapshot()
@@ -91,7 +98,9 @@ import UIKit
     baseline = UserDefaults.standard.dictionary(forKey: key) as? [String: String]
     if let url = cacheURL, let data = try? Data(contentsOf: url),
       let snapshot = try? JSONDecoder().decode(JSON.self, from: data) {
-      items = snapshot["tasks"].items; suggestions = snapshot["suggestions"].items; loaded = true
+      items = snapshot["tasks"].items.filter { !taskIsArchived($0) }
+      suggestions = snapshot["suggestions"].items
+      loaded = true
     }
     rebuildChanges()
   }
@@ -160,7 +169,10 @@ import UIKit
       guard user == account.session?.user_id, owner == startedOwner, revision == startedRevision, !Task.isCancelled else { return }
       let nextSuggestions = result["suggestions"].items.filter { !pendingSuggestions.contains($0["id"].text) }
       if suggestions != nextSuggestions { suggestions = nextSuggestions }
-      let next = result["tasks"].items.filter { !removals.contains($0["id"].text) && !deletedIDs.contains($0["id"].text) }
+      let next = result["tasks"].items.filter {
+        !removals.contains($0["id"].text) && !deletedIDs.contains($0["id"].text)
+          && !taskIsArchived($0)
+      }
       if items != next {
         items = next
         rebuildChanges()
@@ -184,7 +196,8 @@ struct ProductShell: View, Equatable {
   var previewMode = false
   @EnvironmentObject private var notifications: PushNotificationManager
   @StateObject private var board = TaskBoard()
-  @State private var selected: ProductTab = .today
+  @State private var selected: ProductTab =
+    ProcessInfo.processInfo.arguments.contains("-HymioMyShellPreview") ? .my : .today
   @State private var notificationTask: JSON?
   @State private var showTasks = false
   @State private var keyboardVisible = false
@@ -207,9 +220,7 @@ struct ProductShell: View, Equatable {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       if !keyboardVisible {
-        ProductDock(
-          selected: $selected,
-          name: account.session?.displayName ?? "")
+        ProductDock(selected: $selected)
           .transition(.move(edge: .bottom).combined(with: .opacity))
       }
     }
@@ -263,57 +274,44 @@ struct ProductShell: View, Equatable {
 
 private struct ProductDock: View {
   @Binding var selected: ProductTab
-  let name: String
-
-  private var initials: String {
-    let value = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    return value.isEmpty ? "H" : String(value.prefix(1)).uppercased()
-  }
 
   var body: some View {
-    HStack(spacing: 4) {
-      dockButton(.today, title: "此刻") {
-        HymioNowMark(size: 24)
-      }
-      dockButton(.chat, title: "对话") {
-        Companion(size: 26)
-      }
-      dockButton(.my, title: "我的") {
-        HymioProfileMark(initial: initials, size: 27)
-      }
+    HStack(spacing: 0) {
+      dockButton(.today, title: "此刻", symbol: "sun.max")
+      dockButton(.chat, title: "对话", symbol: "bubble.left.and.bubble.right")
+      dockButton(.my, title: "我的", symbol: "person.crop.circle")
     }
-    .padding(6)
-    .background(.regularMaterial, in: Capsule())
-    .overlay(Capsule().strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.6))
-    .shadow(color: .black.opacity(0.06), radius: 12, y: 3)
-    .padding(.horizontal, 24)
-    .padding(.top, 7)
-    .padding(.bottom, 5)
-    .background(
-      LinearGradient(
-        colors: [Brand.surface.opacity(0), Brand.surface.opacity(0.96), Brand.surface],
-        startPoint: .top, endPoint: .bottom)
-    )
+    .padding(.horizontal, 12)
+    .padding(.top, 4)
+    .padding(.bottom, 0)
+    .frame(height: 56)
+    .background(Brand.surfaceLow)
+    .overlay(alignment: .top) {
+      Rectangle().fill(Brand.line).frame(height: 0.5)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("product.dock")
   }
 
-  private func dockButton<Icon: View>(
-    _ tab: ProductTab, title: String, @ViewBuilder icon: () -> Icon
-  ) -> some View {
+  private func dockButton(_ tab: ProductTab, title: String, symbol: String) -> some View {
     let isSelected = selected == tab
     return Button {
       Haptics.selection()
-      withAnimation(.snappy(duration: 0.24, extraBounce: 0.05)) {
+      withAnimation(.easeInOut(duration: 0.2)) {
         selected = tab
       }
     } label: {
-      VStack(spacing: 3) {
-        icon()
-          .frame(height: 26)
-        Text(title).font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+      VStack(spacing: 2) {
+        Image(systemName: isSelected ? symbol + ".fill" : symbol)
+          .font(.system(size: 18, weight: isSelected ? .semibold : .regular))
+          .frame(width: 52, height: 25)
+          .background(isSelected ? Brand.primaryContainer : Color.clear, in: Capsule())
+          .foregroundStyle(isSelected ? Brand.onPrimaryContainer : Brand.muted)
+        Text(title)
+          .font(.caption2.weight(isSelected ? .semibold : .medium))
+          .foregroundStyle(isSelected ? Brand.ink : Brand.muted)
       }
-      .foregroundStyle(isSelected ? Brand.blue : Brand.muted)
-      .frame(maxWidth: .infinity, minHeight: 48)
-      .background(isSelected ? Brand.softBlue : Color.clear, in: Capsule())
+      .frame(maxWidth: .infinity, minHeight: 46)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -482,7 +480,7 @@ struct HomeScreen: View {
 
       }
       .navigationTitle("").navigationBarTitleDisplayMode(.inline)
-      .toolbarBackground(.regularMaterial, for: .navigationBar)
+      .toolbarBackground(Brand.surface, for: .navigationBar)
       .refreshable { await board.refresh(account) }
       .sheet(isPresented: Binding(get: { selectedIdea != nil }, set: { if !$0 { selectedIdea = nil } })) {
         if let idea = selectedIdea { inspirationDetail(idea) }
@@ -580,19 +578,19 @@ struct HomeScreen: View {
       if let task = item.task { openedTask = task } else { selected = .chat }
     } label: {
       HStack(alignment: .top, spacing: 14) {
-        Image(systemName: "hand.raised").font(.system(size: 19)).foregroundStyle(Color.white.opacity(0.7)).frame(width: 24).padding(.top, 4)
+        Image(systemName: "hand.raised").font(.system(size: 19)).foregroundStyle(Brand.onPrimaryContainer.opacity(0.72)).frame(width: 24).padding(.top, 4)
         VStack(alignment: .leading, spacing: 6) {
-          Text(item.title).font(.title2.weight(.semibold)).foregroundStyle(Color.white)
+          Text(item.title).font(.title2.weight(.semibold)).foregroundStyle(Brand.onPrimaryContainer)
             .lineLimit(typeSize.isAccessibilitySize ? nil : 2).multilineTextAlignment(.leading)
           if !item.detail.isEmpty {
-            Text(item.detail).font(.subheadline).foregroundStyle(Color.white.opacity(0.72))
+            Text(item.detail).font(.subheadline).foregroundStyle(Brand.onPrimaryContainer.opacity(0.72))
               .lineLimit(typeSize.isAccessibilitySize ? nil : 1).multilineTextAlignment(.leading)
           }
         }
         Spacer(minLength: 0)
-        Image(systemName: "arrow.up.right").font(.system(size: 18, weight: .medium)).foregroundStyle(Color.white.opacity(0.8))
+        Image(systemName: "arrow.up.right").font(.system(size: 18, weight: .medium)).foregroundStyle(Brand.onPrimaryContainer.opacity(0.8))
       }.padding(22).frame(maxWidth: .infinity, minHeight: 128, alignment: .leading)
-        .background(Color(red: 0.12, green: 0.17, blue: 0.28), in: RoundedRectangle(cornerRadius: 22))
+        .background(Brand.primaryContainer, in: RoundedRectangle(cornerRadius: MaterialShape.medium))
     }.buttonStyle(.plain).accessibilityIdentifier("home.focus")
   }
 
@@ -671,8 +669,8 @@ private struct HomeHeader: View {
       VStack(alignment: .leading, spacing: 5) {
         Text(date).font(.caption).foregroundStyle(Brand.muted)
         Text("此刻")
-          .font(.system(size: 34, weight: .semibold, design: .rounded))
-          .tracking(-1)
+          .font(.system(size: 28, weight: .semibold))
+          .tracking(-0.4)
           .foregroundStyle(Brand.ink)
         if working {
           HStack(spacing: 6) {
@@ -718,9 +716,9 @@ private struct HomeModule<Content: View>: View {
     }
     .padding(17)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small, style: .continuous))
     .overlay {
-      RoundedRectangle(cornerRadius: 20, style: .continuous)
+      RoundedRectangle(cornerRadius: MaterialShape.small, style: .continuous)
         .strokeBorder(Brand.line, lineWidth: 0.7)
     }
   }

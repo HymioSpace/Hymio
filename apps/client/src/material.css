@@ -1,0 +1,84 @@
+/* Material 3 convergence layer for the existing app while page CSS is migrated. */
+.app {
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+}
+
+.app :where(.main, .product-home, .memory-route, .tasks-dialog, .task-detail) {
+  background-color: var(--md-sys-color-surface);
+  background-image: none;
+}
+
+.app button {
+  min-height: 44px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  transition:
+    background-color var(--motion-standard),
+    border-color var(--motion-standard),
+    color var(--motion-standard);
+}
+
+.app button:focus-visible,
+.app a:focus-visible,
+.app summary:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary);
+  outline-offset: 2px;
+}
+
+.app [class*='-card'],
+.app [class*='-panel'],
+.app [class*='-module'],
+.app [class*='-section'] {
+  border-radius: var(--md-sys-shape-corner-medium);
+  box-shadow: none;
+  border-color: var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-low);
+}
+
+.app [class*='-hero'],
+.app [class*='-featured'] {
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: none;
+  border-color: var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.app :where(input, textarea, select) {
+  border-radius: var(--md-sys-shape-corner-medium);
+  border-color: var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.app :where(input, textarea, select):focus {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+}
+
+.app [class*='-chip'],
+.app [class*='-badge'],
+.app [class*='-pill'] {
+  border-radius: var(--md-sys-shape-corner-full);
+  min-height: 32px;
+}
+
+.app [class*='-divider'] {
+  background-color: var(--md-sys-color-outline-variant);
+}
+
+.app [class*='-muted'],
+.app small {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app *,
+  .app *::before,
+  .app *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

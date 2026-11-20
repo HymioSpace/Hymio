@@ -42,10 +42,9 @@ private struct SourceMark: View {
               ], startPoint: .top, endPoint: .bottom))
       }
     }.frame(width: size, height: size).background(
-      Brand.surface, in: RoundedRectangle(cornerRadius: size * 0.28)
+      Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small)
     )
-    .overlay(RoundedRectangle(cornerRadius: size * 0.28).stroke(Brand.line.opacity(0.5)))
-    .shadow(color: sourceTint(id).opacity(0.065), radius: 9, y: 4)
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).stroke(Brand.line.opacity(0.75)))
   }
 }
 @MainActor private final class ConnectionsModel: ObservableObject {
@@ -202,8 +201,8 @@ struct ConnectorsScreen: View {
         }
       }
       .padding(.horizontal, 13)
-      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line, lineWidth: 0.6))
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+      .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line, lineWidth: 0.75))
     }
   }
   private func connectorRow(_ provider: JSON) -> some View {
@@ -283,9 +282,8 @@ private struct ConnectorDetail: View {
                 symbol: index == 0 ? "tray" : "lock", color: index == 0 ? Brand.blue : Brand.muted)
             }
           }
-        }.padding(18).background(Brand.surface, in: RoundedRectangle(cornerRadius: 22))
-          .overlay(RoundedRectangle(cornerRadius: 22).stroke(Brand.line.opacity(0.7)))
-          .shadow(color: .black.opacity(0.025), radius: 10, y: 4)
+        }.padding(18).background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+          .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).stroke(Brand.line.opacity(0.75)))
         if id == "apple_health" || id == "apple_calendar" {
           Label(
             id == "apple_health" ? "仅分享每日汇总，不读取其他健康样本。" : "Apple 要求完整日历权限才能读取，Hymio 仅只读所选日历。",
@@ -354,7 +352,7 @@ private struct ConnectorDetail: View {
                 }
               }.font(.caption).tint(Brand.muted)
             }
-          }.padding(18).background(Brand.mist.opacity(0.5), in: RoundedRectangle(cornerRadius: 20))
+          }.padding(18).background(Brand.mist.opacity(0.5), in: RoundedRectangle(cornerRadius: MaterialShape.small))
         }
         if !provider["configured"].flag {
           Label("此部署尚未配置服务授权，请联系部署者。", systemImage: "info.circle").font(.footnote).foregroundStyle(
@@ -367,7 +365,7 @@ private struct ConnectorDetail: View {
                 .lineSpacing(3)
             }
           }.tint(Brand.blue).padding(16)
-            .background(Brand.mist.opacity(0.5), in: RoundedRectangle(cornerRadius: 18))
+            .background(Brand.mist.opacity(0.5), in: RoundedRectangle(cornerRadius: MaterialShape.small))
             .accessibilityIdentifier("connector.consent")
           Button {
             Task { await connect() }
@@ -378,7 +376,7 @@ private struct ConnectorDetail: View {
               Spacer()
               Image(systemName: "arrow.up.right")
             }.padding(17).foregroundStyle(.white).background(
-              Brand.blue, in: RoundedRectangle(cornerRadius: 16))
+              Brand.blue, in: Capsule())
           }.buttonStyle(.plain).disabled(!consent || model.busy || model.preview).opacity(
             consent ? 1 : 0.45)
         }

@@ -10,6 +10,10 @@ struct HymioActivityAttributes: ActivityAttributes {
     var startedAt: Int
     var updatedAt: Int
     var taskID: String
+
+    var displaysElapsedTime: Bool {
+      status == "working" || status == "waiting"
+    }
   }
 
   var aggregateID: String

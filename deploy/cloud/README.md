@@ -168,8 +168,9 @@ oath start --config /opt/hymio/config/oath.toml \
 
 Configure the extensions' ignored `_connection.local` to use `http://backend:8080`
 and the same service token, following the [deployment guide](../README.md).
-Use a matching Oath release with durable task tools, schema v4, role prompts, subagent APIs
-and application-event admission support. Oath owns task execution and recovery; Backend
+Use a matching Oath release with durable task tools, schema v5, role prompts, subagent APIs,
+Agent Team communication, dynamic workflow nodes and application-event admission support.
+Oath owns task execution and recovery; Backend
 only displays task state and receives configured result notifications. Deploy Oath before
 this Backend so the task API and schema agree. No additional cron container is required. Keep the
 role, style and skill guidance in the versioned Markdown file; do not put changing device
@@ -183,7 +184,8 @@ When upgrading an existing Oath configuration with an explicit `[agent].exposed_
 allowlist, retain its existing tools and add `task_create`, `task_list`, `task_get`,
 `task_update`, `task_message`, `task_pause`, `task_resume`, `task_cancel`, `task_retry`,
 `task_report`, `task_fetch`, `detail_read`, and the `subagent_spawn`, `subagent_list`,
-`subagent_get`, `subagent_continue`, `subagent_cancel`, `subagent_notify` tools. An empty
+`subagent_get`, `subagent_continue`, `subagent_cancel`, `subagent_notify`, `team_send`,
+`team_inbox`, `team_members`, `workflow_define`, `workflow_status` tools. An empty
 allowlist exposes all registered capabilities; a restricted old list does not automatically
 gain task tools. Hymio classifies these bounded task operations explicitly so background
 reports and delegation do not wait for an unknown-tool approval. Read-only mode still

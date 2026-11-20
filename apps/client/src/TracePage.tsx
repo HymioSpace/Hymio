@@ -49,6 +49,16 @@ export function TracePage({
   const generation = useRef(0);
   const projection = useMemo(() => conversation(state.events), [state.events]);
   const [updated, setUpdated] = useState('');
+  const startedLabel = (value: number | null | undefined) => {
+    if (!value) return '时间未知';
+    return new Date(value * 1000).toLocaleString('zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  };
   async function allTraces(current: number) {
     const trace_ids: TraceSummary[] = [];
     let offset = 0;
@@ -238,10 +248,9 @@ export function TracePage({
                 <Download size={16} />
               </button>
             </div>
-            <p className="panel-caption">已同步事件 · 按序号倒序</p>
+            <p className="panel-caption">已同步事件 · 按真实发生顺序</p>
             <div className="event-list">
               {[...state.events]
-                .reverse()
                 .filter((e) => e.event_type.includes(filter))
                 .map((e) => (
                   <details key={e.event_seq} className="event-row">
@@ -278,13 +287,19 @@ export function TracePage({
                       className="trace-card"
                       key={t.trace_id}
                       onClick={() => void select(t.trace_id)}
+                      aria-label={`${t.title || '未命名执行记录'}，${startedLabel(t.started_at)}`}
                     >
-                      <div>
-                        <code>{t.trace_id.slice(0, 12)}…</code>
+                      <div className="trace-card-title">
+                        <strong>{t.title || '未命名执行记录'}</strong>
                         <ChevronRight size={15} />
                       </div>
-                      <p>
-                        {t.step_count} steps<span>{ms(t.duration_ms)}</span>
+                      <p className="trace-card-meta">
+                        <time dateTime={t.started_at ? new Date(t.started_at * 1000).toISOString() : undefined}>
+                          {startedLabel(t.started_at)}
+                        </time>
+                        <span>
+                          {t.step_count} 个步骤 · {ms(t.duration_ms)}
+                        </span>
                       </p>
                     </button>
                   ))}

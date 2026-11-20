@@ -7,6 +7,105 @@ private enum AttachmentLimits {
   static let maxCount = 12
 }
 
+private let chatBottomAnchorID = "conversation.bottom"
+
+private struct ChatViewportGeometry: Equatable {
+  var contentHeight: CGFloat
+  var visibleMaxY: CGFloat
+  var viewportHeight: CGFloat
+}
+
+@MainActor
+private final class ChatScrollState: ObservableObject {
+  @Published private(set) var following = true
+  @Published private(set) var atBottom = true
+  @Published private(set) var overflows = false
+  private var generation = 0
+  private var hold = false
+  private var pendingPin: DispatchWorkItem?
+
+  func observe(_ geometry: ChatViewportGeometry) {
+    let overflow = geometry.contentHeight > geometry.viewportHeight + 1
+    overflows = overflow
+    atBottom = !overflow || geometry.contentHeight - geometry.visibleMaxY < 24
+  }
+
+  func follow() {
+    pendingPin?.cancel()
+    pendingPin = nil
+    following = true
+    atBottom = true
+    hold = false
+  }
+
+  func pauseFollowing() {
+    pendingPin?.cancel()
+    pendingPin = nil
+    following = false
+    hold = false
+    generation &+= 1
+  }
+
+  func holdFollowing() {
+    pendingPin?.cancel()
+    pendingPin = nil
+    following = false
+    hold = true
+    generation &+= 1
+  }
+
+  func userDidScroll() {
+    pendingPin?.cancel()
+    pendingPin = nil
+    following = false
+    hold = false
+    generation &+= 1
+  }
+
+  func settleAfterInteraction() {
+    if !hold, atBottom {
+      following = true
+    }
+  }
+
+  func pin(_ proxy: ScrollViewProxy, animated: Bool = false) {
+    guard following, overflows, pendingPin == nil else { return }
+    generation &+= 1
+    let request = generation
+    let work = DispatchWorkItem {
+      guard request == self.generation, self.following else { return }
+      self.pendingPin = nil
+      if animated {
+        withAnimation(.easeOut(duration: 0.18)) {
+          proxy.scrollTo(chatBottomAnchorID, anchor: .bottom)
+        }
+      } else {
+        proxy.scrollTo(chatBottomAnchorID, anchor: .bottom)
+      }
+      DispatchQueue.main.async {
+        guard request == self.generation, self.following else { return }
+        proxy.scrollTo(chatBottomAnchorID, anchor: .bottom)
+      }
+    }
+    pendingPin = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.024, execute: work)
+  }
+
+  func reveal(_ id: String, in proxy: ScrollViewProxy) {
+    following = false
+    generation &+= 1
+    let request = generation
+    DispatchQueue.main.async {
+      guard request == self.generation else { return }
+      proxy.scrollTo(id, anchor: .top)
+      DispatchQueue.main.async {
+        guard request == self.generation else { return }
+        proxy.scrollTo(id, anchor: .top)
+      }
+    }
+  }
+}
+
 struct ChatScreen: View {
   @ObservedObject var account: AccountService
   @ObservedObject var client: AgentClient
@@ -18,14 +117,10 @@ struct ChatScreen: View {
   @State private var filesOpen = false
   @State private var cameraOpen = false
   @State private var photosOpen = false
-  @State private var following = true
-  @State private var atBottom = true
-  @State private var contentOverflows = false
   @State private var sendBusy = false
-  @State private var bottomRequest = 0
-  @State private var lastFollowingScroll = Date.distantPast
+  @StateObject private var scroll = ChatScrollState()
+  @State private var followRequest = 0
   @FocusState private var typing: Bool
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var sentCount = 0
   private var visibleTurns: [Turn] {
     if client.turns.isEmpty, !client.model.messages.isEmpty {
@@ -35,17 +130,17 @@ struct ChatScreen: View {
   }
   var body: some View {
     NavigationStack {
-      VStack(spacing: 0) {
-        ScrollViewReader { proxy in
-          ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
+      ScrollViewReader { scrollProxy in
+        VStack(spacing: 0) {
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 18) {
             if client.state.hasMore {
               Button(client.loadingHistory ? "正在加载…" : "更早的对话") {
                 let first = client.turns.first?.id
-                following = false
+                scroll.pauseFollowing()
                 Task {
                   await client.loadHistory()
-                  if let first { proxy.scrollTo(first, anchor: .top) }
+                  if let first { scroll.reveal(first, in: scrollProxy) }
                 }
               }
               .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity).disabled(
@@ -61,6 +156,17 @@ struct ChatScreen: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                 }
               }.frame(maxWidth: .infinity).padding(.top, 70).padding(.bottom, 90)
+            } else if visibleTurns.isEmpty {
+              HStack(alignment: .top, spacing: 10) {
+                ProgressView().controlSize(.small)
+                VStack(alignment: .leading, spacing: 4) {
+                  Text("正在接回这段对话").font(.subheadline.weight(.medium))
+                  Text("消息已经保存，正在整理可显示的内容。").font(.caption)
+                    .foregroundStyle(Brand.muted)
+                }
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(.vertical, 24)
             }
             ForEach(visibleTurns) { turn in
               if let unread = client.unread, unread.turnID == turn.id {
@@ -77,8 +183,8 @@ struct ChatScreen: View {
                   uniqueKeysWithValues: turn.invocationIDs.compactMap { id in
                     client.model.terminals[id].map { (id, $0) }
                   }), approvals: client.model.approvals,
-                onExpansionWillChange: { _, expanded in
-                  if expanded { following = false }
+                onExpansionWillChange: { _, _ in
+                  scroll.holdFollowing()
                 },
                 onAction: {
                   try await client.message($0)
@@ -125,66 +231,61 @@ struct ChatScreen: View {
                   .accessibilityIdentifier("chat.continue")
               }
             }
-            Color.clear.frame(height: 1).id("bottom")
+            Color.clear.frame(height: 1).id(chatBottomAnchorID)
           }.scrollTargetLayout().padding(.top, 16).padding(.bottom, 14)
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
-          }
+            .onGeometryChange(for: CGFloat.self) { geometry in
+              geometry.size.height
+            } action: { _, _ in
+              scroll.pin(scrollProxy)
+            }
+        }
           .scrollBounceBehavior(.basedOnSize)
           .contentShape(Rectangle())
           .simultaneousGesture(TapGesture().onEnded { typing = false })
+          .simultaneousGesture(
+            DragGesture(minimumDistance: 8).onChanged { value in
+              if abs(value.translation.height) > abs(value.translation.width) {
+                scroll.userDidScroll()
+              }
+            }
+          )
           .scrollDismissesKeyboard(.interactively)
           .trackStreamGeometry()
           .padding(.horizontal, 18)
-          .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentSize.height - geometry.visibleRect.maxY < 16
-          } action: { _, near in
-            atBottom = near
-          }
-          .onScrollGeometryChange(for: Bool.self) { geometry in
-            geometry.contentSize.height > geometry.containerSize.height + 1
-          } action: { _, overflows in
-            let becameScrollable = overflows && !contentOverflows
-            contentOverflows = overflows
-            if becameScrollable && following { bottomRequest += 1 }
-          }
-          .onScrollPhaseChange { _, phase in
-            if phase == .interacting { following = false }
-            if phase == .idle && atBottom { following = true }
-          }
-          .onChange(of: client.model.messages.count) { _, _ in
-            if client.model.messages.last?.role == "user" || following {
-              following = true
-              atBottom = true
-              bottomRequest += 1
+          .onScrollGeometryChange(for: ChatViewportGeometry.self) { geometry in
+            ChatViewportGeometry(
+              contentHeight: geometry.contentSize.height,
+              visibleMaxY: geometry.visibleRect.maxY,
+              viewportHeight: geometry.containerSize.height)
+          } action: { old, geometry in
+            scroll.observe(geometry)
+            if scroll.following,
+              old.viewportHeight != geometry.viewportHeight
+                || old.contentHeight != geometry.contentHeight
+            {
+              scroll.pin(scrollProxy)
             }
           }
-          .onChange(of: client.model.working) { _, working in
-            if working && following { bottomRequest += 1 }
+          .onScrollPhaseChange { _, phase in
+            if phase == .idle {
+              scroll.settleAfterInteraction()
+              scroll.pin(scrollProxy)
+            }
           }
-          .onChange(of: client.model.messages.last?.content) { _, _ in
-            guard following, contentOverflows else { return }
-            let now = Date()
-            guard now.timeIntervalSince(lastFollowingScroll) > 0.08 else { return }
-            lastFollowingScroll = now
-            proxy.scrollTo("bottom", anchor: .bottom)
-          }
-          .onChange(of: typing) { _, focused in
-            guard focused, following else { return }
-            bottomRequest += 1
-          }
-          .onChange(of: bottomRequest) { _, _ in
-            scrollToBottom(proxy)
-          }
-          .onAppear {
-            if following { bottomRequest += 1 }
+          .onChange(of: client.model.messages.count) { _, _ in
+            if client.model.messages.last?.role == "user" || scroll.following {
+              scroll.follow()
+            }
+            scheduleKeyboardPin(scrollProxy)
           }
           .overlay(alignment: .bottomTrailing) {
             if client.model.approvals.contains(where: { $0.status == "pending" }) {
               TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 let pending = pendingApprovalCount(at: timeline.date)
-                if !atBottom && !client.model.messages.isEmpty {
+                if !scroll.atBottom && scroll.overflows && !client.model.messages.isEmpty {
                   Button {
-                    jumpToBottom()
+                    jumpToBottom(scrollProxy)
                   } label: {
                     if pending > 0 {
                       Label("\(pending) 个待确认", systemImage: "hand.raised")
@@ -204,9 +305,9 @@ struct ChatScreen: View {
                   .accessibilityLabel(pending > 0 ? "\(pending) 个操作等待确认" : "最新消息")
                 }
               }
-            } else if !atBottom && !client.model.messages.isEmpty {
+            } else if !scroll.atBottom && scroll.overflows && !client.model.messages.isEmpty {
               Button {
-                jumpToBottom()
+                jumpToBottom(scrollProxy)
               } label: {
                 Image(systemName: "arrow.down").padding(12).background(
                   .regularMaterial, in: Circle())
@@ -215,11 +316,25 @@ struct ChatScreen: View {
               .padding(18).accessibilityLabel("最新消息")
             }
           }
-        }
         composer
+        }
+        .onAppear {
+          scroll.follow()
+          scheduleKeyboardPin(scrollProxy)
+        }
+        .onChange(of: followRequest) { _, _ in scheduleKeyboardPin(scrollProxy) }
+        .onChange(of: typing) { _, focused in
+          if focused, scroll.following { scheduleKeyboardPin(scrollProxy) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+          if scroll.following { scheduleKeyboardPin(scrollProxy) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+          if scroll.following { scheduleKeyboardPin(scrollProxy) }
+        }
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
-      .toolbarBackground(.regularMaterial, for: .navigationBar)
+      .toolbarBackground(Brand.surface, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {
@@ -333,22 +448,18 @@ struct ChatScreen: View {
     }
   }
 
-  private func jumpToBottom() {
-    following = true
-    atBottom = true
-    bottomRequest += 1
+  private func jumpToBottom(_ proxy: ScrollViewProxy) {
+    scroll.follow()
+    scroll.pin(proxy, animated: true)
   }
 
-  private func scrollToBottom(_ proxy: ScrollViewProxy) {
-    guard following, contentOverflows else { return }
-    Task { @MainActor in
-      try? await Task.sleep(for: .milliseconds(16))
-      proxy.scrollTo("bottom", anchor: .bottom)
-      try? await Task.sleep(for: .milliseconds(260))
-      guard following else { return }
-      withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-        proxy.scrollTo("bottom", anchor: .bottom)
-      }
+  private func scheduleKeyboardPin(_ proxy: ScrollViewProxy) {
+    scroll.pin(proxy)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+      if scroll.following { scroll.pin(proxy) }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+      if scroll.following { scroll.pin(proxy) }
     }
   }
 
@@ -485,9 +596,8 @@ struct ChatScreen: View {
     guard client.connected, !sendBusy, !uploading, !value.isEmpty else { return }
     typing = false
     sendBusy = true
-    atBottom = true
-    following = true
-    bottomRequest += 1
+    scroll.follow()
+    followRequest &+= 1
     Task {
       do {
         try await client.message(value)
@@ -512,9 +622,8 @@ struct ChatScreen: View {
     sendBusy = true
     draft = ""
     attachments = []
-    atBottom = true
-    following = true
-    bottomRequest += 1
+    scroll.follow()
+    followRequest &+= 1
     Task {
       do {
         try await client.message(

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Monitor, Globe, Smartphone, LoaderCircle } from 'lucide-react';
+import { Monitor, Smartphone, LoaderCircle } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import { deviceImage, deviceRequest, type Device } from './deviceApi';
+import { executionDevices as selectExecutionDevices } from './deviceFilters';
 import { DeviceDetails } from './DeviceDetails';
 import { DesktopSnapshot } from './DesktopSnapshot';
 import { LinkPairing } from './LinkPairing';
@@ -15,13 +16,14 @@ export function DeviceManager({ login }: { login: LoginState }) {
   const [screen, setScreen] = useState('');
   const [expanded, setExpanded] = useState('');
   const [zoomed, setZoomed] = useState(false);
+  const visibleDevices = selectExecutionDevices(devices);
   useEffect(
     () => () => {
       if (screen) URL.revokeObjectURL(screen);
     },
     [screen],
   );
-  const cloudId = devices.find((device) => device.kind === 'cloud_desktop')?.device_id;
+  const cloudId = visibleDevices.find((device) => device.kind === 'cloud_desktop')?.device_id;
   useEffect(() => {
     setScreen('');
     setZoomed(false);
@@ -140,16 +142,10 @@ export function DeviceManager({ login }: { login: LoginState }) {
           {loadError}
         </p>
       )}
-      {devices.map((device) => (
+      {visibleDevices.map((device) => (
         <div className="device-row" key={device.device_id}>
           <span className="device-symbol">
-            {['ios', 'personal_android'].includes(device.kind) ? (
-              <Smartphone size={20} />
-            ) : device.kind === 'web' ? (
-              <Globe size={20} />
-            ) : (
-              <Monitor size={20} />
-            )}
+            {device.kind === 'personal_android' ? <Smartphone size={20} /> : <Monitor size={20} />}
           </span>
           <div className="device-info">
             <strong>{device.kind === 'cloud_desktop' ? '云电脑' : device.name}</strong>
@@ -247,7 +243,7 @@ export function DeviceManager({ login }: { login: LoginState }) {
           )}
         </div>
       ))}
-      {devices
+      {visibleDevices
         .filter((device) => device.device_id === expanded)
         .map((device) => (
           <DeviceDetails
@@ -259,9 +255,19 @@ export function DeviceManager({ login }: { login: LoginState }) {
             onEnsure={() => void ensureDevice()}
           />
         ))}
-      {!loading && !loadError && !devices.some((device) => device.kind === 'cloud_desktop') && (
-        <p className="dialog-note">当前没有云电脑。需要使用时，请联系管理员开通；对话不受影响。</p>
+      {!loading && !loadError && visibleDevices.length === 0 && (
+        <p className="dialog-note">
+          尚未绑定个人设备或云电脑。iPhone 和 Web 聊天端无需在这里重复添加。
+        </p>
       )}
+      {!loading &&
+        !loadError &&
+        visibleDevices.length > 0 &&
+        !visibleDevices.some((device) => device.kind === 'cloud_desktop') && (
+          <p className="dialog-note">
+            当前没有云电脑。需要使用时，请联系管理员开通；对话不受影响。
+          </p>
+        )}
       <p className="dialog-note">
         云电脑可执行命令、浏览网页和操作桌面。Mac 和 Android 经 HymioDevice 接入；iPhone
         聊天端本身不提供远程控制。

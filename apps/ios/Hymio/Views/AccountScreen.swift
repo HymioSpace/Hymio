@@ -193,20 +193,162 @@ struct AccountScreen: View {
     TasksScreen(account: account, board: taskBoard, onAccount: {}, showAccountButton: false)
       .task { taskBoard.bind(account); await taskBoard.refresh(account) }
   }
+  private var devicesDestination: some View {
+    let devices = client.devices.filter {
+      ["personal_mac", "personal_android", "cloud_desktop"].contains($0["kind"].text)
+    }
+    return List {
+      Section {
+        Button {
+          pairingPresented = true
+        } label: {
+          Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
+        }
+        .accessibilityIdentifier("device.connect")
+        ForEach(devices, id: \.self) {
+          deviceSummary($0)
+        }
+        if client.devicesLoading && devices.isEmpty {
+          ProgressView("正在读取设备…").font(.subheadline)
+        } else if devices.isEmpty && client.devicesError.isEmpty {
+          Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
+        }
+        if !client.devicesError.isEmpty {
+          Text(client.devicesError).font(.footnote).foregroundStyle(Brand.muted)
+          Button("重新读取") { Task { await client.loadDevices() } }
+        }
+      } header: {
+        Text("我的设备")
+      } footer: {
+        Text("Mac、Android 和云电脑会出现在这里。当前 iPhone 不需要重复绑定。")
+      }
+    }
+    .navigationTitle("我的设备")
+    .navigationBarTitleDisplayMode(.inline)
+    .task {
+      while !Task.isCancelled {
+        await client.loadDevices()
+        do { try await Task.sleep(for: .seconds(20)) } catch { return }
+      }
+    }
+  }
+  private var diagnosticsDestination: some View {
+    ScrollView {
+      VStack(spacing: 12) {
+        NavigationLink { TraceScreen(account: account, client: client) } label: {
+          accountRow("探索记录", detail: "查看一次工作的执行过程", symbol: "clock.arrow.circlepath")
+        }
+        Button { diagnostics = true } label: {
+          accountRow("连接诊断", detail: "检查连接与同步状态", symbol: "waveform.path.ecg")
+        }
+      }.padding(22)
+    }
+    .background(Brand.base)
+    .navigationTitle("调试与诊断")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+  private func deviceSummary(_ device: JSON) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: deviceSymbol(device["kind"].text))
+        .frame(width: 24)
+        .foregroundStyle(Brand.muted)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(deviceTitle(device)).font(.subheadline.weight(.medium))
+        Text(deviceStatus(device)).font(.caption).foregroundStyle(Brand.muted)
+        if device["kind"].text == "cloud_desktop" {
+          Text("终端 · 浏览器 · 桌面").font(.caption2).foregroundStyle(Brand.muted)
+        }
+      }
+      Spacer()
+      deviceActions(device)
+    }
+    .padding(.vertical, 5)
+  }
+  @ViewBuilder private func deviceActions(_ device: JSON) -> some View {
+    if device["kind"].text == "cloud_desktop",
+      ["paused", "recovery_required"].contains(device["state"].text)
+    {
+      Button(device["state"].text == "paused" ? "继续" : "核对并继续") {
+        Task { await client.controlDevice(device["device_id"].text, action: "resume") }
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+      .disabled(!client.deviceActionID.isEmpty || client.devicesLoading)
+      .accessibilityIdentifier("device.resume")
+    }
+    if device["provider"].text == "link" {
+      Menu {
+        Button(device["state"].text == "paused" ? "继续连接" : "暂停连接") {
+          Task {
+            await client.controlDevice(
+              device["device_id"].text,
+              action: device["state"].text == "paused" ? "resume" : "pause")
+          }
+        }
+        Button("解除连接", role: .destructive) {
+          revokeTarget = device
+          revokePresented = true
+        }
+      } label: {
+        Image(systemName: "ellipsis.circle")
+          .frame(width: 30, height: 30)
+          .contentShape(Rectangle())
+      }
+      .disabled(client.devicesLoading || !client.deviceActionID.isEmpty)
+      .accessibilityLabel("管理 \(device["name"].text)")
+    }
+    if device["online"].flag {
+      Circle().fill(Brand.primary).frame(width: 6, height: 6).padding(.top, 7)
+    }
+  }
+  private func deviceSymbol(_ kind: String) -> String {
+    if kind == "cloud_desktop" || kind == "personal_mac" { return "desktopcomputer" }
+    if kind == "personal_android" || kind == "ios" { return "iphone" }
+    return "globe"
+  }
+  private func deviceTitle(_ device: JSON) -> String {
+    if device["kind"].text == "cloud_desktop" { return "云电脑" }
+    if device["kind"].text == "ios" { return "iPhone" }
+    return device["name"].text
+  }
+  private var connectionDiagnostics: some View {
+    List {
+      LabeledContent("连接", value: client.phase)
+      LabeledContent("已保存事件进度", value: String(client.state.cursor))
+      LabeledContent("待确认命令", value: String(client.state.pending.count))
+      if !client.error.isEmpty { Text(client.error).font(.caption) }
+      Button("重新连接") { client.reconnect() }
+      Section("最近事件") {
+        ForEach(Array(client.state.events.suffix(25).reversed())) { event in
+          eventDisclosure(event)
+        }
+      }
+    }
+    .navigationTitle("连接诊断")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+  private func eventDisclosure(_ event: Event) -> some View {
+    DisclosureGroup("\(event.id) · \(event.event_type)") {
+      Text(event.payload.pretty)
+        .font(.system(.caption2, design: .monospaced))
+        .textSelection(.enabled)
+    }
+    .font(.caption)
+  }
   private func accountSection<Content: View>(
     _ title: String, @ViewBuilder content: () -> Content
   ) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Text(title)
         .font(.caption.weight(.medium))
-        .foregroundStyle(Brand.muted)
+        .foregroundStyle(Brand.outline)
         .padding(.leading, 4)
       VStack(spacing: 0) {
         content()
       }
       .padding(.horizontal, 14)
-      .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-      .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line, lineWidth: 0.6))
+      .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+      .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line, lineWidth: 0.75))
     }
   }
   var body: some View {
@@ -218,8 +360,6 @@ struct AccountScreen: View {
             VStack(alignment: .leading, spacing: 5) {
               Text(account.session?.displayName ?? "我的账号")
                 .font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
-              Text("任务、记忆和连接都从这里管理")
-                .font(.caption).foregroundStyle(Brand.muted)
             }
             Spacer(minLength: 4)
           }.padding(.top, 8)
@@ -254,143 +394,24 @@ struct AccountScreen: View {
             }
           }
           accountSection("更多") {
-          NavigationLink { List {
-        Section {
-          Button {
-            pairingPresented = true
-          } label: {
-            Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
-          }
-          .accessibilityIdentifier("device.connect")
-          ForEach(client.devices.filter { $0["kind"].text != "ios" }, id: \.self) { device in
-            HStack(alignment: .top, spacing: 12) {
-              Image(
-                systemName: device["kind"].text == "cloud_desktop"
-                  ? "desktopcomputer"
-                  : device["kind"].text == "personal_mac"
-                    ? "desktopcomputer"
-                    : ["ios", "personal_android"].contains(device["kind"].text) ? "iphone" : "globe"
-              ).frame(width: 24).foregroundStyle(.secondary)
-              VStack(alignment: .leading, spacing: 5) {
-                Text(
-                  device["kind"].text == "cloud_desktop"
-                    ? "云电脑" : device["kind"].text == "ios" ? "iPhone" : device["name"].text
-                ).font(.subheadline.weight(.medium))
-                Text(deviceStatus(device)).font(.caption).foregroundStyle(.secondary)
-                if device["kind"].text == "cloud_desktop" {
-                  Text("终端 · 浏览器 · 桌面").font(.caption2).foregroundStyle(.tertiary)
-                } else if device["kind"].text == "personal_android" {
-                  Text("HymioDevice · 手机操作").font(.caption2).foregroundStyle(.tertiary)
-                } else if device["kind"].text == "personal_mac" {
-                  Text("HymioDevice · 本机操作").font(.caption2).foregroundStyle(.tertiary)
-                }
-              }
-              Spacer()
-              if device["kind"].text == "cloud_desktop" {
-                let state = device["state"].text
-                if state == "paused" || state == "recovery_required" {
-                  Button(state == "paused" ? "继续" : "核对并继续") {
-                    Task { await client.controlDevice(device["device_id"].text, action: "resume") }
-                  }
-                  .buttonStyle(.bordered)
-                  .controlSize(.small)
-                  .disabled(!client.deviceActionID.isEmpty || client.devicesLoading)
-                  .accessibilityIdentifier("device.resume")
-                }
-              }
-              if device["provider"].text == "link" {
-                if client.deviceActionID == device["device_id"].text {
-                  ProgressView().controlSize(.small)
-                } else {
-                  Menu {
-                    Button(
-                      device["state"].text == "paused" ? "继续连接" : "暂停连接"
-                    ) {
-                      Task {
-                        await client.controlDevice(
-                          device["device_id"].text,
-                          action: device["state"].text == "paused" ? "resume" : "pause")
-                      }
-                    }
-                    Button("解除连接", role: .destructive) {
-                      revokeTarget = device
-                      revokePresented = true
-                    }
-                  } label: {
-                    Image(systemName: "ellipsis.circle")
-                      .frame(width: 30, height: 30)
-                      .contentShape(Rectangle())
-                  }
-                  .menuStyle(.borderlessButton)
-                  .disabled(client.devicesLoading || !client.deviceActionID.isEmpty)
-                  .accessibilityLabel("管理 \(device["name"].text)")
-                }
-              }
-              if device["online"].flag {
-                Circle().fill(Brand.blue).frame(width: 5, height: 5).padding(.top, 7)
-              }
-            }.padding(.vertical, 5)
-          }
-          if client.devicesLoading && client.devices.allSatisfy({ $0["kind"].text == "ios" }) {
-            ProgressView("正在读取设备…").font(.subheadline)
-          } else if client.devices.allSatisfy({ $0["kind"].text == "ios" })
-            && client.devicesError.isEmpty
-          {
-            Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
-          }
-          if !client.devicesError.isEmpty {
-            Text(client.devicesError).font(.footnote).foregroundStyle(Brand.muted)
-            Button("重新读取") { Task { await client.loadDevices() } }
-          }
-        } header: {
-          Text("我的设备")
-        } footer: {
-          Text("Mac、Android 和云电脑会出现在这里。当前 iPhone 不需要重复绑定。")
-        }
-          }.navigationTitle("我的设备").navigationBarTitleDisplayMode(.inline)
-            .task {
-              while !Task.isCancelled {
-                await client.loadDevices()
-                do { try await Task.sleep(for: .seconds(20)) } catch { return }
-              }
+            NavigationLink { devicesDestination } label: {
+              accountRow("我的设备", detail: "Mac、手机与云电脑", symbol: "desktopcomputer")
             }
-          } label: { accountRow("我的设备", detail: "Mac、手机与云电脑", symbol: "desktopcomputer") }
-          NavigationLink {
-            ScrollView {
-              VStack(spacing: 12) {
-                NavigationLink { TraceScreen(account: account, client: client) } label: {
-                  accountRow("探索记录", detail: "查看一次工作的执行过程", symbol: "clock.arrow.circlepath")
-                }
-                Button { diagnostics = true } label: {
-                  accountRow("连接诊断", detail: "检查连接与同步状态", symbol: "waveform.path.ecg")
-                }
-              }.padding(22)
-            }.background(Brand.base).navigationTitle("调试与诊断").navigationBarTitleDisplayMode(.inline)
-          } label: {
-            accountRow("调试与诊断", detail: "需要排查问题时再来这里", symbol: "wrench.adjustable")
-          }
+            Divider().overlay(Brand.line)
+            NavigationLink { diagnosticsDestination } label: {
+              accountRow("调试与诊断", detail: "需要排查问题时再来这里", symbol: "wrench.adjustable")
+            }
           }
 
-          Button { loggingOut = true } label: {
-            HStack(spacing: 11) {
-              Image(systemName: "rectangle.portrait.and.arrow.right")
-                .font(.system(size: 16, weight: .medium))
-              VStack(alignment: .leading, spacing: 3) {
-                Text("退出当前账号").font(.subheadline.weight(.medium))
-                Text("本机缓存会清除，云端内容不受影响")
-                  .font(.caption).foregroundStyle(Brand.muted)
-              }
-              Spacer(minLength: 4)
-              Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
+          accountSection("账号") {
+            Button { loggingOut = true } label: {
+              accountRow(
+                "退出登录",
+                detail: "清除本机缓存，云端内容不受影响",
+                symbol: "rectangle.portrait.and.arrow.right")
             }
-            .foregroundStyle(Brand.ink)
-            .padding(15)
-            .background(Brand.raised, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.line, lineWidth: 0.6))
-            .contentShape(Rectangle())
-          }.buttonStyle(.plain)
             .accessibilityIdentifier("account.logout")
-            .padding(.top, 2)
+          }
         }.padding(.horizontal, 24).padding(.bottom, 28)
           .frame(maxWidth: 620).frame(maxWidth: .infinity)
       }.background(Brand.base).buttonStyle(.plain)
@@ -450,25 +471,13 @@ struct AccountScreen: View {
               await account.logout()
             }
           })
-          .presentationDetents([.height(360)])
-          .presentationDragIndicator(.visible)
+          .presentationDetents([.height(420)])
+          .presentationCornerRadius(MaterialShape.extraLarge)
+          .presentationDragIndicator(.hidden)
+          .presentationBackground(Brand.surface)
       }
       .navigationDestination(isPresented: $diagnostics) {
-        List {
-          LabeledContent("连接", value: client.phase)
-          LabeledContent("已保存事件进度", value: String(client.state.cursor))
-          LabeledContent("待确认命令", value: String(client.state.pending.count))
-          if !client.error.isEmpty { Text(client.error).font(.caption) }
-          Button("重新连接") { client.reconnect() }
-          Section("最近事件") {
-            ForEach(Array(client.state.events.suffix(25).reversed())) { event in
-              DisclosureGroup("\(event.id) · \(event.event_type)") {
-                Text(event.payload.pretty).font(.system(.caption2, design: .monospaced))
-                  .textSelection(.enabled)
-              }.font(.caption)
-            }
-          }
-        }.navigationTitle("连接诊断").navigationBarTitleDisplayMode(.inline)
+        connectionDiagnostics
       }
     }
   }
@@ -492,11 +501,16 @@ private struct LogoutSheet: View {
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack {
-        VStack(alignment: .leading, spacing: 5) {
+    VStack(spacing: 0) {
+      HStack(alignment: .center, spacing: 14) {
+        Image(systemName: "rectangle.portrait.and.arrow.right")
+          .font(.system(size: 18, weight: .medium))
+          .foregroundStyle(Brand.attention)
+          .frame(width: 44, height: 44)
+          .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 4) {
           Text("退出当前账号").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
-          Text(name).font(.caption).foregroundStyle(Brand.muted)
+          Text(name).font(.subheadline).foregroundStyle(Brand.muted).lineLimit(1)
         }
         Spacer()
         Button {
@@ -504,33 +518,60 @@ private struct LogoutSheet: View {
         } label: {
           Image(systemName: "xmark")
             .font(.caption.weight(.semibold))
-            .frame(width: 36, height: 36)
-            .background(Brand.base, in: Circle())
+            .frame(width: 44, height: 44)
+            .background(Brand.surfaceLow, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("取消退出")
       }
-      VStack(alignment: .leading, spacing: 12) {
-        Label("这台 iPhone 会回到登录页", systemImage: "iphone")
-        Label("本机对话缓存与待发送内容会清除", systemImage: "internaldrive")
-        Label("云端的任务、记忆和连接不会删除", systemImage: "cloud")
+      .padding(.horizontal, 24)
+      .padding(.top, 28)
+      .padding(.bottom, 20)
+
+      Divider().overlay(Brand.line)
+
+      VStack(spacing: 0) {
+        logoutRow("这台 iPhone 会回到登录页", symbol: "iphone")
+        logoutRow("本机对话缓存与待发送内容会清除", symbol: "internaldrive")
+        logoutRow("云端的任务、记忆和连接不会删除", symbol: "cloud")
       }
-      .font(.subheadline)
-      .foregroundStyle(Brand.muted)
-      .padding(16)
+      .padding(.horizontal, 24)
+      .padding(.vertical, 8)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Brand.base, in: RoundedRectangle(cornerRadius: 16))
-      Spacer(minLength: 0)
-      Button(role: .destructive, action: onLogout) {
-        Text("退出登录").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48)
+
+      VStack(spacing: 8) {
+        Button(action: onLogout) {
+          Text("退出登录")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Brand.onAccent)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(Brand.attention, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("account.confirmLogout")
+
+        Button("取消") { dismiss() }
+          .font(.subheadline.weight(.medium))
+          .foregroundStyle(Brand.ink)
+          .frame(maxWidth: .infinity, minHeight: 48)
       }
-      .buttonStyle(.bordered)
-      .tint(Brand.attention)
-      .accessibilityIdentifier("account.confirmLogout")
-      Button("取消") { dismiss() }.frame(maxWidth: .infinity, minHeight: 44)
+      .padding(.horizontal, 24)
+      .padding(.top, 12)
+      .padding(.bottom, 24)
     }
-    .padding(22)
     .background(Brand.surface)
+  }
+
+  private func logoutRow(_ text: String, symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(Brand.muted)
+        .frame(width: 28, height: 32)
+      Text(text).font(.subheadline).foregroundStyle(Brand.ink)
+      Spacer(minLength: 0)
+    }
+    .frame(minHeight: 48)
   }
 }
 
@@ -553,6 +594,10 @@ struct AccountExperiencePreview: View {
           .object([
             "device_id": .string("preview-phone"), "name": .string("iPhone"),
             "kind": .string("ios"), "provider": .string("channel"), "online": .bool(true),
+          ]),
+          .object([
+            "device_id": .string("preview-web"), "name": .string("Web"),
+            "kind": .string("web"), "provider": .string("channel"), "online": .bool(true),
           ]),
           .object([
             "device_id": .string("preview-mac"), "name": .string("Mac mini"),

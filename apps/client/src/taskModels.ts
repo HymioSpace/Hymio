@@ -14,6 +14,7 @@ export type Run = {
   progress: string;
   wait_reason?: string;
   wait_kind?: string | null;
+  error_code?: string;
   resume_at?: number;
   phase?: string;
   next_step: string;
@@ -29,6 +30,12 @@ export type Run = {
     phase: string;
   }[];
 };
+export type RunBudget = {
+  max_steps: number;
+  max_tokens: number;
+  max_active_seconds: number;
+  max_cost_microusd: null;
+};
 export type Work = {
   revision?: number;
   needs_attention?: boolean;
@@ -42,28 +49,39 @@ export type Work = {
   state: string;
   source?: string;
   executor_kind?: string;
+  execution_mode?: ExecutionMode;
+  completion?: 'achieve' | 'maintain';
+  scope?: 'temporary' | 'ongoing';
   close_reason?: string | null;
   kind?: 'task' | 'reminder';
   schedule: Schedule;
+  budget?: RunBudget;
   runs: Run[];
   context?: { brief: string; refs: string[] };
   plan?: unknown[];
   evidence?: { kind: string; ref: string; summary: string }[];
   execution?: {
     executor: string;
+    mode?: ExecutionMode;
     task_agent?: ExecutionAgent | null;
     subagents: ExecutionAgent[];
     checkpoint?: { progress?: string; next_step?: string };
     wait?: { condition?: { kind: string; reason: string } } | null;
     usage?: { steps: number; tokens: number; active_seconds: number };
+    team_messages?: TeamMessage[];
+    workflow?: { nodes: WorkflowNode[]; edges: { from: string; to: string }[] };
     events: { id: number; type: string; created_at: number; data: Record<string, unknown> }[];
   };
 };
+
+export type ExecutionMode = 'program' | 'parallel_subagents' | 'agent_team' | 'dynamic_workflow';
+export type TaskPortfolioScope = 'ongoing' | 'temporary' | 'completed';
 
 export type ExecutionAgent = {
   agent_id: string;
   title: string;
   role: string;
+  delegation_role?: 'subagent' | 'teammate' | 'workflow_node';
   status: string;
   execution_status?: string;
   objective: string;
@@ -75,9 +93,151 @@ export type ExecutionAgent = {
       id: number;
       kind: string;
       tool: string;
+      tool_description?: string;
       content: string;
       status: string;
-      created_at: number;
+      created_at: number | string;
+      created_at_iso?: string;
+      tool_calls?: { name: string; description: string; invocation_id?: string }[];
     }[];
   };
+  communications?: TeamMessage[];
 };
+
+export type TeamMessage = {
+  id: string;
+  sender_agent_id: string;
+  recipient_agent_id: string;
+  sender_title: string;
+  recipient_title: string;
+  content: string;
+  created_at: number;
+};
+
+export type WorkflowNode = {
+  id: string;
+  title: string;
+  objective?: string;
+  success_criteria?: string;
+  depends_on: string[];
+  agent_id?: string;
+  status: string;
+  result: string;
+  error?: string;
+};
+
+const modeDefinitions: Record<ExecutionMode, { label: string; description: string }> = {
+  program: {
+    label: '自动执行',
+    description: '按时间或条件执行固定动作，不启动模型。',
+  },
+  parallel_subagents: {
+    label: 'Agent 并行',
+    description: '主 Agent 拆分独立步骤，完成后整合结果。',
+  },
+  agent_team: {
+    label: 'Agent Team',
+    description: 'Leader 与成员可以互相沟通并共同完成。',
+  },
+  dynamic_workflow: {
+    label: '动态工作流',
+    description: '先确定步骤依赖；独立节点可并行，依赖完成后继续。',
+  },
+};
+
+export function taskExecutionMode(task: Work): ExecutionMode {
+  if (task.execution_mode) return task.execution_mode;
+  if (task.execution?.mode) return task.execution.mode;
+  if ((task.executor_kind || task.execution?.executor) === 'program') return 'program';
+  return 'parallel_subagents';
+}
+
+export function taskModeLabel(task: Work) {
+  if (
+    taskExecutionMode(task) === 'parallel_subagents' &&
+    (task.execution?.subagents?.length || 0) < 2
+  )
+    return 'Agent 执行';
+  return modeDefinitions[taskExecutionMode(task)].label;
+}
+
+export function taskModeDescription(task: Work) {
+  if (
+    taskExecutionMode(task) === 'parallel_subagents' &&
+    (task.execution?.subagents?.length || 0) < 2
+  )
+    return '当前由主 Agent 单线执行；出现两个以上独立成员时才展示为并行。';
+  return modeDefinitions[taskExecutionMode(task)].description;
+}
+
+export function taskTemporalScope(task: Work): 'ongoing' | 'temporary' {
+  if (task.scope) return task.scope;
+  if (
+    task.completion === 'maintain' ||
+    ['daily', 'weekly', 'event'].includes(task.schedule?.mode || '')
+  )
+    return 'ongoing';
+  return 'temporary';
+}
+
+export function taskIsCancelled(task: Work) {
+  return (
+    task.close_reason === 'cancelled' ||
+    (['closed', 'archived'].includes(task.state) && task.runs[0]?.status === 'cancelled')
+  );
+}
+
+export function taskIsArchived(task: Work) {
+  return task.state === 'closed';
+}
+
+export function taskPortfolioScope(task: Work): TaskPortfolioScope {
+  const run = task.runs[0];
+  if (task.state === 'active' && run?.status === 'succeeded' && task.next_due_at) {
+    return taskTemporalScope(task);
+  }
+  if (
+    ['closed', 'archived'].includes(task.state) ||
+    ['succeeded', 'cancelled', 'expired'].includes(run?.status || '')
+  )
+    return 'completed';
+  return taskTemporalScope(task);
+}
+
+export function taskNeedsAttention(task: Work) {
+  const run = task.runs[0];
+  return Boolean(
+    task.needs_attention ||
+      ['paused', 'blocked', 'failed', 'expired'].includes(run?.status || '') ||
+      (run?.status === 'waiting' && run.wait_kind === 'user'),
+  );
+}
+
+export function taskStatusLabel(task: Work) {
+  if (task.state === 'closed') {
+    if (task.close_reason === 'achieved') return '已完成';
+    if (task.close_reason === 'cancelled') return '已取消';
+    return '已结束';
+  }
+  if (task.state !== 'active') {
+    return task.state === 'paused' ? '已暂停' : task.state;
+  }
+  const run = task.runs[0];
+  if (run?.status === 'succeeded' && task.next_due_at) return '已安排';
+  if (run?.status === 'waiting') {
+    if (run.wait_kind === 'user') return '等待你回复';
+    return taskExecutionMode(task) === 'program' ? '发送中' : '等待完成';
+  }
+  return (
+    {
+      queued: '准备中',
+      running: '进行中',
+      paused: '已暂停',
+      blocked: '需要你处理',
+      failed: '未完成',
+      expired: '已过期',
+      cancelled: '已取消',
+      succeeded: '已完成',
+    }[run?.status || 'active'] || '进行中'
+  );
+}

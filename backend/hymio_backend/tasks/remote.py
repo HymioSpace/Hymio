@@ -17,6 +17,24 @@ from .credentials import issue
 _log = logging.getLogger(__name__)
 
 
+def task_scope(spec):
+    trigger = spec.get("trigger") or {}
+    ongoing = (
+        spec.get("completion") == "maintain"
+        or trigger.get("mode") in {"daily", "weekly", "event"}
+    )
+    return "ongoing" if ongoing else "temporary"
+
+
+def task_execution_mode(spec):
+    executor = spec.get("executor") or {}
+    if executor.get("kind") == "program":
+        return "program"
+    if executor.get("kind") != "agent":
+        raise ValueError("Unknown task executor")
+    return executor.get("mode") or "parallel_subagents"
+
+
 class RemoteTasks:
     def __init__(self, settings, sessions, notifications):
         self.settings, self.sessions, self.notifications = settings, sessions, notifications
@@ -26,6 +44,11 @@ class RemoteTasks:
                 "CREATE TABLE IF NOT EXISTS task_delivery_inbox "
                 "(delivery_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,"
                 "payload TEXT NOT NULL,created_at REAL NOT NULL)"
+            )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS task_archive_hidden "
+                "(user_id TEXT NOT NULL,task_id TEXT NOT NULL,hidden_at REAL NOT NULL,"
+                "PRIMARY KEY(user_id,task_id))"
             )
             columns = {r[1] for r in db.execute("PRAGMA table_info(task_delivery_inbox)")}
             if "ack_json" not in columns:
@@ -75,6 +98,8 @@ class RemoteTasks:
                     "finished_at": stamp(run.get("finished_at")),
                     "agent_id": run.get("agent_id"),
                     "notification_status": run["delivery_status"],
+                    "error_code": run.get("error_code") or "",
+                    "usage": run.get("usage") or {},
                 }
             ]
         return {
@@ -89,14 +114,52 @@ class RemoteTasks:
             "execution": value.get("execution", {}),
             "evidence": (run["result"] or {}).get("evidence", []) if run else [],
             "schedule": spec["trigger"],
+            "budget": spec["policy"]["run_budget"],
             "executor_kind": spec["executor"]["kind"],
+            "execution_mode": task_execution_mode(spec),
             "close_reason": t["close_reason"],
             "kind": "reminder" if spec["executor"]["kind"] == "program" else "task",
             "updated_at": stamp(t["updated_at"]),
+            "created_at": stamp(t["created_at"]),
             "next_due_at": stamp(t["next_due_at"]),
+            "needs_attention": bool(t.get("needs_attention")),
+            "completion": spec["completion"],
+            "scope": task_scope(spec),
             "runs": runs,
             "for_user": True,
         }
+
+    async def visible(self, uid, archive=False):
+        page = await self.oath(uid, "/tasks/list", {"lifecycle": "all", "limit": 100})
+        items = await asyncio.gather(
+            *(self.get(uid, task["task_id"], detail=False) for task in page["items"])
+        )
+        with self.sessions.transaction() as db:
+            hidden = {
+                row[0]
+                for row in db.execute(
+                    "SELECT task_id FROM task_archive_hidden WHERE user_id=?", (uid,)
+                )
+            }
+        if archive:
+            return [
+                task
+                for task in items
+                if task["state"] == "closed" and task["id"] not in hidden
+            ]
+        return [task for task in items if task["state"] != "closed"]
+
+    async def hide_archived(self, uid, task_id):
+        task = await self.get(uid, task_id, detail=False)
+        if task["state"] != "closed":
+            raise ValueError("Only closed tasks can be removed from the archive")
+        with self.sessions.transaction() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO task_archive_hidden(user_id,task_id,hidden_at) "
+                "VALUES(?,?,?)",
+                (uid, task_id, time.time()),
+            )
+        return {"hidden": True, "task_id": task_id}
 
     async def reconcile(self, uid):
         with self.sessions.transaction() as db:
@@ -178,11 +241,11 @@ def remote_task_routes(settings, sessions, service, bearer, body):
             data = await body(request, limit=131072) if request.method == "POST" else {}
             action = data.pop("action", "list")
             if action == "list":
-                page = await service.oath(uid, "/tasks/list", {"lifecycle": "all", "limit": 100})
-                items = await asyncio.gather(
-                    *(service.get(uid, t["task_id"], detail=False) for t in page["items"])
-                )
-                return JSONResponse({"tasks": items})
+                return JSONResponse({"tasks": await service.visible(uid)})
+            if action == "archive_list":
+                return JSONResponse({"tasks": await service.visible(uid, archive=True)})
+            if action == "archive_hide":
+                return JSONResponse(await service.hide_archived(uid, data["task_id"]))
             if action == "get":
                 return JSONResponse(await service.get(uid, data["task_id"]))
             if action not in {"pause", "resume", "cancel"}:
