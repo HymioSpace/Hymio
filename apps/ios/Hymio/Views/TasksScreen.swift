@@ -179,6 +179,29 @@ func taskExecutionMode(_ item: JSON) -> TaskExecutionMode {
   return TaskExecutionMode(rawValue: raw) ?? .parallelSubagents
 }
 
+func taskObservedParallel(_ item: JSON) -> Bool {
+  taskExecutionMode(item) == .parallelSubagents
+    && item["execution"]["subagents"].items.count >= 2
+}
+
+func taskModeTitle(_ item: JSON) -> String {
+  taskExecutionMode(item) == .parallelSubagents && !taskObservedParallel(item)
+    ? "Agent 执行"
+    : taskExecutionMode(item).title
+}
+
+func taskModeSymbol(_ item: JSON) -> String {
+  taskExecutionMode(item) == .parallelSubagents && !taskObservedParallel(item)
+    ? "person.crop.circle.badge.checkmark"
+    : taskExecutionMode(item).symbol
+}
+
+func taskModeDetail(_ item: JSON) -> String {
+  taskExecutionMode(item) == .parallelSubagents && !taskObservedParallel(item)
+    ? "当前由主 Agent 单线执行；只有出现两个以上独立成员时才展示为并行。"
+    : taskExecutionMode(item).detail
+}
+
 func taskCurrentRun(_ item: JSON) -> JSON {
   item["runs"].items.first ?? .null
 }
@@ -237,6 +260,7 @@ private struct TaskHumanActivity: Identifiable {
   let detail: String
   let tool: String
   let status: String
+  let createdAt: Double
 }
 
 private func taskReadableSummary(_ value: String, limit: Int = 120) -> String {
@@ -292,7 +316,7 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
         result.append(
           TaskHumanActivity(
             id: entryID, title: title, detail: "", tool: humanToolName(entry["tool"].text),
-            status: taskLabel(entry["status"].text)))
+            status: taskLabel(entry["status"].text), createdAt: taskActivityTimestamp(entry)))
       }
     }
     for (index, call) in entry["tool_calls"].items.enumerated() {
@@ -303,7 +327,8 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
         result.append(
           TaskHumanActivity(
             id: entryID + "-tool-\(index)", title: description, detail: "",
-            tool: humanToolName(call["name"].text), status: ""))
+            tool: humanToolName(call["name"].text), status: "",
+            createdAt: taskActivityTimestamp(entry)))
       }
     }
     let content = entry["content"].text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -315,11 +340,34 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
       if !summary.isEmpty, seen.insert(key).inserted {
         result.append(
           TaskHumanActivity(
-            id: entryID + "-message", title: summary, detail: content, tool: "", status: ""))
+            id: entryID + "-message", title: summary, detail: content, tool: "", status: "",
+            createdAt: taskActivityTimestamp(entry)))
       }
     }
   }
   return Array(result.suffix(10))
+}
+
+private func taskActivityTimestamp(_ entry: JSON) -> Double {
+  let numeric = entry["created_at"].double
+  if numeric > 0 {
+    return numeric > 10_000_000_000 ? numeric / 1000 : numeric
+  }
+  let formatter = ISO8601DateFormatter()
+  let value = entry["created_at_iso"].text.isEmpty
+    ? entry["created_at"].text : entry["created_at_iso"].text
+  guard !value.isEmpty else { return 0 }
+  formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  if let date = formatter.date(from: value) { return date.timeIntervalSince1970 }
+  formatter.formatOptions = [.withInternetDateTime]
+  return formatter.date(from: value)?.timeIntervalSince1970 ?? 0
+}
+
+private func taskActivityDate(_ stamp: Double) -> String {
+  guard stamp > 0 else { return "" }
+  let formatter = DateFormatter()
+  formatter.dateFormat = "M/d HH:mm"
+  return formatter.string(from: Date(timeIntervalSince1970: stamp))
 }
 
 private enum TaskDisplayMode: Int, CaseIterable {
@@ -734,7 +782,7 @@ private struct TaskModePill: View {
 
   var body: some View {
     HStack(spacing: 4) {
-      Label(taskExecutionMode(item).title, systemImage: taskExecutionMode(item).symbol)
+      Label(taskModeTitle(item), systemImage: taskModeSymbol(item))
         .font(.caption.weight(.medium))
       Button {
         showHelp.toggle()
@@ -745,11 +793,11 @@ private struct TaskModePill: View {
           .contentShape(Circle())
       }
       .buttonStyle(.plain)
-      .accessibilityLabel("\(taskExecutionMode(item).title)说明")
-      .alert(taskExecutionMode(item).title, isPresented: $showHelp) {
+      .accessibilityLabel("\(taskModeTitle(item))说明")
+      .alert(taskModeTitle(item), isPresented: $showHelp) {
         Button("知道了") {}
       } message: {
-        Text(taskExecutionMode(item).detail)
+        Text(taskModeDetail(item))
       }
     }
     .foregroundStyle(Brand.blue)
@@ -1013,7 +1061,7 @@ private struct CalendarTimeGrid: View {
       let dayWidth = max(38, timelineWidth / CGFloat(max(1, dates.count)))
       let selectedDay = dates.first { c.isDate($0, inSameDayAs: focus) } ?? dates.first ?? focus
       ScrollViewReader { proxy in
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
           HStack(spacing: 0) {
             Color.clear.frame(width: 50, height: 58)
             ForEach(dates, id: \.self) { day in
@@ -1098,28 +1146,35 @@ private struct TaskDetailHero: View {
   let item: JSON
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(spacing: 8) {
-        MaterialStatusPill(
-          text: taskDisplayLabel(item), color: materialStatusColor(item))
-        Text(taskTemporalScope(item).title)
-          .font(.caption2.weight(.medium)).foregroundStyle(Brand.muted)
-        Spacer(minLength: 4)
-        if !["", "now"].contains(item["schedule"]["mode"].text) {
-          Label(taskSchedule(item["schedule"]), systemImage: "schedule")
-            .font(.caption2).foregroundStyle(Brand.muted)
+    HStack(alignment: .top, spacing: 14) {
+      Image(systemName: taskModeSymbol(item))
+        .font(.system(size: 20, weight: .medium))
+        .foregroundStyle(Brand.blue)
+        .frame(width: 46, height: 46)
+        .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 14))
+      VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 8) {
+          MaterialStatusPill(
+            text: taskDisplayLabel(item), color: materialStatusColor(item))
+          Text(taskTemporalScope(item).title)
+            .font(.caption2.weight(.medium)).foregroundStyle(Brand.muted)
+          Spacer(minLength: 4)
+          if !["", "now"].contains(item["schedule"]["mode"].text) {
+            Label(taskSchedule(item["schedule"]), systemImage: "schedule")
+              .font(.caption2).foregroundStyle(Brand.muted)
+          }
         }
+        Text(item["title"].text)
+          .font(.title2.weight(.semibold))
+          .foregroundStyle(Brand.ink)
+          .lineLimit(3)
+        Text(item["objective"].text)
+          .font(.subheadline)
+          .foregroundStyle(Brand.muted)
+          .lineLimit(4)
+          .lineSpacing(3)
+        TaskModePill(item: item)
       }
-      Text(item["title"].text)
-        .font(.title2.weight(.semibold))
-        .foregroundStyle(Brand.ink)
-        .lineLimit(3)
-      Text(item["objective"].text)
-        .font(.subheadline)
-        .foregroundStyle(Brand.muted)
-        .lineLimit(4)
-        .lineSpacing(3)
-      TaskModePill(item: item)
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1545,7 +1600,9 @@ private struct MaterialExecutionTeam: View {
         Text(
           mode == .program
             ? mode.title
-            : children.isEmpty ? "等待委派" : "\(children.count + 1) 个 Agent"
+            : mode == .parallelSubagents && children.count < 2
+              ? "主 Agent 单线执行"
+              : children.isEmpty ? "等待成员" : "\(children.count + 1) 个 Agent"
         )
           .font(.caption).foregroundStyle(Brand.muted)
       }
@@ -1825,7 +1882,10 @@ private struct AgentContextScreen: View {
                         .foregroundStyle(Brand.muted).frame(width: 18)
                       VStack(alignment: .leading, spacing: 2) {
                         Text(item.title).font(.caption).foregroundStyle(Brand.ink)
-                        Text([item.tool, item.status].filter { !$0.isEmpty }.joined(separator: " · "))
+                        Text(
+                          [item.tool, item.status, taskActivityDate(item.createdAt)]
+                            .filter { !$0.isEmpty }.joined(separator: " · ")
+                        )
                           .font(.caption2).foregroundStyle(Brand.muted)
                       }
                     }
@@ -1839,10 +1899,6 @@ private struct AgentContextScreen: View {
             }
           }
         }
-        .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.large))
-        .overlay(
-          RoundedRectangle(cornerRadius: MaterialShape.large)
-            .strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.75))
       }.padding(16)
     }
     .background(Brand.canvas)
@@ -1893,7 +1949,14 @@ private struct AgentExecutionRecord: View {
   let activity: TaskHumanActivity
   @ObservedObject var account: AccountService
   var isLast = false
-  @State private var expanded = false
+  @State private var expanded: Bool
+
+  init(activity: TaskHumanActivity, account: AccountService, isLast: Bool = false) {
+    self.activity = activity
+    self.account = account
+    self.isLast = isLast
+    _expanded = State(initialValue: isLast && !activity.detail.isEmpty)
+  }
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -1909,7 +1972,15 @@ private struct AgentExecutionRecord: View {
       }
       .frame(width: 12)
       VStack(alignment: .leading, spacing: 6) {
-        Text(activity.title).font(.caption).foregroundStyle(Brand.ink).lineSpacing(2)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(activity.title).font(.caption).foregroundStyle(Brand.ink).lineSpacing(2)
+          Spacer(minLength: 4)
+          if !taskActivityDate(activity.createdAt).isEmpty {
+            Text(taskActivityDate(activity.createdAt))
+              .font(.caption2.monospacedDigit()).foregroundStyle(Brand.muted)
+              .accessibilityIdentifier("agent.activity.time.\(activity.id)")
+          }
+        }
         if !activity.tool.isEmpty || !activity.status.isEmpty {
           Text([activity.tool, activity.status].filter { !$0.isEmpty }.joined(separator: " · "))
             .font(.caption2).foregroundStyle(Brand.muted)
@@ -1963,11 +2034,12 @@ private struct AgentDetailCard<Content: View>: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .overlay(alignment: .top) {
-      if divider {
-        Rectangle().fill(Brand.line.opacity(0.75)).frame(height: 0.75)
-      }
-    }
+    .background(
+      divider ? Brand.raised : Brand.surfaceContainer,
+      in: RoundedRectangle(cornerRadius: MaterialShape.medium))
+    .overlay(
+      RoundedRectangle(cornerRadius: MaterialShape.medium)
+        .strokeBorder(Brand.line.opacity(0.7), lineWidth: 0.75))
   }
 }
 
@@ -2373,6 +2445,7 @@ struct MultiAgentTaskPreview: View {
               .object([
                 "id": .number(1), "kind": .string("assistant.message"),
                 "content": .string("先把研究拆成架构、框架和学习路线三个并行方向。"),
+                "created_at": .number(1_763_600_000),
                 "tool_calls": .array([
                   .object([
                     "name": .string("subagent_spawn"),
@@ -2384,10 +2457,12 @@ struct MultiAgentTaskPreview: View {
                 "id": .number(2), "kind": .string("tool.terminal"),
                 "tool": .string("browser"), "tool_description": .string("查阅 Anthropic 多智能体研究"),
                 "status": .string("succeeded"), "content": .string(""),
+                "created_at": .number(1_763_600_060),
               ]),
               .object([
                 "id": .number(3), "kind": .string("assistant.message"),
                 "content": .string("资料已整理，下一步需要汇总各子 Agent 的结论。"),
+                "created_at": .number(1_763_600_120),
                 "tool_calls": .array([]),
               ]),
             ])

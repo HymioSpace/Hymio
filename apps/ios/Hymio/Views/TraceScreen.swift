@@ -18,21 +18,31 @@ struct TraceScreen: View {
         }
         ForEach(traces, id: \.self) { trace in
           NavigationLink {
-            TraceRecordScreen(traceID: trace["trace_id"].text, account: account)
+            TraceRecordScreen(
+              traceID: trace["trace_id"].text,
+              title: trace["title"].text,
+              account: account
+            )
           } label: {
             VStack(alignment: .leading, spacing: 8) {
-              Text(String(trace["trace_id"].text.prefix(16))).font(
-                .system(.caption, design: .monospaced)
-              ).foregroundStyle(.secondary)
+              Text(trace["title"].text.isEmpty ? "未命名执行记录" : trace["title"].text)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .accessibilityIdentifier("trace.list.title.\(trace["trace_id"].text)")
               HStack {
-                Label(
-                  "\(trace["step_count"].int) steps",
-                  systemImage: "point.3.connected.trianglepath.dotted")
+                Text(traceStartedAt(trace["started_at"].double))
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .accessibilityIdentifier("trace.list.time.\(trace["trace_id"].text)")
                 Spacer()
+                Label(
+                  "\(trace["step_count"].int) 个步骤",
+                  systemImage: "point.3.connected.trianglepath.dotted")
                 Text(
                   trace["duration_ms"] == .null
                     ? "—" : String(format: "%.1fs", trace["duration_ms"].double / 1000))
-              }.font(.subheadline)
+              }.font(.caption)
             }.padding(.vertical, 6)
           }
         }
@@ -196,11 +206,12 @@ private struct TraceTimelineEntry: Identifiable {
     if kind == "request" {
       let messages = body["messages"].items
       let user = messages.reversed().first { $0["role"].text == "user" }
-      let text = user?["content"].text ?? ""
-      return text.isEmpty ? "\(messages.count) 条输入消息" : String(text.prefix(220))
+      let text = traceContentText(user?["content"] ?? .null)
+      let count = body["message_count"].int > 0 ? body["message_count"].int : messages.count
+      return text.isEmpty ? "\(count) 条输入消息" : String(text.prefix(220))
     }
     if kind == "response" {
-      let content = body["content"].text
+      let content = traceContentText(body["content"])
       let calls = body["tool_calls"].items.count
       return content.isEmpty
         ? (calls > 0 ? "返回 \(calls) 个工具调用" : "无正文") : String(content.prefix(220))
@@ -210,11 +221,12 @@ private struct TraceTimelineEntry: Identifiable {
       return description.isEmpty ? "调用 \(toolName)" : description
     }
     if kind == "tool-response" {
-      let content = body["content"].text.isEmpty
-        ? body["content"].pretty : body["content"].text
+      let content = traceContentText(body["content"]).isEmpty
+        ? body["content"].pretty : traceContentText(body["content"])
       return content.isEmpty ? body["error"].text : String(content.prefix(220))
     }
-    return body["content"].text.isEmpty ? event["name"].text : body["content"].text
+    let content = traceContentText(body["content"])
+    return content.isEmpty ? event["name"].text : content
   }
 }
 
@@ -250,6 +262,62 @@ private func traceEventBody(_ event: JSON) -> JSON {
   return parsed
 }
 
+private func traceContentText(_ value: JSON) -> String {
+  switch value {
+  case .string(let text): return text
+  case .array(let parts):
+    return parts.compactMap { part in
+      if case .string(let text) = part["text"] { return text }
+      return nil
+    }.joined(separator: "\n")
+  case .object(let object):
+    for key in ["payload", "content", "text", "message", "preview"] {
+      let text = traceContentText(object[key] ?? .null)
+      if !text.isEmpty { return text }
+    }
+    return ""
+  default:
+    return ""
+  }
+}
+
+private func traceStartedAt(_ seconds: Double) -> String {
+  guard seconds > 0 else { return "时间未知" }
+  let formatter = DateFormatter()
+  formatter.dateFormat = "M/d HH:mm"
+  return formatter.string(from: Date(timeIntervalSince1970: seconds))
+}
+
+private func traceWallClock(_ nanoseconds: Double) -> String {
+  let formatter = DateFormatter()
+  formatter.dateFormat = "M/d HH:mm:ss"
+  return formatter.string(from: Date(timeIntervalSince1970: nanoseconds / 1_000_000_000))
+}
+
+private func traceDisplayTitle(_ trace: JSON) -> String {
+  let events = trace["spans"].items.flatMap { $0["events"].items }
+    .sorted { $0["unix_nano"].double < $1["unix_nano"].double }
+  for event in events where event["name"].text.hasPrefix("oath.input.") {
+    let text = traceContentText(traceEventBody(event))
+      .replacingOccurrences(of: "\n", with: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !text.isEmpty {
+      return text.count > 72 ? String(text.prefix(71)) + "…" : text
+    }
+  }
+  for event in events where event["name"].text == "gen_ai.request" {
+    let body = traceEventBody(event)
+    let user = body["messages"].items.reversed().first { $0["role"].text == "user" }
+    let text = traceContentText(user?["content"] ?? .null)
+      .replacingOccurrences(of: "\n", with: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !text.isEmpty {
+      return text.count > 72 ? String(text.prefix(71)) + "…" : text
+    }
+  }
+  return "未命名执行记录"
+}
+
 private func traceOffset(_ nanoseconds: Double) -> String {
   let seconds = max(0, nanoseconds / 1_000_000_000)
   return seconds < 1
@@ -259,6 +327,7 @@ private func traceOffset(_ nanoseconds: Double) -> String {
 
 struct TraceRecordScreen: View {
   let traceID: String
+  var title: String = ""
   var agentID: String = ""
   @ObservedObject var account: AccountService
   @State private var trace: JSON = .null
@@ -267,9 +336,11 @@ struct TraceRecordScreen: View {
   @State private var fullError = ""
   @State private var loadingFull = false
   init(
-    traceID: String, agentID: String = "", account: AccountService, previewTrace: JSON? = nil
+    traceID: String, title: String = "", agentID: String = "", account: AccountService,
+    previewTrace: JSON? = nil
   ) {
     self.traceID = traceID
+    self.title = title
     self.agentID = agentID
     _account = ObservedObject(wrappedValue: account)
     _trace = State(initialValue: previewTrace ?? .null)
@@ -279,8 +350,22 @@ struct TraceRecordScreen: View {
     let display = fullTrace == .null ? trace : fullTrace
     let timeline = traceTimeline(display)
     let firstAt = timeline.first?.at ?? 0
+    let displayTitle = title.isEmpty ? traceDisplayTitle(display) : title
     List {
-      Section { Text(traceID).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
+      Section {
+        VStack(alignment: .leading, spacing: 8) {
+          Text(displayTitle).font(.title3.weight(.semibold))
+            .accessibilityIdentifier("trace.detail.title")
+          DisclosureGroup("查看执行编号") {
+            Text(traceID)
+              .font(.system(.caption, design: .monospaced))
+              .textSelection(.enabled)
+              .padding(.top, 6)
+          }
+          .font(.caption)
+          .tint(.secondary)
+        }
+      }
       if trace == .null && error.isEmpty { ProgressView("正在读取…") }
       if !error.isEmpty {
         Text(error)
@@ -321,7 +406,7 @@ struct TraceRecordScreen: View {
         }
         Section("事件顺序") {
           if timeline.isEmpty {
-            Text("这条 Trace 暂时没有事件。").foregroundStyle(.secondary)
+            Text("这次执行暂时没有事件。").foregroundStyle(.secondary)
           }
           ForEach(timeline) { entry in
             DisclosureGroup {
@@ -344,8 +429,9 @@ struct TraceRecordScreen: View {
                   HStack {
                     Text(entry.label).font(.caption.weight(.semibold))
                     Spacer()
-                    Text("+\(traceOffset(entry.at - firstAt))")
+                    Text("\(traceWallClock(entry.at)) · +\(traceOffset(entry.at - firstAt))")
                       .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                      .accessibilityIdentifier("trace.event.time.\(entry.sequence)")
                   }
                   Text(entry.title).font(.subheadline.weight(.medium))
                   Text(entry.summary).font(.caption).foregroundStyle(.secondary)
@@ -374,7 +460,7 @@ struct TraceRecordScreen: View {
           }
         }
       }
-    }.navigationTitle("Trace 详情").navigationBarTitleDisplayMode(.inline)
+    }.navigationTitle("执行详情").navigationBarTitleDisplayMode(.inline)
       .task { if trace == .null { await load() } }
   }
   @MainActor private func load() async {
@@ -444,7 +530,9 @@ struct TraceTimelinePreview: View {
             "name": .string("oath.input.user"),
             "unix_nano": .number(900_000_000),
             "attributes": .object([
-              "body": .string("{\"content\":\"Compare two sources\"}")
+              "body": .string(
+                "{\"kind\":\"user\",\"source\":\"user.message\",\"payload\":{\"content\":\"Compare two sources\"}}"
+              )
             ]),
           ]),
           .object([

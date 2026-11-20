@@ -12,7 +12,7 @@ import {
 import { Button } from '@hymio/ui';
 import { obj, str, list, type Span, type Trace } from '@hymio/protocol';
 import { JsonView } from './JsonView';
-import { orderedTraceEntries, type TimelineEntry } from './traceTimeline';
+import { orderedTraceEntries, traceTitle, type TimelineEntry } from './traceTimeline';
 
 export const duration = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value)
@@ -107,9 +107,14 @@ function entryTitle(entry: TimelineEntry) {
 
 function entrySummary(entry: TimelineEntry) {
   if (entry.name === 'gen_ai.request') {
-    const messages = list(payload(entry.span, 'gen_ai.request').messages);
+    const request = payload(entry.span, 'gen_ai.request');
+    const messages = list(request.messages);
+    const count = Number(request.message_count) || messages.length;
     const lastUser = [...messages].reverse().find((message) => obj(message).role === 'user');
-    return messageText(obj(lastUser).content).slice(0, 220) || `${messages.length} 条输入消息`;
+    return (
+      messageText(obj(lastUser).content).slice(0, 220) ||
+      `${count} 条输入消息${request.messages_truncated ? '（已摘要）' : ''}`
+    );
   }
   if (entry.name === 'gen_ai.response') {
     const response = payload(entry.span, 'gen_ai.response');
@@ -136,6 +141,17 @@ function entrySummary(entry: TimelineEntry) {
     return `结果：${str(entry.span.attributes['oath.tool.outcome']) || entry.span.status}`;
   }
   return '执行步骤';
+}
+
+function wallTime(nanoseconds: number) {
+  return new Date(nanoseconds / 1_000_000).toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
 }
 
 function MessageInspector({ messages }: { messages: unknown[] }) {
@@ -182,7 +198,9 @@ function TimelineCard({
             <Icon size={14} aria-hidden="true" />
             {kindLabel(kind)}
           </span>
-          <time>+{duration(Math.max(0, (entry.at - start) / 1_000_000))}</time>
+          <time dateTime={new Date(entry.at / 1_000_000).toISOString()}>
+            {wallTime(entry.at)} · +{duration(Math.max(0, (entry.at - start) / 1_000_000))}
+          </time>
         </header>
         <strong>{entryTitle(entry)}</strong>
         <p>{entrySummary(entry)}</p>
@@ -223,6 +241,7 @@ export function TraceDetails({ trace, onBack }: { trace: Trace; onBack: () => vo
   const [rawOpen, setRawOpen] = useState(false);
   const entries = orderedTraceEntries(trace);
   const start = entries[0]?.at ?? 0;
+  const title = traceTitle(entries);
   const models = entries.filter((entry) => entry.name === 'gen_ai.request').length;
   const toolCalls =
     entries.filter((entry) => entry.name === 'oath.tool.request').length ||
@@ -233,8 +252,11 @@ export function TraceDetails({ trace, onBack }: { trace: Trace; onBack: () => vo
         ← 全部执行
       </Button>
       <div className="trace-heading">
-        <p className="eyebrow">EVENT-ORDERED TRACE</p>
-        <code>{trace.trace_id}</code>
+        <h3>{title}</h3>
+        <details className="trace-id-disclosure">
+          <summary>查看执行编号</summary>
+          <code>{trace.trace_id}</code>
+        </details>
         <div className="trace-metrics">
           <span>
             <strong>{duration(trace.duration_ms)}</strong>总耗时

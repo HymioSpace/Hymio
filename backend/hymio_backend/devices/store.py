@@ -346,25 +346,57 @@ class DeviceStore:
                 raise DeviceConflict("invocation_running")
             if device["control_state"] != "active":
                 raise DeviceConflict("device_" + device["control_state"])
-            # All actions share a device lock: shell may also alter the browser or desktop.
+            # Shell commands may run in a small parallel lane. Browser and desktop actions
+            # remain exclusive because they mutate one visible UI surface.
             lock = db.execute(
                 "SELECT * FROM device_locks WHERE device_id=?", (device_id,)
             ).fetchone()
             parent = request.get("parent_invocation_id")
-            if lock:
-                record = db.execute(
+            running = db.execute(
+                "SELECT invocation_id,request_json,deadline FROM device_commands "
+                "WHERE device_id=? AND status='running' AND deadline>? "
+                "ORDER BY submitted_at",
+                (device_id, time.time()),
+            ).fetchall()
+            running_capabilities = [
+                json.loads(row["request_json"]).get("capability", "computer") for row in running
+            ]
+            running_ids = {row["invocation_id"] for row in running}
+            parent_record = (
+                db.execute(
                     "SELECT * FROM device_commands WHERE user_id=? AND device_id=? "
                     "AND invocation_id=?",
                     (user_id, device_id, parent or ""),
                 ).fetchone()
-                nested = (
-                    record
-                    and record["status"] == "running"
-                    and lock["invocation_id"] == parent
-                    and lock["deadline"] > time.time()
-                    and json.loads(record["request_json"])["capability"] == "bash"
-                    and request["capability"] in {"browser", "computer"}
+                if parent
+                else None
+            )
+            incoming_capability = request.get("capability", "computer")
+            exclusive_running = any(
+                capability != "bash" for capability in running_capabilities
+            )
+            nested = bool(
+                parent_record
+                and parent_record["status"] == "running"
+                and parent_record["deadline"] > time.time()
+                and json.loads(parent_record["request_json"]).get("capability") == "bash"
+                and incoming_capability in {"browser", "computer"}
+                and not exclusive_running
+            )
+            parallel_bash = bool(
+                incoming_capability == "bash"
+                and request.get("arguments", {}).get("command")
+                and all(capability == "bash" for capability in running_capabilities)
+                and len(running) < 4
+                and (
+                    not lock
+                    or (
+                        lock["invocation_id"] in running_ids
+                        and lock["deadline"] > time.time()
+                    )
                 )
+            )
+            if lock and not parallel_bash:
                 if not nested:
                     raise DeviceConflict("device_busy_or_requires_recovery")
                 if db.execute(
@@ -374,11 +406,11 @@ class DeviceStore:
                 ).fetchone():
                     raise DeviceConflict("nested_device_action_busy")
                 deadline = min(deadline, lock["deadline"])
-            else:
-                # CLI tools can invoke browser/computer as child tools without first
-                # taking a device Shell lease. The parent then belongs to Oath's tool
-                # execution graph, not to an active device operation. With no existing
-                # device lock, start a directly serialized device command instead.
+            elif not lock:
+                if running and not parallel_bash:
+                    raise DeviceConflict("device_busy_or_requires_recovery")
+                # The lock fences browser/desktop/control. Parallel shell slots retain it
+                # under the oldest live shell command until that command settles.
                 db.execute(
                     "INSERT INTO device_locks VALUES(?,?,?,?)",
                     (device_id, user_id, invocation_id, deadline),
@@ -427,10 +459,29 @@ class DeviceStore:
                         (child["invocation_id"], child["deadline"], user_id, invocation_id),
                     )
                 else:
-                    db.execute(
-                        "DELETE FROM device_locks WHERE user_id=? AND invocation_id=?",
-                        (user_id, invocation_id),
-                    )
+                    successor = db.execute(
+                        "SELECT invocation_id,deadline FROM device_commands "
+                        "WHERE device_id=(SELECT device_id FROM device_commands "
+                        "WHERE user_id=? AND invocation_id=?) AND status='running' "
+                        "AND deadline>? ORDER BY submitted_at LIMIT 1",
+                        (user_id, invocation_id, time.time()),
+                    ).fetchone()
+                    if successor:
+                        db.execute(
+                            "UPDATE device_locks SET invocation_id=?,deadline=? "
+                            "WHERE user_id=? AND invocation_id=?",
+                            (
+                                successor["invocation_id"],
+                                successor["deadline"],
+                                user_id,
+                                invocation_id,
+                            ),
+                        )
+                    else:
+                        db.execute(
+                            "DELETE FROM device_locks WHERE user_id=? AND invocation_id=?",
+                            (user_id, invocation_id),
+                        )
             return result
 
     def media(self, user_id, device_id, content):

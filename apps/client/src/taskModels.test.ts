@@ -4,6 +4,7 @@ import {
   taskExecutionMode,
   taskIsCancelled,
   taskIsArchived,
+  taskModeLabel,
   taskNeedsAttention,
   taskPortfolioScope,
   taskStatusLabel,
@@ -70,6 +71,21 @@ test('execution mode is independent from timing', () => {
     assert.equal(taskTemporalScope(task({ execution_mode: mode })), 'temporary');
   }
   assert.equal(taskExecutionMode(task({ executor_kind: 'program' })), 'program');
+});
+
+test('parallel mode is only shown after two observed subagents', () => {
+  const single = task({ execution_mode: 'parallel_subagents' });
+  assert.equal(taskModeLabel(single), 'Agent 执行');
+  const parallel = task({
+    execution_mode: 'parallel_subagents',
+    execution: {
+      executor: 'agent',
+      mode: 'parallel_subagents',
+      subagents: [{}, {}],
+      events: [],
+    } as never,
+  });
+  assert.equal(taskModeLabel(parallel), 'Agent 并行');
 });
 
 test('only user waits need attention and program delivery reads as sending', () => {

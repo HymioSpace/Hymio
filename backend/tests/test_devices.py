@@ -89,6 +89,87 @@ class DeviceTests(unittest.TestCase):
         with ThreadPoolExecutor(8) as pool:
             self.assertEqual(sum(pool.map(claim, range(8))), 1)
 
+    def test_bounded_bash_commands_run_in_parallel_while_desktop_remains_exclusive(self):
+        for index in range(4):
+            self.store.claim(
+                "alice",
+                self.device,
+                f"bash-{index}",
+                {"capability": "bash", "arguments": {"command": f"echo {index}"}},
+                30,
+            )
+        with self.assertRaises(DeviceConflict):
+            self.store.claim(
+                "alice",
+                self.device,
+                "bash-overflow",
+                {"capability": "bash", "arguments": {"command": "echo overflow"}},
+                30,
+            )
+        with self.assertRaises(DeviceConflict):
+            self.store.claim(
+                "alice",
+                self.device,
+                "desktop",
+                {"capability": "computer", "arguments": {"action": "screenshot"}},
+                30,
+            )
+        self.store.finish("alice", "bash-0", {"status": "succeeded"})
+        with self.store.transaction() as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT invocation_id FROM device_locks WHERE device_id=?", (self.device,)
+                ).fetchone()[0],
+                "bash-1",
+            )
+
+    def test_nested_desktop_coexists_with_shell_but_not_another_desktop(self):
+        self.store.claim(
+            "alice",
+            self.device,
+            "bash-a",
+            {"capability": "bash", "arguments": {"command": "hymio browser"}},
+            30,
+        )
+        self.store.claim(
+            "alice",
+            self.device,
+            "bash-b",
+            {"capability": "bash", "arguments": {"command": "echo ready"}},
+            30,
+        )
+        self.store.claim(
+            "alice",
+            self.device,
+            "desktop-a",
+            {
+                "capability": "computer",
+                "arguments": {"action": "screenshot"},
+                "parent_invocation_id": "bash-a",
+            },
+            30,
+        )
+        with self.assertRaises(DeviceConflict):
+            self.store.claim(
+                "alice",
+                self.device,
+                "browser-b",
+                {
+                    "capability": "browser",
+                    "arguments": {"action": "snapshot"},
+                    "parent_invocation_id": "bash-b",
+                },
+                30,
+            )
+        with self.store.transaction() as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT COUNT(*) FROM device_commands WHERE device_id=? AND status='running'",
+                    (self.device,),
+                ).fetchone()[0],
+                3,
+            )
+
     def test_duplicate_is_not_executed(self):
         self.store.claim("alice", self.device, "tool1", {"command": "write"}, 10)
         self.store.finish("alice", "tool1", {"status": "succeeded", "value": 42})

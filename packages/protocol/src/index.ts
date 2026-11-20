@@ -44,6 +44,8 @@ export interface Connection {
 }
 export interface TraceSummary {
   trace_id: string;
+  title: string;
+  started_at: number | null;
   span_count: number;
   step_count: number;
   duration_ms: number | null;
@@ -62,6 +64,7 @@ export interface Span {
 }
 export interface Trace {
   trace_id: string;
+  view?: 'summary' | 'full';
   duration_ms: number | null;
   spans: Span[];
 }

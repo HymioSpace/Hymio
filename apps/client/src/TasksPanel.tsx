@@ -8,6 +8,7 @@ import {
   Cpu,
   GitBranch,
   HelpCircle,
+  ListTodo,
   LoaderCircle,
   Trash2,
   UserRound,
@@ -232,7 +233,7 @@ export function TasksPanel({
         <section className="tasks-list" aria-label={archiveOpen ? '任务归档' : '当前任务列表'}>
           {!list.length && (
             <div className="tasks-empty">
-              {archiveOpen ? <Archive size={28} /> : <CheckCircle2 size={28} />}
+              {archiveOpen ? <Archive size={28} /> : <ListTodo size={28} />}
               <strong>{archiveOpen ? '归档还是空的' : '暂无任务'}</strong>
               {archiveOpen && <span>已完成和已取消的任务会保留在这里。</span>}
             </div>
@@ -292,7 +293,7 @@ export function TasksPanel({
         )}
         {!chosen && (
           <section className="task-detail-placeholder" aria-label="未选择任务">
-            {archiveOpen ? <Archive size={24} /> : <CheckCircle2 size={24} />}
+            {archiveOpen ? <Archive size={24} /> : <ListTodo size={24} />}
             <p>{archiveOpen ? '选择一个归档任务' : '选择一个任务'}</p>
           </section>
         )}
@@ -355,6 +356,16 @@ function TaskDetail({
   const nodes = task.execution?.workflow?.nodes || [];
   const edges = task.execution?.workflow?.edges || [];
   const children = task.execution?.subagents || [];
+  const TaskModeIcon =
+    mode === 'program'
+      ? Zap
+      : mode === 'agent_team'
+        ? Users
+        : mode === 'dynamic_workflow'
+          ? GitBranch
+          : taskModeLabel(task) === 'Agent 并行'
+            ? Users
+            : UserRound;
   return (
     <section className="task-detail" aria-label="任务详情">
       <button className="task-back" onClick={onBack}>
@@ -364,6 +375,9 @@ function TaskDetail({
 
       <header className="task-detail-hero">
         <div className="task-detail-heading">
+          <span className="task-detail-mode-icon" aria-hidden="true">
+            <TaskModeIcon size={20} />
+          </span>
           <span className={`task-state ${run?.status || task.state}`}>{taskStatusLabel(task)}</span>
           <span className="task-scope">
             {taskTemporalScope(task) === 'ongoing' ? '长期任务' : '临时任务'}
@@ -795,12 +809,24 @@ function AgentDetail({
           {activities.map((activity) =>
             activity.detail ? (
               <details className="task-agent-activity-line" key={activity.id}>
-                <summary>{activity.title}</summary>
+                <summary>
+                  <span className="task-agent-activity-title">{activity.title}</span>
+                  {!!activity.createdAt && (
+                    <time dateTime={new Date(activity.createdAt * 1000).toISOString()}>
+                      {activityTime(activity.createdAt)}
+                    </time>
+                  )}
+                </summary>
                 <MessageMarkdown content={activity.detail} login={login} />
               </details>
             ) : (
               <p className="task-agent-activity-line" key={activity.id}>
-                {activity.title}
+                <span>{activity.title}</span>
+                {!!activity.createdAt && (
+                  <time dateTime={new Date(activity.createdAt * 1000).toISOString()}>
+                    {activityTime(activity.createdAt)}
+                  </time>
+                )}
               </p>
             ),
           )}
@@ -813,8 +839,15 @@ function AgentDetail({
             .filter((activity) => activity.tool)
             .map((activity) => (
               <p key={activity.id}>
-                {activity.title}
-                <small>{activity.tool}</small>
+                <span>
+                  {activity.title}
+                  <small>{activity.tool}</small>
+                </span>
+                {!!activity.createdAt && (
+                  <time dateTime={new Date(activity.createdAt * 1000).toISOString()}>
+                    {activityTime(activity.createdAt)}
+                  </time>
+                )}
               </p>
             ))}
         </details>
@@ -880,33 +913,74 @@ function readableSummary(value: string, limit = 220) {
 }
 
 function semanticActivities(agent: ExecutionAgent) {
-  const result: { id: string; title: string; detail: string; tool: string }[] = [];
+  const result: {
+    id: string;
+    title: string;
+    detail: string;
+    tool: string;
+    createdAt: number;
+  }[] = [];
   const seen = new Set<string>();
   for (const entry of agent.activity?.entries || []) {
     const values = [
       ...(entry.tool_description
-        ? [{ title: entry.tool_description, tool: entry.tool || '工具' }]
+        ? [
+            {
+              title: entry.tool_description,
+              tool: entry.tool || '工具',
+              createdAt: activityEpoch(entry.created_at),
+            },
+          ]
         : []),
       ...(entry.tool_calls || []).map((call) => ({
         title: call.description || call.name,
         tool: call.name,
+        createdAt: activityEpoch(entry.created_at),
       })),
     ];
     for (const value of values) {
       const key = `${value.title}|${value.tool}`;
       if (!value.title || seen.has(key)) continue;
       seen.add(key);
-      result.push({ id: `${entry.id}-${result.length}`, detail: '', ...value });
+      result.push({
+        id: `${entry.id}-${result.length}`,
+        detail: '',
+        ...value,
+      });
     }
     if (entry.kind === 'assistant.message' && entry.content) {
       const title = readableSummary(entry.content);
       if (title && !seen.has(entry.content)) {
         seen.add(entry.content);
-        result.push({ id: `${entry.id}-message`, title, detail: entry.content, tool: '' });
+        result.push({
+          id: `${entry.id}-message`,
+          title,
+          detail: entry.content,
+          tool: '',
+          createdAt: activityEpoch(entry.created_at),
+        });
       }
     }
   }
   return result.slice(-20);
+}
+
+function activityTime(value: number) {
+  if (!value) return '';
+  return new Date(value * 1000).toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+function activityEpoch(value: number | string) {
+  if (typeof value === 'number') return value > 10_000_000_000 ? value / 1000 : value;
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp / 1000 : 0;
 }
 
 function statusLabel(status: string) {

@@ -51,15 +51,15 @@ final class HymioUITests: XCTestCase {
     for _ in 0..<6 where !app.staticTexts["Multi-Agent 调研主 Agent"].isHittable { app.swipeDown() }
     app.staticTexts["Multi-Agent 调研主 Agent"].tap()
     XCTAssertTrue(app.navigationBars["Agent 详情"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["上下文与职责"].exists)
-    XCTAssertTrue(app.staticTexts["Agent 间通信"].exists)
-    XCTAssertTrue(
-      app.staticTexts["已发现三种架构模式的边界差异，建议纳入最终报告。"].exists)
+    XCTAssertTrue(app.staticTexts["职责与完成标准"].exists)
+    XCTAssertTrue(app.staticTexts["协作记录"].exists)
+    XCTAssertTrue(app.buttons["查看内容"].firstMatch.exists)
     XCTAssertTrue(
       app.staticTexts["架构模式调研 → Multi-Agent 调研主 Agent"].exists)
-    XCTAssertTrue(app.staticTexts["执行记录"].exists)
+    XCTAssertTrue(app.staticTexts["执行脉络"].exists)
+    XCTAssertTrue(app.staticTexts["agent.activity.time.1-tool-0"].exists)
     let toolButton = app.buttons.matching(
-      NSPredicate(format: "label CONTAINS %@", "条工具调用")).firstMatch
+      NSPredicate(format: "label CONTAINS %@", "条工具记录")).firstMatch
     for _ in 0..<4 where !toolButton.isHittable { app.swipeUp() }
     XCTAssertTrue(toolButton.isHittable)
     toolButton.tap()
@@ -93,12 +93,11 @@ final class HymioUITests: XCTestCase {
       NSPredicate(format: "label == %@", "查看完整职责")
     ).firstMatch
     XCTAssertTrue(brief.waitForExistence(timeout: 5), app.debugDescription)
-    let complete = app.descendants(matching: .any).matching(
-      NSPredicate(format: "label == %@", "展开内容")
+    let rendered = app.descendants(matching: .any).matching(
+      NSPredicate(format: "label == %@", "收起内容")
     ).firstMatch
-    for _ in 0..<5 where !complete.isHittable { app.swipeUp() }
-    XCTAssertTrue(complete.isHittable, app.debugDescription)
-    complete.tap()
+    for _ in 0..<5 where !rendered.isHittable { app.swipeUp() }
+    XCTAssertTrue(rendered.isHittable, app.debugDescription)
     XCTAssertTrue(app.staticTexts["低嘌呤菜品池"].waitForExistence(timeout: 5))
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "鸡蛋"))
@@ -159,8 +158,11 @@ final class HymioUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioTracePreview"]
     app.launch()
-    XCTAssertTrue(app.navigationBars["Trace 详情"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.navigationBars["执行详情"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["事件顺序"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["trace.detail.title"].exists)
+    XCTAssertEqual(app.staticTexts["trace.detail.title"].label, "Compare two sources")
+    XCTAssertTrue(app.staticTexts["trace.event.time.1"].label.contains("· +"))
     let labels = ["用户事件", "LLM 请求", "LLM 响应", "Tool 调用", "Tool 结果"]
     for label in labels {
       for _ in 0..<5 where !app.staticTexts[label].exists { app.swipeUp() }
@@ -536,6 +538,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["我的设备"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Mac mini"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["iPhone"].exists)
+    XCTAssertFalse(app.staticTexts["Web"].exists)
   }
 
   @MainActor func testBudgetExhaustionStaysInConversation() throws {

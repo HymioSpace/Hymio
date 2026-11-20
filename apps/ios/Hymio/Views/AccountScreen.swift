@@ -194,7 +194,10 @@ struct AccountScreen: View {
       .task { taskBoard.bind(account); await taskBoard.refresh(account) }
   }
   private var devicesDestination: some View {
-    List {
+    let devices = client.devices.filter {
+      ["personal_mac", "personal_android", "cloud_desktop"].contains($0["kind"].text)
+    }
+    return List {
       Section {
         Button {
           pairingPresented = true
@@ -202,14 +205,12 @@ struct AccountScreen: View {
           Label("连接 Mac 或 Android", systemImage: "link.badge.plus")
         }
         .accessibilityIdentifier("device.connect")
-        ForEach(client.devices.filter { $0["kind"].text != "ios" }, id: \.self) {
+        ForEach(devices, id: \.self) {
           deviceSummary($0)
         }
-        if client.devicesLoading && client.devices.allSatisfy({ $0["kind"].text == "ios" }) {
+        if client.devicesLoading && devices.isEmpty {
           ProgressView("正在读取设备…").font(.subheadline)
-        } else if client.devices.allSatisfy({ $0["kind"].text == "ios" })
-          && client.devicesError.isEmpty
-        {
+        } else if devices.isEmpty && client.devicesError.isEmpty {
           Text("尚未绑定设备").font(.subheadline).foregroundStyle(Brand.muted)
         }
         if !client.devicesError.isEmpty {
@@ -593,6 +594,10 @@ struct AccountExperiencePreview: View {
           .object([
             "device_id": .string("preview-phone"), "name": .string("iPhone"),
             "kind": .string("ios"), "provider": .string("channel"), "online": .bool(true),
+          ]),
+          .object([
+            "device_id": .string("preview-web"), "name": .string("Web"),
+            "kind": .string("web"), "provider": .string("channel"), "online": .bool(true),
           ]),
           .object([
             "device_id": .string("preview-mac"), "name": .string("Mac mini"),

@@ -22,6 +22,7 @@ private final class ChatScrollState: ObservableObject {
   @Published private(set) var overflows = false
   private var generation = 0
   private var hold = false
+  private var pendingPin: DispatchWorkItem?
 
   func observe(_ geometry: ChatViewportGeometry) {
     let overflow = geometry.contentHeight > geometry.viewportHeight + 1
@@ -30,24 +31,32 @@ private final class ChatScrollState: ObservableObject {
   }
 
   func follow() {
+    pendingPin?.cancel()
+    pendingPin = nil
     following = true
     atBottom = true
     hold = false
   }
 
   func pauseFollowing() {
+    pendingPin?.cancel()
+    pendingPin = nil
     following = false
     hold = false
     generation &+= 1
   }
 
   func holdFollowing() {
+    pendingPin?.cancel()
+    pendingPin = nil
     following = false
     hold = true
     generation &+= 1
   }
 
   func userDidScroll() {
+    pendingPin?.cancel()
+    pendingPin = nil
     following = false
     hold = false
     generation &+= 1
@@ -60,11 +69,12 @@ private final class ChatScrollState: ObservableObject {
   }
 
   func pin(_ proxy: ScrollViewProxy, animated: Bool = false) {
-    guard following, overflows else { return }
+    guard following, overflows, pendingPin == nil else { return }
     generation &+= 1
     let request = generation
-    DispatchQueue.main.async {
+    let work = DispatchWorkItem {
       guard request == self.generation, self.following else { return }
+      self.pendingPin = nil
       if animated {
         withAnimation(.easeOut(duration: 0.18)) {
           proxy.scrollTo(chatBottomAnchorID, anchor: .bottom)
@@ -77,6 +87,8 @@ private final class ChatScrollState: ObservableObject {
         proxy.scrollTo(chatBottomAnchorID, anchor: .bottom)
       }
     }
+    pendingPin = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.024, execute: work)
   }
 
   func reveal(_ id: String, in proxy: ScrollViewProxy) {

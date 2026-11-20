@@ -96,7 +96,8 @@ export type ExecutionAgent = {
       tool_description?: string;
       content: string;
       status: string;
-      created_at: number;
+      created_at: number | string;
+      created_at_iso?: string;
       tool_calls?: { name: string; description: string; invocation_id?: string }[];
     }[];
   };
@@ -152,10 +153,20 @@ export function taskExecutionMode(task: Work): ExecutionMode {
 }
 
 export function taskModeLabel(task: Work) {
+  if (
+    taskExecutionMode(task) === 'parallel_subagents' &&
+    (task.execution?.subagents?.length || 0) < 2
+  )
+    return 'Agent 执行';
   return modeDefinitions[taskExecutionMode(task)].label;
 }
 
 export function taskModeDescription(task: Work) {
+  if (
+    taskExecutionMode(task) === 'parallel_subagents' &&
+    (task.execution?.subagents?.length || 0) < 2
+  )
+    return '当前由主 Agent 单线执行；出现两个以上独立成员时才展示为并行。';
   return modeDefinitions[taskExecutionMode(task)].description;
 }
 

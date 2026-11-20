@@ -1186,6 +1186,14 @@ a {
   justify-content: space-between;
   align-items: center;
 }
+.trace-card-title {
+  gap: 12px;
+}
+.trace-card-title strong {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-small-font, 500 14px/20px system-ui);
+  text-align: left;
+}
 .trace-card code {
   font:
     11px ui-monospace,
@@ -1201,6 +1209,13 @@ a {
 .trace-card:hover {
   border-color: var(--muted);
 }
+.trace-card-meta time {
+  color: var(--md-sys-color-on-surface);
+  font-variant-numeric: tabular-nums;
+}
+.trace-card-meta span {
+  color: var(--md-sys-color-on-surface-variant);
+}
 .trace-back {
   margin: 0 0 18px;
 }
@@ -1212,6 +1227,22 @@ a {
   color: var(--muted);
   display: block;
   margin: 7px 0 18px;
+}
+.trace-heading h3 {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-title-medium-font, 500 16px/24px system-ui);
+  line-height: 1.45;
+}
+.trace-id-disclosure {
+  margin: 8px 0 18px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+.trace-id-disclosure summary {
+  width: fit-content;
+  min-height: 32px;
+  cursor: pointer;
 }
 .trace-metrics {
   display: flex;
