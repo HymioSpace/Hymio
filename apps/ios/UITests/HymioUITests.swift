@@ -588,10 +588,12 @@ final class HymioUITests: XCTestCase {
     app.buttons["月"].tap()
     XCTAssertTrue(app.buttons["切换到任务列表"].waitForExistence(timeout: 5))
     app.buttons["切换到任务列表"].tap()
-    for _ in 0..<4 where !app.staticTexts["比较两家云服务方案"].exists {
+    let restoredTask = app.buttons.matching(
+      NSPredicate(format: "label CONTAINS %@", "比较两家云服务方案")).firstMatch
+    for _ in 0..<4 where !restoredTask.exists {
       app.swipeDown()
     }
-    XCTAssertTrue(app.staticTexts["比较两家云服务方案"].waitForExistence(timeout: 5))
+    XCTAssertTrue(restoredTask.waitForExistence(timeout: 5))
     XCTAssertFalse(
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
         .firstMatch.exists)
