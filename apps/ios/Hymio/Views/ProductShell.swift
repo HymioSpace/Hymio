@@ -51,7 +51,7 @@ import UIKit
   func apply(_ item: JSON) {
     guard !item["id"].text.isEmpty, !removals.contains(item["id"].text), !deletedIDs.contains(item["id"].text) else { return }
     revision += 1
-    if taskIsCancelled(item) {
+    if taskIsArchived(item) {
       items.removeAll { $0["id"] == item["id"] }
       deletedIDs.insert(item["id"].text)
       rebuildChanges()
@@ -98,7 +98,7 @@ import UIKit
     baseline = UserDefaults.standard.dictionary(forKey: key) as? [String: String]
     if let url = cacheURL, let data = try? Data(contentsOf: url),
       let snapshot = try? JSONDecoder().decode(JSON.self, from: data) {
-      items = snapshot["tasks"].items.filter { !taskIsCancelled($0) }
+      items = snapshot["tasks"].items.filter { !taskIsArchived($0) }
       suggestions = snapshot["suggestions"].items
       loaded = true
     }
@@ -171,7 +171,7 @@ import UIKit
       if suggestions != nextSuggestions { suggestions = nextSuggestions }
       let next = result["tasks"].items.filter {
         !removals.contains($0["id"].text) && !deletedIDs.contains($0["id"].text)
-          && !taskIsCancelled($0)
+          && !taskIsArchived($0)
       }
       if items != next {
         items = next

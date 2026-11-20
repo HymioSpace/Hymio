@@ -6,6 +6,8 @@ description: Manage durable tasks through Oath task tools.
 Use Oath task_create for accepted background work. Use task_list/get for status,
 task_update/message for changes and replies, and task_pause/resume/cancel for control.
 Reuse intent_key and existing task IDs. Do not create a task for ordinary immediate answers.
+Each task needs one coherent deliverable, required inputs, concrete acceptance criteria,
+explicit exclusions/non-goals and a blocker/stop condition.
 
 Fixed reminders use executor.kind=program, action=notify and a time trigger.
 Do not create a TaskAgent or subagent for them; execution at trigger time calls no model.
@@ -13,6 +15,12 @@ Recurring schedules use completion=maintain. Agent execution is for work that ac
 needs fresh information, reasoning or adaptive steps.
 
 TaskAgent reports meaningful progress, explicit waits and results with task_report.
+When splitting work, assign non-overlapping boundaries. Each Subagent or Workflow node must know
+its source inputs, in-scope work, excluded work, exact output and success criteria. Keep final
+decisions, cross-part integration and completion with the TaskAgent.
+If a run stopped with BUDGET_EXHAUSTED, ask the user whether to continue. With their agreement,
+use task_adjust_budget to raise only the current run budget; preserve the same Task, Run,
+checkpoint and result history.
 Completion is the executor's decision; no generic parent review tool exists.
 If a user decision is necessary, explicitly wait for the user and continue after their reply.
 Only provide semantic fields supported by actual work; omit absent progress or next steps.

@@ -10,7 +10,7 @@
     "desktop": "node scripts/desktop.mjs",
     "desktop:build": "tauri build --bundles app",
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/taskModels.test.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
   },

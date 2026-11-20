@@ -48,6 +48,8 @@ import SwiftUI
             MonoTaskStatesPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
             TaskExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioTracePreview") {
+            TraceTimelinePreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioMultiAgentTaskPreview") {
             MultiAgentTaskPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioWorkflowTaskPreview") {

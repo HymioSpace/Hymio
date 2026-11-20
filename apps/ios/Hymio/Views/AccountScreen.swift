@@ -470,8 +470,10 @@ struct AccountScreen: View {
               await account.logout()
             }
           })
-          .presentationDetents([.height(360)])
-          .presentationDragIndicator(.visible)
+          .presentationDetents([.height(420)])
+          .presentationCornerRadius(MaterialShape.extraLarge)
+          .presentationDragIndicator(.hidden)
+          .presentationBackground(Brand.surface)
       }
       .navigationDestination(isPresented: $diagnostics) {
         connectionDiagnostics
@@ -498,11 +500,16 @@ private struct LogoutSheet: View {
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      HStack {
-        VStack(alignment: .leading, spacing: 5) {
+    VStack(spacing: 0) {
+      HStack(alignment: .center, spacing: 14) {
+        Image(systemName: "rectangle.portrait.and.arrow.right")
+          .font(.system(size: 18, weight: .medium))
+          .foregroundStyle(Brand.attention)
+          .frame(width: 44, height: 44)
+          .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 4) {
           Text("退出当前账号").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
-          Text(name).font(.caption).foregroundStyle(Brand.muted)
+          Text(name).font(.subheadline).foregroundStyle(Brand.muted).lineLimit(1)
         }
         Spacer()
         Button {
@@ -510,33 +517,60 @@ private struct LogoutSheet: View {
         } label: {
           Image(systemName: "xmark")
             .font(.caption.weight(.semibold))
-            .frame(width: 36, height: 36)
-            .background(Brand.base, in: Circle())
+            .frame(width: 44, height: 44)
+            .background(Brand.surfaceLow, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("取消退出")
       }
-      VStack(alignment: .leading, spacing: 12) {
-        Label("这台 iPhone 会回到登录页", systemImage: "iphone")
-        Label("本机对话缓存与待发送内容会清除", systemImage: "internaldrive")
-        Label("云端的任务、记忆和连接不会删除", systemImage: "cloud")
+      .padding(.horizontal, 24)
+      .padding(.top, 28)
+      .padding(.bottom, 20)
+
+      Divider().overlay(Brand.line)
+
+      VStack(spacing: 0) {
+        logoutRow("这台 iPhone 会回到登录页", symbol: "iphone")
+        logoutRow("本机对话缓存与待发送内容会清除", symbol: "internaldrive")
+        logoutRow("云端的任务、记忆和连接不会删除", symbol: "cloud")
       }
-      .font(.subheadline)
-      .foregroundStyle(Brand.muted)
-      .padding(16)
+      .padding(.horizontal, 24)
+      .padding(.vertical, 8)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .background(Brand.base, in: RoundedRectangle(cornerRadius: 16))
-      Spacer(minLength: 0)
-      Button(role: .destructive, action: onLogout) {
-        Text("退出登录").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48)
+
+      VStack(spacing: 8) {
+        Button(action: onLogout) {
+          Text("退出登录")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Brand.onAccent)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(Brand.attention, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("account.confirmLogout")
+
+        Button("取消") { dismiss() }
+          .font(.subheadline.weight(.medium))
+          .foregroundStyle(Brand.ink)
+          .frame(maxWidth: .infinity, minHeight: 48)
       }
-      .buttonStyle(.bordered)
-      .tint(Brand.attention)
-      .accessibilityIdentifier("account.confirmLogout")
-      Button("取消") { dismiss() }.frame(maxWidth: .infinity, minHeight: 44)
+      .padding(.horizontal, 24)
+      .padding(.top, 12)
+      .padding(.bottom, 24)
     }
-    .padding(22)
     .background(Brand.surface)
+  }
+
+  private func logoutRow(_ text: String, symbol: String) -> some View {
+    HStack(spacing: 12) {
+      Image(systemName: symbol)
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(Brand.muted)
+        .frame(width: 28, height: 32)
+      Text(text).font(.subheadline).foregroundStyle(Brand.ink)
+      Spacer(minLength: 0)
+    }
+    .frame(minHeight: 48)
   }
 }
 

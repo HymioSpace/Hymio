@@ -125,6 +125,7 @@ _TASK_WRITE_TOOLS = frozenset(
         "task_pause",
         "task_resume",
         "task_cancel",
+        "task_adjust_budget",
         "task_retry",
         "subagent_spawn",
         "subagent_continue",

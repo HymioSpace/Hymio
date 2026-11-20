@@ -52,10 +52,12 @@ export interface Span {
   span_id: string;
   parent_span_id: string | null;
   name: string;
+  start_unix_nano: number;
+  end_unix_nano: number | null;
   status: string;
   duration_ms: number | null;
   attributes: Data;
-  events: { name: string; attributes: Data }[];
+  events: { name: string; unix_nano: number; attributes: Data }[];
   links: Data[];
 }
 export interface Trace {

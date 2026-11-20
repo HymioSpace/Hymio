@@ -3,7 +3,7 @@ import { ConnectionsPanel } from './ConnectionsPanel';
 import { ModelSettings } from './ModelSettings';
 import { ToolPermissionSettings } from './ToolPermissionSettings';
 import { displayName } from './HomePanel';
-import { Activity, X } from 'lucide-react';
+import { Activity, LogOut, X } from 'lucide-react';
 import type { LoginState } from './useLogin';
 import { DeviceManager } from './DeviceManager';
 import { Button, Companion, IconButton, Sheet } from '@hymio/ui';
@@ -17,6 +17,7 @@ export function Settings({
   onTrace: () => void;
 }) {
   const [connections, setConnections] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   if (connections)
     return (
       <Sheet className="settings-dialog" labelledBy="connections-title" onClose={onClose}>
@@ -52,9 +53,49 @@ export function Settings({
         <Activity size={16} />
         工作记录与连接诊断
       </button>
-      <Button variant="quiet" busy={login.busy} onClick={() => void login.logout()}>
+      <Button variant="quiet" busy={login.busy} onClick={() => setConfirmLogout(true)}>
         退出登录
       </Button>
+      {confirmLogout && (
+        <div
+          className="logout-confirm-backdrop"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              setConfirmLogout(false);
+            }
+          }}
+        >
+          <section
+            className="logout-confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="logout-confirm-title"
+            aria-describedby="logout-confirm-detail"
+          >
+            <div className="logout-confirm-icon" aria-hidden="true">
+              <LogOut size={23} strokeWidth={1.8} />
+            </div>
+            <h3 id="logout-confirm-title">退出当前账号</h3>
+            <p id="logout-confirm-detail">
+              本机对话缓存和待发送内容会清除；云端的任务、记忆和连接不会删除。
+            </p>
+            <div className="logout-confirm-actions">
+              <Button onClick={() => setConfirmLogout(false)} autoFocus>
+                取消
+              </Button>
+              <Button
+                className="logout-confirm-primary"
+                busy={login.busy}
+                onClick={() => void login.logout()}
+              >
+                退出登录
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
     </Sheet>
   );
 }

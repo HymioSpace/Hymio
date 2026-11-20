@@ -6,6 +6,11 @@ func taskIsCancelled(_ item: JSON) -> Bool {
       && item["runs"].items.first?["status"].text == "cancelled"
 }
 
+func taskIsArchived(_ item: JSON) -> Bool {
+  taskIsCancelled(item)
+    || ["closed", "archived"].contains(item["state"].text)
+}
+
 func taskStatus(_ item: JSON) -> String {
   if item["state"].text == "closed", item["close_reason"].text == "achieved" { return "succeeded" }
   if item["state"].text == "closed", item["close_reason"].text == "cancelled" { return "cancelled" }
@@ -161,7 +166,7 @@ enum TaskExecutionMode: String {
     case .program: return "按时间或条件执行固定动作，不启动模型"
     case .parallelSubagents: return "主 Agent 拆分独立步骤并整合结果"
     case .agentTeam: return "Leader 与成员可以互相沟通并共同完成"
-    case .dynamicWorkflow: return "先拆成有依赖关系的步骤，再按顺序自动执行"
+    case .dynamicWorkflow: return "先确定步骤依赖；独立节点可并行，依赖完成后继续"
     }
   }
 }
@@ -197,7 +202,7 @@ func taskAttentionTitle(_ item: JSON) -> String {
 func taskAttentionDetail(_ item: JSON) -> String {
   let run = taskCurrentRun(item)
   if run["error_code"].text == "BUDGET_EXHAUSTED" {
-    return "本轮预算已用尽"
+    return "在对话中让我调整预算后继续。"
   }
   if !run["wait_reason"].text.isEmpty { return run["wait_reason"].text }
   if !run["progress"].text.isEmpty { return run["progress"].text }
@@ -299,11 +304,12 @@ struct TasksScreen: View {
   @State private var focus = Date()
   @State private var mode = TaskDisplayMode.status
   @State private var hourHeight: CGFloat = 72
+  @State private var archiveOpen = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   private var calendar: Calendar { var c = Calendar.current; c.firstWeekday = 2; return c }
   private var dates: [Date] { calendarDays(focus, scale: mode.calendarScale ?? 0) }
-  private var visibleItems: [JSON] { board.items.filter { !taskIsCancelled($0) } }
+  private var visibleItems: [JSON] { board.items.filter { !taskIsArchived($0) } }
   @State private var events: [CalendarWork] = []
   @State private var eventsByDay: [Date: [CalendarWork]] = [:]
   var body: some View {
@@ -343,7 +349,13 @@ struct TasksScreen: View {
     .toolbarBackground(Brand.surface, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
-      ToolbarItem(placement: .topBarTrailing) {
+      ToolbarItemGroup(placement: .topBarTrailing) {
+        Button {
+          archiveOpen = true
+        } label: {
+          Image(systemName: "archivebox")
+        }
+        .accessibilityLabel("查看归档")
         Button {
           withAnimation(animation) {
             mode = mode == .status ? .month : .status
@@ -355,7 +367,15 @@ struct TasksScreen: View {
         .accessibilityLabel(mode == .status ? "切换到日历" : "切换到任务列表")
       }.accountUnframed()
     }
-
+    .sheet(isPresented: $archiveOpen, onDismiss: {
+      if !previewMode { Task { await board.refresh(account) } }
+    }) {
+      TaskArchiveScreen(
+        account: account, previewMode: previewMode,
+        previewItems: board.items.filter {
+          taskIsArchived($0)
+        })
+    }
   }
   @ViewBuilder private var calendarHeader: some View {
     if mode != .status {
@@ -423,7 +443,7 @@ struct TasksScreen: View {
   private var statusContent: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 16) {
-        ForEach(TaskPortfolioScope.allCases, id: \.self) { scope in
+        ForEach([TaskPortfolioScope.ongoing, .temporary], id: \.self) { scope in
           let items = visibleItems.filter { taskPortfolioScope($0) == scope }
           if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
@@ -507,6 +527,139 @@ struct TasksScreen: View {
     }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
       .background(Brand.raised, in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
       .overlay(alignment: .top) { Capsule().fill(Brand.line).frame(width: 30, height: 3).padding(.top, 8) }
+  }
+}
+
+private struct TaskArchiveScreen: View {
+  let account: AccountService
+  let previewMode: Bool
+  var previewItems: [JSON] = []
+  @Environment(\.dismiss) private var dismiss
+  @State private var items: [JSON] = []
+  @State private var loading = true
+  @State private var error = ""
+  @State private var deleteTarget: JSON?
+  @State private var hiding = false
+  @State private var loadedPreview = false
+
+  var body: some View {
+    NavigationStack {
+      List {
+        if loading && items.isEmpty {
+          ProgressView("正在读取归档…")
+        }
+        if !error.isEmpty {
+          Section {
+            Text(error).font(.footnote).foregroundStyle(Brand.attention)
+            Button("重新读取") { Task { await load() } }
+          }
+        }
+        if !loading && error.isEmpty && items.isEmpty {
+          ContentUnavailableView(
+            "归档还是空的", systemImage: "archivebox",
+            description: Text("已完成和已取消的任务会保留在这里。"))
+            .listRowBackground(Color.clear)
+        }
+        ForEach(items, id: \.self) { item in
+          NavigationLink {
+            TaskDetailScreen(
+              account: account, taskID: item["id"].text, initial: item,
+              previewMode: previewMode, archived: true
+            ) {
+              items.removeAll { $0["id"] == item["id"] }
+            }
+          } label: {
+            HStack(alignment: .center, spacing: 12) {
+              Image(
+                systemName: taskIsCancelled(item) ? "xmark.circle" : "checkmark.circle"
+              )
+              .font(.system(size: 18, weight: .medium))
+              .foregroundStyle(taskIsCancelled(item) ? Brand.muted : Color.green)
+              .frame(width: 36, height: 36)
+              .background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: 12))
+              VStack(alignment: .leading, spacing: 4) {
+                Text(item["title"].text).font(.subheadline.weight(.semibold))
+                Text(
+                  taskIsCancelled(item)
+                    ? "已取消 · 不再执行"
+                    : "已完成 · \(item["runs"].items.first?["result"].text.prefix(80) ?? "")"
+                )
+                .font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
+              }
+            }
+            .padding(.vertical, 4)
+          }
+          .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+              deleteTarget = item
+            } label: {
+              Label("从归档移除", systemImage: "trash")
+            }
+          }
+        }
+      }
+      .navigationTitle("归档")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("完成") { dismiss() }
+        }
+      }
+      .task { await load() }
+      .refreshable { await load() }
+      .confirmationDialog(
+        "从归档移除？",
+        isPresented: Binding(
+          get: { deleteTarget != nil },
+          set: { if !$0 { deleteTarget = nil } }
+        ),
+        titleVisibility: .visible
+      ) {
+        Button("从归档移除", role: .destructive) {
+          if let item = deleteTarget { Task { await hide(item) } }
+        }
+      } message: {
+        Text("只会不再展示这条归档；原始任务与执行记录仍会保留。")
+      }
+    }
+  }
+
+  @MainActor private func load() async {
+    if previewMode {
+      if !loadedPreview {
+        items = previewItems
+        loadedPreview = true
+      }
+      loading = false
+      return
+    }
+    loading = true
+    defer { loading = false }
+    do {
+      let value = try await account.request(
+        "tasks", body: .object(["action": .string("archive_list")]))
+      items = value["tasks"].items
+      error = ""
+    } catch {
+      self.error = "暂时无法读取归档，请稍后重试。"
+    }
+  }
+
+  @MainActor private func hide(_ item: JSON) async {
+    guard !hiding else { return }
+    hiding = true
+    defer { hiding = false; deleteTarget = nil }
+    let id = item["id"].text
+    let previous = items
+    items.removeAll { $0["id"].text == id }
+    guard !previewMode else { return }
+    do {
+      _ = try await account.request(
+        "tasks", body: .object(["action": .string("archive_hide"), "task_id": .string(id)]))
+    } catch {
+      items = previous
+      self.error = "未能从归档移除，内容已恢复。"
+    }
   }
 }
 
@@ -1088,6 +1241,7 @@ private struct MaterialPlanCard: View {
 
 private struct MaterialWorkflowCard: View {
   let item: JSON
+  @State private var selectedID = ""
 
   private var nodes: [JSON] { item["execution"]["workflow"]["nodes"].items }
   private var names: [String: String] {
@@ -1101,63 +1255,175 @@ private struct MaterialWorkflowCard: View {
     return Brand.muted
   }
 
+  private func layers() -> [[JSON]] {
+    let byID = Dictionary(uniqueKeysWithValues: nodes.map { ($0["id"].text, $0) })
+    var depths: [String: Int] = [:]
+    func visit(_ id: String, _ visiting: inout Set<String>) -> Int {
+      if let known = depths[id] { return known }
+      guard !visiting.contains(id), let node = byID[id] else { return 0 }
+      visiting.insert(id)
+      let value =
+        node["depends_on"].items.map(\.text).filter { byID[$0] != nil }
+        .map { visit($0, &visiting) + 1 }.max() ?? 0
+      visiting.remove(id)
+      depths[id] = value
+      return value
+    }
+    for node in nodes {
+      var visiting = Set<String>()
+      _ = visit(node["id"].text, &visiting)
+    }
+    let maxDepth = depths.values.max() ?? 0
+    return (0...maxDepth).map { depth in
+      nodes.filter { (depths[$0["id"].text] ?? 0) == depth }
+    }
+  }
+
+  private var selected: JSON? {
+    nodes.first { $0["id"].text == selectedID } ?? nodes.first
+  }
+
+  private func selectedAgent(_ node: JSON?) -> JSON? {
+    guard let id = node?["agent_id"].text, !id.isEmpty else { return nil }
+    return item["execution"]["subagents"].items.first { $0["agent_id"].text == id }
+  }
+
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    let groups = layers()
+    let nodeSize = CGSize(width: 142, height: 92)
+    let gapX: CGFloat = 24
+    let gapY: CGFloat = 64
+    let padding: CGFloat = 12
+    let widest = max(1, groups.map(\.count).max() ?? 1)
+    let canvasWidth = max(
+      340, padding * 2 + CGFloat(widest) * nodeSize.width + CGFloat(max(0, widest - 1)) * gapX)
+    let canvasHeight =
+      padding * 2 + CGFloat(max(1, groups.count)) * nodeSize.height
+      + CGFloat(max(0, groups.count - 1)) * gapY
+    var positions: [String: CGPoint] = [:]
+    for (depth, group) in groups.enumerated() {
+      let groupWidth =
+        CGFloat(group.count) * nodeSize.width + CGFloat(max(0, group.count - 1)) * gapX
+      let start = (canvasWidth - groupWidth) / 2
+      for (index, node) in group.enumerated() {
+        positions[node["id"].text] = CGPoint(
+          x: start + CGFloat(index) * (nodeSize.width + gapX) + nodeSize.width / 2,
+          y: padding + CGFloat(depth) * (nodeSize.height + gapY) + nodeSize.height / 2)
+      }
+    }
+    return VStack(alignment: .leading, spacing: 14) {
       HStack(alignment: .firstTextBaseline) {
-        Label("执行依赖", systemImage: "point.3.connected.trianglepath.dotted")
-          .font(.headline)
-          .foregroundStyle(Brand.ink)
+        Label("Workflow DAG", systemImage: "point.3.connected.trianglepath.dotted")
+          .font(.headline).foregroundStyle(Brand.ink)
         Spacer()
         Text("\(nodes.filter { $0["status"].text == "succeeded" }.count)/\(nodes.count)")
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(Brand.muted)
+          .font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
       }
-      ForEach(Array(nodes.enumerated()), id: \.offset) { index, node in
-        HStack(alignment: .top, spacing: 10) {
-          VStack(spacing: 0) {
-            ZStack {
-              Circle().fill(color(node["status"].text).opacity(0.13)).frame(width: 28, height: 28)
-              Image(
-                systemName: node["status"].text == "succeeded"
-                  ? "checkmark" : node["status"].text == "running" ? "play.fill" : "circle.fill"
-              )
-              .font(.system(size: 10, weight: .bold))
-              .foregroundStyle(color(node["status"].text))
-            }
-            if index < nodes.count - 1 {
-              Rectangle()
-                .fill(Brand.line)
-                .frame(width: 1, height: 34)
-            }
-          }
-          VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 7) {
-              Text(node["title"].text)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Brand.ink)
-              Spacer(minLength: 4)
-              MaterialStatusPill(
-                text: taskLabel(node["status"].text),
-                color: color(node["status"].text))
-            }
-            let dependencies = node["depends_on"].items.map(\.text)
-            if !dependencies.isEmpty {
-              Text(
-                "依赖 " + dependencies.map { names[$0] ?? $0 }.joined(separator: "、")
-              )
-              .font(.caption2)
-              .foregroundStyle(Brand.muted)
-            }
-            if !node["result"].text.isEmpty {
-              Text(node["result"].text)
-                .font(.caption)
-                .foregroundStyle(Brand.muted)
-                .lineLimit(2)
+      Text("箭头表示依赖；同一层没有依赖关系的节点可以并行。")
+        .font(.caption2).foregroundStyle(Brand.muted)
+      ScrollView(.horizontal, showsIndicators: true) {
+        ZStack(alignment: .topLeading) {
+          Canvas { context, _ in
+            for target in nodes {
+              guard let end = positions[target["id"].text] else { continue }
+              for dependency in target["depends_on"].items.map(\.text) {
+                guard let start = positions[dependency] else { continue }
+                var path = Path()
+                path.move(to: CGPoint(x: start.x, y: start.y + nodeSize.height / 2))
+                let y1 = start.y + nodeSize.height / 2
+                let y2 = end.y - nodeSize.height / 2
+                path.addCurve(
+                  to: CGPoint(x: end.x, y: y2),
+                  control1: CGPoint(x: start.x, y: (y1 + y2) / 2),
+                  control2: CGPoint(x: end.x, y: (y1 + y2) / 2))
+                context.stroke(
+                  path,
+                  with: .color(color(target["status"].text).opacity(0.55)),
+                  lineWidth: 1.5)
+              }
             }
           }
-          .padding(12)
-          .background(Brand.base, in: RoundedRectangle(cornerRadius: 14))
+          ForEach(nodes, id: \.self) { node in
+            if let point = positions[node["id"].text] {
+              Button {
+                selectedID = node["id"].text
+              } label: {
+                VStack(alignment: .leading, spacing: 5) {
+                  Text(taskLabel(node["status"].text))
+                    .font(.caption2.weight(.medium)).foregroundStyle(color(node["status"].text))
+                  Text(node["title"].text)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+                    .lineLimit(1)
+                  Text(
+                    node["depends_on"].items.isEmpty
+                      ? "起始节点"
+                      : "等待 " + node["depends_on"].items.map {
+                        names[$0.text] ?? $0.text
+                      }.joined(separator: " + ")
+                  )
+                  .font(.caption2).foregroundStyle(Brand.muted).lineLimit(1)
+                }
+                .padding(12)
+                .frame(width: nodeSize.width, height: nodeSize.height, alignment: .leading)
+                .background(
+                  selected?["id"].text == node["id"].text ? Brand.softBlue : Brand.base,
+                  in: RoundedRectangle(cornerRadius: MaterialShape.small))
+                .overlay(
+                  RoundedRectangle(cornerRadius: MaterialShape.small)
+                    .strokeBorder(
+                      selected?["id"].text == node["id"].text
+                        ? Brand.blue : color(node["status"].text).opacity(0.38),
+                      lineWidth: selected?["id"].text == node["id"].text ? 1.5 : 1))
+              }
+              .buttonStyle(.plain)
+              .position(point)
+              .accessibilityLabel(
+                "\(node["title"].text)，\(taskLabel(node["status"].text))，"
+                  + (node["depends_on"].items.isEmpty
+                    ? "无依赖"
+                    : "依赖 " + node["depends_on"].items.map {
+                      names[$0.text] ?? $0.text
+                    }.joined(separator: "、")))
+            }
+          }
         }
+        .frame(width: canvasWidth, height: canvasHeight)
+      }
+      if let selected {
+        VStack(alignment: .leading, spacing: 7) {
+          HStack {
+            Text(selected["title"].text).font(.subheadline.weight(.semibold))
+            Spacer()
+            Text(taskLabel(selected["status"].text)).font(.caption)
+              .foregroundStyle(color(selected["status"].text))
+          }
+          if !selected["objective"].text.isEmpty {
+            Text(selected["objective"].text).font(.caption).foregroundStyle(Brand.muted)
+          }
+          if !selected["success_criteria"].text.isEmpty {
+            Text("完成标准：\(selected["success_criteria"].text)")
+              .font(.caption2).foregroundStyle(Brand.muted)
+          }
+          if !selected["result"].text.isEmpty {
+            Text(selected["result"].text).font(.caption).foregroundStyle(Brand.muted)
+          }
+          if !selected["error"].text.isEmpty {
+            Text(selected["error"].text).font(.caption).foregroundStyle(Brand.attention)
+          }
+          if let agent = selectedAgent(selected) {
+            NavigationLink {
+              AgentContextScreen(
+                agent: agent, taskTitle: item["title"].text, isTaskAgent: false,
+                parentTitle: "主流程 Agent", showsCommunication: false)
+            } label: {
+              Label("查看节点 Agent 执行记录", systemImage: "arrow.up.right")
+                .font(.caption.weight(.semibold)).frame(minHeight: 44)
+            }.buttonStyle(.plain).foregroundStyle(Brand.blue)
+          }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.base, in: RoundedRectangle(cornerRadius: MaterialShape.small))
       }
     }
     .padding(18)
@@ -1165,6 +1431,13 @@ private struct MaterialWorkflowCard: View {
     .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
     .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
     .accessibilityIdentifier("task.workflow")
+    .onAppear {
+      if selectedID.isEmpty {
+        selectedID =
+          nodes.first { $0["status"].text == "running" }?["id"].text
+          ?? nodes.first?["id"].text ?? ""
+      }
+    }
   }
 }
 
@@ -1200,7 +1473,8 @@ private struct MaterialExecutionTeam: View {
       } else if agent != .null {
         NavigationLink {
           AgentContextScreen(
-            agent: agent, taskTitle: item["title"].text, isTaskAgent: true, parentTitle: "")
+            agent: agent, taskTitle: item["title"].text, isTaskAgent: true, parentTitle: "",
+            showsCommunication: mode == .agentTeam)
         } label: {
           MaterialAgentCard(
             agent: agent, isTaskAgent: true,
@@ -1222,7 +1496,8 @@ private struct MaterialExecutionTeam: View {
           NavigationLink {
             AgentContextScreen(
               agent: child, taskTitle: item["title"].text, isTaskAgent: false,
-              parentTitle: agent["title"].text)
+              parentTitle: agent["title"].text,
+              showsCommunication: mode == .agentTeam)
           } label: {
             MaterialAgentCard(
               agent: child, isTaskAgent: false,
@@ -1308,6 +1583,7 @@ private struct AgentContextScreen: View {
   let taskTitle: String
   let isTaskAgent: Bool
   let parentTitle: String
+  var showsCommunication = false
   @State private var toolsExpanded = false
 
   private var status: String {
@@ -1389,24 +1665,26 @@ private struct AgentContextScreen: View {
           }
         }
 
-        AgentDetailCard(title: "Agent 间通信", icon: "arrow.left.arrow.right") {
-          if communication.isEmpty {
-            Text("还没有可展示的委派指令或回报。").font(.caption).foregroundStyle(Brand.muted)
-          } else {
-            VStack(alignment: .leading, spacing: 12) {
-              ForEach(Array(communication.enumerated()), id: \.offset) { _, item in
-                VStack(alignment: .leading, spacing: 4) {
-                  HStack {
-                    Text(item.0).font(.caption.weight(.semibold)).foregroundStyle(Brand.ink)
-                    Spacer()
-                    if !item.2.isEmpty {
-                      Text(item.2).font(.caption2).foregroundStyle(Brand.muted)
+        if showsCommunication {
+          AgentDetailCard(title: "Agent 间通信", icon: "arrow.left.arrow.right") {
+            if communication.isEmpty {
+              Text("还没有可展示的委派指令或回报。").font(.caption).foregroundStyle(Brand.muted)
+            } else {
+              VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(communication.enumerated()), id: \.offset) { _, item in
+                  VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                      Text(item.0).font(.caption.weight(.semibold)).foregroundStyle(Brand.ink)
+                      Spacer()
+                      if !item.2.isEmpty {
+                        Text(item.2).font(.caption2).foregroundStyle(Brand.muted)
+                      }
                     }
+                    Text(item.1).font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
                   }
-                  Text(item.1).font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
+                  .padding(12)
+                  .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
                 }
-                .padding(12)
-                .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
               }
             }
           }
@@ -1550,12 +1828,15 @@ struct TaskDetailScreen: View {
   let initial: JSON
   var board: TaskBoard? = nil
   var previewMode = false
+  var archived = false
+  var onArchivedDeleted: () -> Void = {}
   var onViewed: (JSON) -> Void = { _ in }
   @Environment(\.dismiss) private var dismiss
   @State private var value: JSON = .null
   @State private var error = ""
   @State private var busy = false
   @State private var deleting = false
+  @State private var deletingArchived = false
   @State private var continuation = ""
   @Environment(\.scenePhase) private var scene
   private var item: JSON { value == .null ? initial : value }
@@ -1574,10 +1855,14 @@ struct TaskDetailScreen: View {
         {
           MaterialWorkflowCard(item: item)
         }
-        if taskExecutionMode(item) != .program {
+        if taskExecutionMode(item) != .program,
+          taskExecutionMode(item) != .dynamicWorkflow
+        {
           MaterialPlanCard(item: item)
         }
-        MaterialExecutionTeam(item: item)
+        if taskExecutionMode(item) != .dynamicWorkflow {
+          MaterialExecutionTeam(item: item)
+        }
         if let result = item["runs"].items.first?["result"].text, !result.isEmpty {
           VStack(alignment: .leading, spacing: 10) {
             Label("任务结果", systemImage: "check_circle")
@@ -1599,12 +1884,20 @@ struct TaskDetailScreen: View {
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(Brand.surface, for: .navigationBar)
       .toolbar {
-        if item["state"].text != "closed" {
+        if archived {
+          ToolbarItem(placement: .topBarTrailing) {
+            Button(role: .destructive) {
+              deletingArchived = true
+            } label: {
+              Image(systemName: "trash")
+            }.accessibilityLabel("从归档移除")
+          }
+        } else if item["state"].text != "closed" {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
             if ["paused", "cancelled"].contains(item["state"].text) {
               if taskCurrentRun(item)["error_code"].text == "BUDGET_EXHAUSTED" {
-                Text("请在对话中调整预算后继续")
+                Text("请在对话中让我调整本轮预算")
               } else {
                 Button("继续任务", systemImage: "play") { Task { await action("resume") } }
               }
@@ -1628,6 +1921,13 @@ struct TaskDetailScreen: View {
       }
       .confirmationDialog("取消这项任务？", isPresented: $deleting, titleVisibility: .visible) {
         Button("取消任务", role: .destructive) { cancelImmediately() }
+      }
+      .confirmationDialog(
+        "从归档移除？", isPresented: $deletingArchived, titleVisibility: .visible
+      ) {
+        Button("从归档移除", role: .destructive) { hideArchived() }
+      } message: {
+        Text("只会不再展示这条归档；原始任务与执行记录仍会保留。")
       }
       .task(id: scene) {
         guard !previewMode, scene == .active else { return }
@@ -1672,6 +1972,25 @@ struct TaskDetailScreen: View {
         store?.finishRemoval(id)
       } catch {
         if let removed { store?.restore(removed) }
+      }
+    }
+  }
+  private func hideArchived() {
+    let id = taskID
+    Task { @MainActor in
+      do {
+        if !previewMode {
+          _ = try await account.request(
+            "tasks",
+            body: .object([
+              "action": .string("archive_hide"),
+              "task_id": .string(id),
+            ]))
+        }
+        onArchivedDeleted()
+        dismiss()
+      } catch {
+        self.error = "暂时无法从归档移除，请稍后重试。"
       }
     }
   }
@@ -2088,7 +2407,9 @@ struct CalendarWorkspacePreview: View {
           return .object([
             "id": .string("calendar-preview-\(index)"), "title": .string(example.0),
             "objective": .string("把这件事安排好，并带回清楚的结果。"), "source": .string("conversation"),
-            "state": .string(example.4), "kind": .string(index == 2 ? "reminder" : "task"),
+            "state": .string(index == 6 ? "closed" : example.4),
+            "close_reason": .string(index == 6 ? "achieved" : ""),
+            "kind": .string(index == 2 ? "reminder" : "task"),
             "schedule": .object(["mode": .string("once"), "timezone": .string(TimeZone.current.identifier), "at": .string(ISO8601DateFormatter().string(from: date))]),
             "runs": .array([.object(["id": .string("run-\(index)"), "status": .string(example.5), "due_at": .number(date.timeIntervalSince1970), "progress": .string("整理出清楚的下一步，等你看一眼。")])])])
         }

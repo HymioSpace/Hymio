@@ -30,6 +30,12 @@ export type Run = {
     phase: string;
   }[];
 };
+export type RunBudget = {
+  max_steps: number;
+  max_tokens: number;
+  max_active_seconds: number;
+  max_cost_microusd: null;
+};
 export type Work = {
   revision?: number;
   needs_attention?: boolean;
@@ -49,6 +55,7 @@ export type Work = {
   close_reason?: string | null;
   kind?: 'task' | 'reminder';
   schedule: Schedule;
+  budget?: RunBudget;
   runs: Run[];
   context?: { brief: string; refs: string[] };
   plan?: unknown[];
@@ -133,7 +140,7 @@ const modeDefinitions: Record<ExecutionMode, { label: string; description: strin
   },
   dynamic_workflow: {
     label: '动态工作流',
-    description: '先拆成有依赖关系的步骤，再按顺序自动执行。',
+    description: '先确定步骤依赖；独立节点可并行，依赖完成后继续。',
   },
 };
 
@@ -169,8 +176,15 @@ export function taskIsCancelled(task: Work) {
   );
 }
 
+export function taskIsArchived(task: Work) {
+  return task.state === 'closed';
+}
+
 export function taskPortfolioScope(task: Work): TaskPortfolioScope {
   const run = task.runs[0];
+  if (task.state === 'active' && run?.status === 'succeeded' && task.next_due_at) {
+    return taskTemporalScope(task);
+  }
   if (
     ['closed', 'archived'].includes(task.state) ||
     ['succeeded', 'cancelled', 'expired'].includes(run?.status || '')

@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sheet, IconButton } from '@hymio/ui';
 import {
   AlertCircle,
+  Archive,
   CheckCircle2,
   ChevronLeft,
   Cpu,
   GitBranch,
   HelpCircle,
+  Trash2,
   UserRound,
   Users,
   X,
@@ -28,12 +30,12 @@ import {
   type Work,
   type WorkflowNode,
 } from './taskModels';
+import { workflowLayers } from './workflowLayout';
 import './tasks.css';
 
 const scopeDefinitions: { scope: TaskPortfolioScope; title: string }[] = [
   { scope: 'ongoing', title: '长期任务' },
   { scope: 'temporary', title: '临时任务' },
-  { scope: 'completed', title: '已完成' },
 ];
 
 export function TasksPanel({
@@ -50,6 +52,9 @@ export function TasksPanel({
   const [detail, setDetail] = useState<Work | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archive, setArchive] = useState<Work[]>([]);
+  const [archiveError, setArchiveError] = useState('');
 
   async function request(data?: object) {
     if (!login.session) throw new Error('请先登录');
@@ -71,6 +76,16 @@ export function TasksPanel({
     const value = await request();
     setTasks(value.tasks.filter((task: Work) => !taskIsCancelled(task)));
     setError('');
+  }
+
+  async function loadArchive() {
+    try {
+      const value = await request({ action: 'archive_list' });
+      setArchive(value.tasks || []);
+      setArchiveError('');
+    } catch {
+      setArchiveError('暂时无法读取归档');
+    }
   }
 
   useEffect(() => {
@@ -119,25 +134,44 @@ export function TasksPanel({
     };
   }, [selected, login.session?.access_token]);
 
-  async function control(task: Work, action: string) {
+  async function control(task: Work, action: string, extra: Record<string, unknown> = {}) {
     setBusy(true);
     try {
       const updated = await request({
         action,
         task_id: task.id,
         expected_revision: task.revision,
+        request_id: crypto.randomUUID(),
+        ...extra,
       });
       setDetail(updated);
       if (taskIsCancelled(updated)) setSelected('');
       await load();
+      return true;
     } catch (cause) {
       setError((cause as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
-  const chosen = detail?.id === selected ? detail : tasks.find((task) => task.id === selected);
+  async function hideArchived(task: Work) {
+    if (!window.confirm('从归档中移除这个任务？原始任务与执行记录会保留，只是不再展示。')) return;
+    const previous = archive;
+    setArchive((items) => items.filter((item) => item.id !== task.id));
+    if (selected === task.id) setSelected('');
+    try {
+      await request({ action: 'archive_hide', task_id: task.id });
+      setArchiveError('');
+    } catch {
+      setArchive(previous);
+      setArchiveError('移除失败，归档内容已恢复。');
+    }
+  }
+
+  const list = archiveOpen ? archive : tasks;
+  const chosen = detail?.id === selected ? detail : list.find((task) => task.id === selected);
   const grouped = useMemo(
     () =>
       scopeDefinitions
@@ -153,12 +187,27 @@ export function TasksPanel({
     <Sheet className="tasks-dialog" labelledBy="tasks-title" onClose={onClose}>
       <header className="tasks-header">
         <div>
-          <h2 id="tasks-title">任务</h2>
-          <p>{tasks.length} 项任务</p>
+          <h2 id="tasks-title">{archiveOpen ? '归档' : '任务'}</h2>
+          <p>{archiveOpen ? `${archive.length} 项已结束任务` : `${tasks.length} 项当前任务`}</p>
         </div>
-        <IconButton label="关闭任务" onClick={onClose}>
-          <X size={20} />
-        </IconButton>
+        <div className="tasks-header-actions">
+          <button
+            className={`tasks-archive${archiveOpen ? ' selected' : ''}`}
+            aria-label={archiveOpen ? '返回当前任务' : '查看归档'}
+            onClick={() => {
+              setSelected('');
+              setDetail(null);
+              if (!archiveOpen) void loadArchive();
+              setArchiveOpen(!archiveOpen);
+            }}
+          >
+            {archiveOpen ? <ChevronLeft size={18} /> : <Archive size={18} />}
+            <span>{archiveOpen ? '当前任务' : '归档'}</span>
+          </button>
+          <IconButton label="关闭任务" onClick={onClose}>
+            <X size={20} />
+          </IconButton>
+        </div>
       </header>
 
       {error && (
@@ -170,46 +219,78 @@ export function TasksPanel({
         </div>
       )}
 
+      {archiveError && (
+        <div className="tasks-error" role="alert">
+          <span>{archiveError}</span>
+          <button onClick={() => void loadArchive()}>重试</button>
+        </div>
+      )}
+
       <div className={'tasks-layout' + (selected ? ' has-selection' : '')}>
-        <section className="tasks-list" aria-label="任务列表">
-          {!tasks.length && (
+        <section className="tasks-list" aria-label={archiveOpen ? '任务归档' : '当前任务列表'}>
+          {!list.length && (
             <div className="tasks-empty">
-              <CheckCircle2 size={28} />
-              <strong>暂无任务</strong>
+              {archiveOpen ? <Archive size={28} /> : <CheckCircle2 size={28} />}
+              <strong>{archiveOpen ? '归档还是空的' : '暂无任务'}</strong>
+              {archiveOpen && <span>已完成和已取消的任务会保留在这里。</span>}
             </div>
           )}
-          {grouped.map((group) => (
-            <div className="task-group" key={group.scope}>
-              <h3>
-                {group.title}
-                <span>{group.tasks.length}</span>
-              </h3>
-              <div className="task-cards">
-                {group.tasks.map((task) => (
+          {archiveOpen ? (
+            <div className="task-cards archive-cards">
+              {archive.map((task) => (
+                <div className="archive-row" key={task.id}>
                   <TaskCard
-                    key={task.id}
                     task={task}
                     selected={selected === task.id}
                     onSelect={() => setSelected(task.id)}
                   />
-                ))}
-              </div>
+                  <button
+                    className="archive-remove"
+                    aria-label={`从归档移除 ${task.title}`}
+                    title="从归档移除"
+                    onClick={() => void hideArchived(task)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            grouped.map((group) => (
+              <div className="task-group" key={group.scope}>
+                <h3>
+                  {group.title}
+                  <span>{group.tasks.length}</span>
+                </h3>
+                <div className="task-cards">
+                  {group.tasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      selected={selected === task.id}
+                      onSelect={() => setSelected(task.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </section>
 
         {chosen && (
           <TaskDetail
             task={chosen}
             busy={busy}
+            archived={archiveOpen}
             onBack={() => setSelected('')}
-            onControl={(action) => void control(chosen, action)}
+            onControl={(action, extra) => control(chosen, action, extra)}
+            onDeleteArchived={() => hideArchived(chosen)}
           />
         )}
         {!chosen && (
           <section className="task-detail-placeholder" aria-label="未选择任务">
-            <CheckCircle2 size={24} />
-            <p>选择一个任务</p>
+            {archiveOpen ? <Archive size={24} /> : <CheckCircle2 size={24} />}
+            <p>{archiveOpen ? '选择一个归档任务' : '选择一个任务'}</p>
           </section>
         )}
       </div>
@@ -251,24 +332,29 @@ function TaskCard({
 function TaskDetail({
   task,
   busy,
+  archived,
   onBack,
   onControl,
+  onDeleteArchived,
 }: {
   task: Work;
   busy: boolean;
+  archived: boolean;
   onBack: () => void;
-  onControl: (action: string) => void;
+  onControl: (action: string, extra?: Record<string, unknown>) => Promise<boolean>;
+  onDeleteArchived: () => void;
 }) {
   const run = task.runs[0];
   const mode = taskExecutionMode(task);
-  const waitingForBudget = run?.error_code === 'BUDGET_EXHAUSTED';
+  const waitingForBudget = task.state === 'active' && run?.error_code === 'BUDGET_EXHAUSTED';
   const nodes = task.execution?.workflow?.nodes || [];
+  const edges = task.execution?.workflow?.edges || [];
   const children = task.execution?.subagents || [];
   return (
     <section className="task-detail" aria-label="任务详情">
       <button className="task-back" onClick={onBack}>
         <ChevronLeft size={16} />
-        返回任务列表
+        {archived ? '返回归档' : '返回任务列表'}
       </button>
 
       <header className="task-detail-hero">
@@ -288,7 +374,11 @@ function TaskDetail({
           <AlertCircle size={18} />
           <div>
             <strong>{waitingForBudget ? '本轮预算已用尽' : taskStatusLabel(task)}</strong>
-            <p>{run?.wait_reason || run?.progress || task.objective}</p>
+            <p>
+              {waitingForBudget
+                ? '在对话中让我调整预算后继续。'
+                : run?.wait_reason || run?.progress || task.objective}
+            </p>
           </div>
         </div>
       )}
@@ -314,58 +404,54 @@ function TaskDetail({
         </section>
       )}
 
-      {mode === 'dynamic_workflow' && nodes.length > 0 && <WorkflowPanel nodes={nodes} />}
-      {mode !== 'program' && !!task.plan?.length && <PlanPanel plan={task.plan} />}
+      {mode === 'dynamic_workflow' && nodes.length > 0 && (
+        <WorkflowPanel nodes={nodes} edges={edges} agents={children} />
+      )}
+      {mode !== 'program' && mode !== 'dynamic_workflow' && !!task.plan?.length && (
+        <PlanPanel plan={task.plan} />
+      )}
 
-      <section className="task-execution" aria-label="执行团队">
-        <header>
-          <strong>{mode === 'program' ? '执行方式' : '执行团队'}</strong>
-          <span>
-            {mode === 'program'
-              ? '自动执行'
-              : children.length
-                ? `${children.length + 1} 个 Agent`
-                : '等待委派'}
-          </span>
-        </header>
-        {mode === 'program' ? (
-          <div className="task-program-note">
-            <Zap size={18} />
-            <span>不启动 Agent</span>
-          </div>
-        ) : task.execution?.task_agent ? (
-          <>
-            <AgentDetail
-              agent={task.execution.task_agent}
-              lead
-              label={
-                mode === 'agent_team'
-                  ? 'Leader'
-                  : mode === 'dynamic_workflow'
-                    ? '主流程 Agent'
-                    : '主执行 Agent'
-              }
-            />
-            <div className="task-leaves">
-              {children.map((agent) => (
-                <AgentDetail
-                  key={agent.agent_id}
-                  agent={agent}
-                  label={
-                    agent.delegation_role === 'teammate'
-                      ? 'Team 成员'
-                      : agent.delegation_role === 'workflow_node'
-                        ? '工作流节点'
-                        : '绑定子 Agent'
-                  }
-                />
-              ))}
+      {mode !== 'dynamic_workflow' && (
+        <section className="task-execution" aria-label="执行团队">
+          <header>
+            <strong>{mode === 'program' ? '执行方式' : '执行团队'}</strong>
+            <span>
+              {mode === 'program'
+                ? '自动执行'
+                : children.length
+                  ? `${children.length + 1} 个 Agent`
+                  : '等待委派'}
+            </span>
+          </header>
+          {mode === 'program' ? (
+            <div className="task-program-note">
+              <Zap size={18} />
+              <span>不启动 Agent</span>
             </div>
-          </>
-        ) : (
-          <p className="task-muted">正在准备执行 Agent。</p>
-        )}
-      </section>
+          ) : task.execution?.task_agent ? (
+            <>
+              <AgentDetail
+                agent={task.execution.task_agent}
+                lead
+                label={mode === 'agent_team' ? 'Leader' : '主执行 Agent'}
+                showCommunications={mode === 'agent_team'}
+              />
+              <div className="task-leaves">
+                {children.map((agent) => (
+                  <AgentDetail
+                    key={agent.agent_id}
+                    agent={agent}
+                    label={agent.delegation_role === 'teammate' ? 'Team 成员' : '绑定子 Agent'}
+                    showCommunications={mode === 'agent_team'}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="task-muted">正在准备执行 Agent。</p>
+          )}
+        </section>
+      )}
 
       {run?.result && (
         <section className="task-result complete">
@@ -385,24 +471,33 @@ function TaskDetail({
       </details>
 
       <div className="task-detail-actions">
-        {task.state !== 'closed' && (
+        {archived ? (
+          <button className="archive-delete" disabled={busy} onClick={onDeleteArchived}>
+            <Trash2 size={15} />
+            从归档移除
+          </button>
+        ) : task.state !== 'closed' ? (
           <>
             {waitingForBudget ? (
-              <span>在对话中调整本轮预算后继续。</span>
+              <span>在对话中让我调整预算后继续。</span>
             ) : (
               <button
                 disabled={busy}
-                onClick={() => onControl(task.state === 'paused' ? 'resume' : 'pause')}
+                onClick={() => void onControl(task.state === 'paused' ? 'resume' : 'pause')}
               >
                 {task.state === 'paused' ? '恢复' : '暂停'}
               </button>
             )}
-            <button disabled={busy} onClick={() => onControl('cancel')}>
+            <button disabled={busy} onClick={() => void onControl('cancel')}>
               取消任务
             </button>
           </>
-        )}
-        <small>补充要求或调整计划，请在对话中说明。</small>
+        ) : null}
+        <small>
+          {archived
+            ? '从归档移除只影响这个视图，不删除任务与执行记录。'
+            : '补充要求或调整计划，请在对话中说明。'}
+        </small>
       </div>
     </section>
   );
@@ -432,33 +527,168 @@ function ModeBadge({ task }: { task: Work }) {
   );
 }
 
-function WorkflowPanel({ nodes }: { nodes: WorkflowNode[] }) {
+function WorkflowPanel({
+  nodes,
+  edges,
+  agents,
+}: {
+  nodes: WorkflowNode[];
+  edges: { from: string; to: string }[];
+  agents: ExecutionAgent[];
+}) {
   const names = Object.fromEntries(nodes.map((node) => [node.id, node.title]));
+  const nodeByID = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  const layers = workflowLayers(nodes, edges) as WorkflowNode[][];
+  const [selectedID, setSelectedID] = useState(
+    nodes.find((node) => node.status === 'running')?.id || nodes[0]?.id || '',
+  );
+  const nodeWidth = 196;
+  const nodeHeight = 94;
+  const gapX = 56;
+  const gapY = 68;
+  const padding = 26;
+  const maxPerLayer = Math.max(1, ...layers.map((layer) => layer.length));
+  const canvasWidth = Math.max(
+    620,
+    padding * 2 + maxPerLayer * nodeWidth + (maxPerLayer - 1) * gapX,
+  );
+  const positions = new Map<
+    string,
+    { x: number; y: number; width: number; height: number; layer: number }
+  >();
+  layers.forEach((layer, layerIndex) => {
+    const width = layer.length * nodeWidth + Math.max(0, layer.length - 1) * gapX;
+    const start = (canvasWidth - width) / 2;
+    layer.forEach((node, index) => {
+      positions.set(node.id, {
+        x: start + index * (nodeWidth + gapX),
+        y: padding + layerIndex * (nodeHeight + gapY),
+        width: nodeWidth,
+        height: nodeHeight,
+        layer: layerIndex,
+      });
+    });
+  });
+  const canvasHeight =
+    padding * 2 + Math.max(1, layers.length) * nodeHeight + Math.max(0, layers.length - 1) * gapY;
+  const selected = nodes.find((node) => node.id === selectedID) || nodes[0];
+  const selectedAgent = agents.find((agent) => agent.agent_id === selected?.agent_id);
   return (
     <section className="task-workflow" aria-label="执行依赖">
       <header>
-        <strong>执行依赖</strong>
+        <strong>Workflow DAG</strong>
         <span>
           {nodes.filter((node) => node.status === 'succeeded').length}/{nodes.length}
         </span>
       </header>
-      <ol>
-        {nodes.map((node) => (
-          <li key={node.id} className={`workflow-${node.status}`}>
-            <span className="workflow-node-dot" />
-            <div>
-              <header>
+      <p className="workflow-caption">箭头表示依赖；同一层没有依赖关系的节点可以并行。</p>
+      <div className="workflow-canvas-scroll">
+        <div
+          className="workflow-canvas"
+          style={{ width: canvasWidth, height: canvasHeight }}
+          role="group"
+          aria-label="工作流依赖图"
+        >
+          <svg width={canvasWidth} height={canvasHeight} aria-hidden="true">
+            <defs>
+              <marker
+                id="workflow-arrow"
+                viewBox="0 0 8 8"
+                refX="7"
+                refY="4"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto"
+              >
+                <path d="M0 0L8 4L0 8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              </marker>
+            </defs>
+            {edges.map((edge) => {
+              const from = positions.get(edge.from);
+              const to = positions.get(edge.to);
+              if (!from || !to) return null;
+              const x1 = from.x + from.width / 2;
+              const y1 = from.y + from.height;
+              const x2 = to.x + to.width / 2;
+              const y2 = to.y;
+              const middle = y1 + (y2 - y1) / 2;
+              return (
+                <path
+                  key={`${edge.from}-${edge.to}`}
+                  d={`M ${x1} ${y1} C ${x1} ${middle}, ${x2} ${middle}, ${x2} ${y2}`}
+                  markerEnd="url(#workflow-arrow)"
+                  className={`workflow-edge workflow-edge-${nodeByID[edge.to]?.status || 'pending'}`}
+                />
+              );
+            })}
+          </svg>
+          {nodes.map((node) => {
+            const position = positions.get(node.id);
+            if (!position) return null;
+            return (
+              <button
+                type="button"
+                key={node.id}
+                className={`workflow-dag-node workflow-${node.status}${selected?.id === node.id ? ' selected' : ''}`}
+                style={{
+                  left: position.x,
+                  top: position.y,
+                  width: position.width,
+                  height: position.height,
+                }}
+                aria-pressed={selected?.id === node.id}
+                onClick={() => setSelectedID(node.id)}
+              >
+                <span className="workflow-node-status">{statusLabel(node.status)}</span>
                 <strong>{node.title}</strong>
-                <small>{statusLabel(node.status)}</small>
-              </header>
-              {!!node.depends_on.length && (
-                <p>依赖 {node.depends_on.map((id) => names[id] || id).join('、')}</p>
-              )}
-              {node.result && <p>{node.result}</p>}
-            </div>
+                <small>
+                  {node.depends_on.length
+                    ? `等待 ${node.depends_on.map((id) => names[id] || id).join(' + ')}`
+                    : '起始节点'}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <ul className="sr-only">
+        {nodes.map((node) => (
+          <li key={node.id}>
+            {node.title}，{statusLabel(node.status)}，
+            {node.depends_on.length
+              ? `依赖 ${node.depends_on.map((id) => names[id] || id).join('、')}`
+              : '无依赖'}
           </li>
         ))}
-      </ol>
+      </ul>
+      {selected && (
+        <div className="workflow-node-detail">
+          <div>
+            <span>{statusLabel(selected.status)}</span>
+            <h4>{selected.title}</h4>
+          </div>
+          {selected.objective && <p>{selected.objective}</p>}
+          {selected.success_criteria && <small>完成标准：{selected.success_criteria}</small>}
+          {selectedAgent && (
+            <small>
+              Agent：{selectedAgent.title} ·{' '}
+              {statusLabel(selectedAgent.execution_status || selectedAgent.status)}
+            </small>
+          )}
+          {selected.result && <p className="workflow-node-result">{selected.result}</p>}
+          {selected.error && <p className="workflow-node-error">{selected.error}</p>}
+          {selectedAgent && (
+            <details className="workflow-agent-activity">
+              <summary>查看节点 Agent 的执行记录</summary>
+              <AgentDetail
+                agent={selectedAgent}
+                label="工作流节点 Agent"
+                showCommunications={false}
+              />
+            </details>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -486,10 +716,12 @@ function AgentDetail({
   agent,
   lead = false,
   label,
+  showCommunications = false,
 }: {
   agent: ExecutionAgent;
   lead?: boolean;
   label: string;
+  showCommunications?: boolean;
 }) {
   const status = agent.execution_status || agent.status;
   const Icon = status === 'succeeded' ? CheckCircle2 : lead ? Cpu : UserRound;
@@ -510,7 +742,7 @@ function AgentDetail({
         <p>{agent.objective}</p>
         <p>完成标准：{agent.success_criteria}</p>
       </section>
-      {!!agent.communications?.length && (
+      {showCommunications && !!agent.communications?.length && (
         <section>
           <h4>Agent 间通信</h4>
           {agent.communications.map((message) => (

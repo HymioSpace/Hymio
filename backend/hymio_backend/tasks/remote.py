@@ -45,6 +45,11 @@ class RemoteTasks:
                 "(delivery_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,"
                 "payload TEXT NOT NULL,created_at REAL NOT NULL)"
             )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS task_archive_hidden "
+                "(user_id TEXT NOT NULL,task_id TEXT NOT NULL,hidden_at REAL NOT NULL,"
+                "PRIMARY KEY(user_id,task_id))"
+            )
             columns = {r[1] for r in db.execute("PRAGMA table_info(task_delivery_inbox)")}
             if "ack_json" not in columns:
                 db.execute(
@@ -123,6 +128,38 @@ class RemoteTasks:
             "runs": runs,
             "for_user": True,
         }
+
+    async def visible(self, uid, archive=False):
+        page = await self.oath(uid, "/tasks/list", {"lifecycle": "all", "limit": 100})
+        items = await asyncio.gather(
+            *(self.get(uid, task["task_id"], detail=False) for task in page["items"])
+        )
+        with self.sessions.transaction() as db:
+            hidden = {
+                row[0]
+                for row in db.execute(
+                    "SELECT task_id FROM task_archive_hidden WHERE user_id=?", (uid,)
+                )
+            }
+        if archive:
+            return [
+                task
+                for task in items
+                if task["state"] == "closed" and task["id"] not in hidden
+            ]
+        return [task for task in items if task["state"] != "closed"]
+
+    async def hide_archived(self, uid, task_id):
+        task = await self.get(uid, task_id, detail=False)
+        if task["state"] != "closed":
+            raise ValueError("Only closed tasks can be removed from the archive")
+        with self.sessions.transaction() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO task_archive_hidden(user_id,task_id,hidden_at) "
+                "VALUES(?,?,?)",
+                (uid, task_id, time.time()),
+            )
+        return {"hidden": True, "task_id": task_id}
 
     async def reconcile(self, uid):
         with self.sessions.transaction() as db:
@@ -204,11 +241,11 @@ def remote_task_routes(settings, sessions, service, bearer, body):
             data = await body(request, limit=131072) if request.method == "POST" else {}
             action = data.pop("action", "list")
             if action == "list":
-                page = await service.oath(uid, "/tasks/list", {"lifecycle": "all", "limit": 100})
-                items = await asyncio.gather(
-                    *(service.get(uid, t["task_id"], detail=False) for t in page["items"])
-                )
-                return JSONResponse({"tasks": items})
+                return JSONResponse({"tasks": await service.visible(uid)})
+            if action == "archive_list":
+                return JSONResponse({"tasks": await service.visible(uid, archive=True)})
+            if action == "archive_hide":
+                return JSONResponse(await service.hide_archived(uid, data["task_id"]))
             if action == "get":
                 return JSONResponse(await service.get(uid, data["task_id"]))
             if action not in {"pause", "resume", "cancel"}:

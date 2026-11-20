@@ -79,12 +79,18 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.staticTexts["动态工作流"].exists)
     XCTAssertTrue(app.staticTexts["临时任务"].exists)
-    for _ in 0..<5 where !app.staticTexts["执行依赖"].isHittable { app.swipeUp() }
-    XCTAssertTrue(app.staticTexts["执行依赖"].exists)
+    for _ in 0..<5 where !app.staticTexts["Workflow DAG"].isHittable { app.swipeUp() }
+    XCTAssertTrue(app.staticTexts["Workflow DAG"].exists)
     XCTAssertTrue(app.staticTexts["交互稿检查"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["依赖 交互稿检查、接口回归"].exists)
     XCTAssertTrue(app.staticTexts["交叉复核"].exists)
     XCTAssertTrue(app.staticTexts["等待依赖"].exists)
+    let reviewNode = app.buttons.matching(
+      NSPredicate(format: "label CONTAINS %@", "依赖 交互稿检查、接口回归")
+    ).firstMatch
+    XCTAssertTrue(reviewNode.exists)
+    reviewNode.tap()
+    XCTAssertTrue(app.staticTexts["交叉复核"].exists)
+    XCTAssertFalse(app.staticTexts["Agent 间通信"].exists)
     XCTAssertFalse(app.staticTexts["执行细节"].exists)
     XCTAssertFalse(app.staticTexts["事件记录"].exists)
     for _ in 0..<5 where !app.buttons["动态工作流说明"].isHittable { app.swipeDown() }
@@ -92,9 +98,27 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.alerts["动态工作流"].waitForExistence(timeout: 5))
     XCTAssertTrue(
       app.alerts["动态工作流"].staticTexts.matching(
-        NSPredicate(format: "label CONTAINS %@", "先拆成有依赖关系")).firstMatch.exists)
+        NSPredicate(format: "label CONTAINS %@", "确定步骤依赖")).firstMatch.exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "material-dynamic-workflow"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  @MainActor func testTraceShowsChronologicalModelAndToolEvents() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioTracePreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["Trace 详情"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["事件顺序"].waitForExistence(timeout: 5))
+    let labels = ["用户事件", "LLM 请求", "LLM 响应", "Tool 调用", "Tool 结果"]
+    for label in labels {
+      for _ in 0..<5 where !app.staticTexts[label].exists { app.swipeUp() }
+      XCTAssertTrue(app.staticTexts[label].exists, "Missing trace event: \(label)")
+    }
+    XCTAssertTrue(app.staticTexts["Read the comparison page"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "trace-event-order-request-tool-result"
     shot.lifetime = .keepAlways
     add(shot)
   }
@@ -441,6 +465,10 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["云端的任务、记忆和连接不会删除"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["account.confirmLogout"].exists)
     XCTAssertTrue(app.buttons["取消"].exists)
+    XCTAssertEqual(
+      app.buttons["account.confirmLogout"].frame.midX,
+      app.buttons["取消"].frame.midX,
+      accuracy: 1)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "account-logout-explanation"
     shot.lifetime = .keepAlways
@@ -458,6 +486,45 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.navigationBars["我的设备"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["Mac mini"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["iPhone"].exists)
+  }
+
+  @MainActor func testBudgetExhaustionStaysInConversation() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioMultiAgentTaskPreview"]
+    app.launch()
+    let note = app.staticTexts["在对话中让我调整预算后继续。"]
+    for _ in 0..<5 where !note.isHittable { app.swipeUp() }
+    XCTAssertTrue(note.isHittable)
+    XCTAssertFalse(app.buttons["task.budget.adjust"].exists)
+    XCTAssertFalse(app.navigationBars["调整本轮预算"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "task-budget-uses-conversation-not-editor"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  @MainActor func testTaskArchiveShowsClosedWorkAndSoftRemoves() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioCalendarPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["已取消的旧任务"].exists)
+    XCTAssertFalse(app.staticTexts["更新周末出行清单"].exists)
+    app.buttons["查看归档"].tap()
+    XCTAssertTrue(app.navigationBars["归档"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["已取消的旧任务"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["更新周末出行清单"].exists)
+    app.staticTexts["已取消的旧任务"].tap()
+    XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 5))
+    app.buttons["从归档移除"].tap()
+    let remove = app.buttons.matching(identifier: "从归档移除")
+    XCTAssertTrue(remove.firstMatch.waitForExistence(timeout: 3))
+    remove.element(boundBy: remove.count - 1).tap()
+    XCTAssertFalse(app.staticTexts["已取消的旧任务"].waitForExistence(timeout: 2))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "task-archive-after-soft-remove"
+    shot.lifetime = .keepAlways
+    add(shot)
   }
 
   @MainActor func testThreeTabsAndGroupedMyNavigation() throws {

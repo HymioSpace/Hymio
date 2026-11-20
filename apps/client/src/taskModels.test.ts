@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   taskExecutionMode,
   taskIsCancelled,
+  taskIsArchived,
   taskNeedsAttention,
   taskPortfolioScope,
   taskStatusLabel,
@@ -51,6 +52,18 @@ test('temporal scope stays visible when a task completes', () => {
   assert.equal(taskTemporalScope(recurring), 'ongoing');
 });
 
+test('a successful recurring run stays in its temporal scope until the next run', () => {
+  const scheduled = task({
+    completion: 'maintain',
+    schedule: { mode: 'daily', time: '08:00', timezone: 'Asia/Shanghai' },
+    next_due_at: Date.now() / 1000 + 3600,
+  });
+  scheduled.runs[0].status = 'succeeded';
+  assert.equal(taskTemporalScope(scheduled), 'ongoing');
+  assert.equal(taskPortfolioScope(scheduled), 'ongoing');
+  assert.equal(taskStatusLabel(scheduled), '已安排');
+});
+
 test('execution mode is independent from timing', () => {
   for (const mode of ['parallel_subagents', 'agent_team', 'dynamic_workflow'] as const) {
     assert.equal(taskExecutionMode(task({ execution_mode: mode })), mode);
@@ -94,4 +107,5 @@ test('cancelled tasks are not successes and can be removed from the active list'
   cancelled.runs[0].status = 'cancelled';
   assert.equal(taskIsCancelled(cancelled), true);
   assert.equal(taskStatusLabel(cancelled), '已取消');
+  assert.equal(taskIsArchived(cancelled), true);
 });

@@ -238,10 +238,9 @@ export function TracePage({
                 <Download size={16} />
               </button>
             </div>
-            <p className="panel-caption">已同步事件 · 按序号倒序</p>
+            <p className="panel-caption">已同步事件 · 按真实发生顺序</p>
             <div className="event-list">
               {[...state.events]
-                .reverse()
                 .filter((e) => e.event_type.includes(filter))
                 .map((e) => (
                   <details key={e.event_seq} className="event-row">

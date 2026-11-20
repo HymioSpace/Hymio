@@ -17,6 +17,7 @@ export interface Device {
   preserves_files_on_revoke: boolean;
   replaces_device_id?: string | null;
 }
+
 const errorMessages: Record<string, string> = {
   device_busy_or_requires_recovery:
     '上一次云端操作尚未结束。系统正在保留原环境并核对结果，请稍后重试；原操作不会重复执行。',
