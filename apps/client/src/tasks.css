@@ -1487,13 +1487,19 @@
   box-shadow: inset 0 0 0 1px var(--md-sys-color-primary);
 }
 
-.workflow-dag-node.running {
+.workflow-dag-node.workflow-running {
   border-color: var(--md-sys-color-primary);
 }
 
-.workflow-dag-node.failed,
-.workflow-dag-node.blocked,
-.workflow-dag-node.cancelled {
+.workflow-dag-node.workflow-paused {
+  border-color: color-mix(in srgb, var(--md-sys-color-tertiary) 72%, transparent);
+  background: var(--md-sys-color-tertiary-container);
+  color: var(--md-sys-color-on-tertiary-container);
+}
+
+.workflow-dag-node.workflow-failed,
+.workflow-dag-node.workflow-blocked,
+.workflow-dag-node.workflow-cancelled {
   border-color: color-mix(in srgb, var(--md-sys-color-error) 65%, transparent);
 }
 
@@ -1513,6 +1519,10 @@
 
 .workflow-node-status {
   color: var(--md-sys-color-primary);
+}
+
+.workflow-dag-node.workflow-paused .workflow-node-status {
+  color: var(--md-sys-color-tertiary);
 }
 
 .workflow-node-detail {

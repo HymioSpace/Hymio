@@ -1272,6 +1272,7 @@ private struct MaterialWorkflowCard: View {
     if ["failed", "blocked", "cancelled"].contains(status) { return Brand.attention }
     if status == "succeeded" { return .green }
     if status == "running" { return Brand.blue }
+    if status == "paused" { return Brand.tertiary }
     return Brand.muted
   }
 
@@ -1301,6 +1302,30 @@ private struct MaterialWorkflowCard: View {
 
   private var selected: JSON? {
     nodes.first { $0["id"].text == selectedID } ?? nodes.first
+  }
+
+  private func nodeSubtitle(_ node: JSON) -> String {
+    let status = node["status"].text
+    if status == "pending" {
+      return node["depends_on"].items.isEmpty
+        ? "准备执行"
+        : "等待 " + node["depends_on"].items.map {
+          names[$0.text] ?? $0.text
+        }.joined(separator: " + ")
+    }
+    switch status {
+    case "running": return "正在执行"
+    case "paused": return "执行已暂停，可调整预算后继续"
+    case "succeeded":
+      let result = node["result"].text
+      return result.isEmpty ? "已完成" : result
+    case "failed":
+      let error = node["error"].text
+      return error.isEmpty ? "执行失败" : error
+    case "blocked": return "依赖未完成"
+    case "cancelled": return "已取消"
+    default: return "状态更新中"
+    }
   }
 
   private func selectedAgent(_ node: JSON?) -> JSON? {
@@ -1374,13 +1399,7 @@ private struct MaterialWorkflowCard: View {
                   Text(node["title"].text)
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
                     .lineLimit(1)
-                  Text(
-                    node["depends_on"].items.isEmpty
-                      ? "起始节点"
-                      : "等待 " + node["depends_on"].items.map {
-                        names[$0.text] ?? $0.text
-                      }.joined(separator: " + ")
-                  )
+                  Text(nodeSubtitle(node))
                   .font(.caption2).foregroundStyle(Brand.muted).lineLimit(1)
                 }
                 .padding(12)

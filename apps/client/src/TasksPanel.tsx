@@ -651,11 +651,7 @@ function WorkflowPanel({
               >
                 <span className="workflow-node-status">{statusLabel(node.status)}</span>
                 <strong>{node.title}</strong>
-                <small>
-                  {node.depends_on.length
-                    ? `等待 ${node.depends_on.map((id) => names[id] || id).join(' + ')}`
-                    : '起始节点'}
-                </small>
+                <small>{workflowNodeSubtitle(node, names)}</small>
               </button>
             );
           })}
@@ -842,6 +838,24 @@ function statusLabel(status: string) {
       cancelled: '已取消',
       expired: '已过期',
     }[status] || status
+  );
+}
+
+function workflowNodeSubtitle(node: WorkflowNode, names: Record<string, string>) {
+  if (node.status === 'pending') {
+    return node.depends_on.length
+      ? `等待 ${node.depends_on.map((id) => names[id] || id).join(' + ')}`
+      : '准备执行';
+  }
+  return (
+    {
+      running: '正在执行',
+      paused: '执行已暂停，可调整预算后继续',
+      succeeded: node.result || '已完成',
+      failed: node.error || '执行失败',
+      blocked: '依赖未完成',
+      cancelled: '已取消',
+    }[node.status] || '状态更新中'
   );
 }
 
