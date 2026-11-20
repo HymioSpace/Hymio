@@ -17,6 +17,24 @@ from .credentials import issue
 _log = logging.getLogger(__name__)
 
 
+def task_scope(spec):
+    trigger = spec.get("trigger") or {}
+    ongoing = (
+        spec.get("completion") == "maintain"
+        or trigger.get("mode") in {"daily", "weekly", "event"}
+    )
+    return "ongoing" if ongoing else "temporary"
+
+
+def task_execution_mode(spec):
+    executor = spec.get("executor") or {}
+    if executor.get("kind") == "program":
+        return "program"
+    if executor.get("kind") != "agent":
+        raise ValueError("Unknown task executor")
+    return executor.get("mode") or "parallel_subagents"
+
+
 class RemoteTasks:
     def __init__(self, settings, sessions, notifications):
         self.settings, self.sessions, self.notifications = settings, sessions, notifications
@@ -75,6 +93,8 @@ class RemoteTasks:
                     "finished_at": stamp(run.get("finished_at")),
                     "agent_id": run.get("agent_id"),
                     "notification_status": run["delivery_status"],
+                    "error_code": run.get("error_code") or "",
+                    "usage": run.get("usage") or {},
                 }
             ]
         return {
@@ -89,11 +109,17 @@ class RemoteTasks:
             "execution": value.get("execution", {}),
             "evidence": (run["result"] or {}).get("evidence", []) if run else [],
             "schedule": spec["trigger"],
+            "budget": spec["policy"]["run_budget"],
             "executor_kind": spec["executor"]["kind"],
+            "execution_mode": task_execution_mode(spec),
             "close_reason": t["close_reason"],
             "kind": "reminder" if spec["executor"]["kind"] == "program" else "task",
             "updated_at": stamp(t["updated_at"]),
+            "created_at": stamp(t["created_at"]),
             "next_due_at": stamp(t["next_due_at"]),
+            "needs_attention": bool(t.get("needs_attention")),
+            "completion": spec["completion"],
+            "scope": task_scope(spec),
             "runs": runs,
             "for_user": True,
         }

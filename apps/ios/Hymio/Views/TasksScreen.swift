@@ -11,6 +11,7 @@ func taskLabel(_ state: String) -> String {
   [
     "queued": "准备中", "waiting": "等待条件", "closed": "已结束", "scheduled": "已安排",
     "delivering": "整理结果", "ready": "准备执行", "running": "进行中",
+    "pending": "等待依赖",
     "blocked": "需要你处理", "succeeded": "已完成", "failed": "未完成",
     "expired": "已过期", "cancelled": "已取消", "paused": "已暂停",
   ][state] ?? state
@@ -28,10 +29,12 @@ func taskDisplayLabel(_ item: JSON) -> String {
   if item["state"].text == "active", run == .null, mode == "once", taskSortDate(item).isFinite {
     return "已安排"
   }
+  if state == "waiting" {
+    if run["wait_kind"].text == "user" { return "等待你回复" }
+    if taskExecutionMode(item) == .program { return "发送中" }
+    return "等待完成"
+  }
   return taskLabel(taskStatus(item))
-}
-func taskDate(_ stamp: Double) -> String {
-  Date(timeIntervalSince1970: stamp).formatted(.dateTime.month(.abbreviated).day().hour().minute())
 }
 private func taskTimestamp(_ text: String) -> Date? {
   let parser = ISO8601DateFormatter()
@@ -84,6 +87,191 @@ func taskTimingSummary(_ item: JSON) -> String? {
     : "下次 " + timing
 }
 
+enum TaskPortfolioScope: CaseIterable {
+  case ongoing, temporary, completed
+
+  var title: String {
+    switch self {
+    case .ongoing: return "长期任务"
+    case .temporary: return "临时任务"
+    case .completed: return "已完成"
+    }
+  }
+
+  var subtitle: String {
+    switch self {
+    case .ongoing: return "由 Supervisor 持续唤醒和恢复"
+    case .temporary: return "执行完成即结束，不进入长期调度"
+    case .completed: return "保留结果，不再占用执行资源"
+    }
+  }
+}
+
+func taskPortfolioScope(_ item: JSON) -> TaskPortfolioScope {
+  let state = taskStatus(item)
+  if ["succeeded", "cancelled", "expired", "closed"].contains(state)
+    || ["closed", "archived"].contains(item["state"].text)
+  {
+    return .completed
+  }
+  return taskTemporalScope(item)
+}
+
+func taskTemporalScope(_ item: JSON) -> TaskPortfolioScope {
+  if item["scope"].text == "ongoing" { return .ongoing }
+  let mode = item["schedule"]["mode"].text
+  if item["completion"].text == "maintain" || ["daily", "weekly", "event"].contains(mode) {
+    return .ongoing
+  }
+  return .temporary
+}
+
+enum TaskExecutionMode: String {
+  case program
+  case parallelSubagents = "parallel_subagents"
+  case agentTeam = "agent_team"
+  case dynamicWorkflow = "dynamic_workflow"
+
+  var title: String {
+    switch self {
+    case .program: return "自动执行"
+    case .parallelSubagents: return "Agent 并行"
+    case .agentTeam: return "Agent Team"
+    case .dynamicWorkflow: return "动态工作流"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .program: return "bolt.badge.clock"
+    case .parallelSubagents: return "person.2"
+    case .agentTeam: return "person.3"
+    case .dynamicWorkflow: return "point.3.connected.trianglepath.dotted"
+    }
+  }
+
+  var detail: String {
+    switch self {
+    case .program: return "按时间或条件执行固定动作，不启动模型"
+    case .parallelSubagents: return "主 Agent 拆分独立步骤并整合结果"
+    case .agentTeam: return "Leader 与成员可以互相沟通并共同完成"
+    case .dynamicWorkflow: return "先拆成有依赖关系的步骤，再按顺序自动执行"
+    }
+  }
+}
+
+func taskExecutionMode(_ item: JSON) -> TaskExecutionMode {
+  if item["executor_kind"].text == "program" { return .program }
+  let raw =
+    item["execution_mode"].text.isEmpty
+    ? item["execution"]["mode"].text : item["execution_mode"].text
+  return TaskExecutionMode(rawValue: raw) ?? .parallelSubagents
+}
+
+func taskCurrentRun(_ item: JSON) -> JSON {
+  item["runs"].items.first ?? .null
+}
+
+func taskRunNeedsAttention(_ item: JSON) -> Bool {
+  let run = taskCurrentRun(item)
+  return item["needs_attention"].flag
+    || ["paused", "blocked", "failed", "expired"].contains(taskStatus(item))
+    || ["paused", "blocked", "failed", "expired"].contains(run["status"].text)
+    || (run["status"].text == "waiting" && run["wait_kind"].text == "user")
+}
+
+func taskAttentionTitle(_ item: JSON) -> String {
+  let run = taskCurrentRun(item)
+  if run["error_code"].text == "BUDGET_EXHAUSTED" { return "本轮预算已用尽" }
+  if run["status"].text == "waiting" { return "等待条件满足" }
+  if ["blocked", "failed", "expired"].contains(taskStatus(item)) { return "需要你处理" }
+  return taskDisplayLabel(item)
+}
+
+func taskAttentionDetail(_ item: JSON) -> String {
+  let run = taskCurrentRun(item)
+  if run["error_code"].text == "BUDGET_EXHAUSTED" {
+    let used = run["usage"]["tokens"].int
+    let limit = item["budget"]["max_tokens"].int
+    if used > 0 && limit > 0 {
+      return "已使用 \(used.formatted()) / \(limit.formatted()) tokens。任务已保存，可在对话中调整预算后继续。"
+    }
+    return "任务已保存。可在对话中调整本轮预算后继续。"
+  }
+  if !run["wait_reason"].text.isEmpty { return run["wait_reason"].text }
+  if !run["progress"].text.isEmpty { return run["progress"].text }
+  return "打开任务查看执行进度。"
+}
+
+func taskCardSummary(_ item: JSON) -> String {
+  let run = taskCurrentRun(item)
+  if taskRunNeedsAttention(item) { return taskAttentionDetail(item) }
+  if run["status"].text == "running" {
+    return [run["progress"].text, item["objective"].text].first { !$0.isEmpty }
+      ?? "执行 Agent 正在处理"
+  }
+  if let timing = taskTimingSummary(item), taskPortfolioScope(item) == .ongoing {
+    return timing
+  }
+  return item["objective"].text
+}
+
+func humanToolName(_ value: String) -> String {
+  [
+    "browser": "浏览网页", "computer": "操作桌面", "bash": "执行命令",
+    "devices": "查看设备", "cli": "运行工具", "recall": "查找记忆",
+    "remember": "整理记忆", "subagent_spawn": "委派子 Agent",
+    "task_report": "汇报进展",
+  ][value] ?? value
+}
+
+private struct TaskHumanActivity: Identifiable {
+  let id: String
+  let title: String
+  let tool: String
+  let status: String
+}
+
+private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
+  var result: [TaskHumanActivity] = []
+  var seen: Set<String> = []
+  for entry in agent["activity"]["entries"].items {
+    let entryID = String(entry["id"].int)
+    if !entry["tool_description"].text.isEmpty {
+      let title = entry["tool_description"].text
+      let key = title + "|" + entry["tool"].text + "|" + entry["status"].text
+      if seen.insert(key).inserted {
+        result.append(
+          TaskHumanActivity(
+            id: entryID, title: title, tool: humanToolName(entry["tool"].text),
+            status: taskLabel(entry["status"].text)))
+      }
+    }
+    for (index, call) in entry["tool_calls"].items.enumerated() {
+      let description = call["description"].text
+      guard !description.isEmpty else { continue }
+      let key = description + "|" + call["name"].text
+      if seen.insert(key).inserted {
+        result.append(
+          TaskHumanActivity(
+            id: entryID + "-\(index)", title: description,
+            tool: humanToolName(call["name"].text), status: ""))
+      }
+    }
+    let content = entry["content"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if entry["kind"].text == "assistant.message", !content.isEmpty,
+      !content.hasPrefix("<"), !content.hasPrefix("{"), !content.hasPrefix("[")
+    {
+      let text = String(content.prefix(220))
+      let key = "message|" + text
+      if seen.insert(key).inserted {
+        result.append(TaskHumanActivity(id: entryID, title: text, tool: "", status: ""))
+      }
+    }
+  }
+  return Array(result.suffix(10))
+}
+
 private enum TaskDisplayMode: Int, CaseIterable {
   case month, week, day, status
 
@@ -116,7 +304,6 @@ struct TasksScreen: View {
   private var dates: [Date] { calendarDays(focus, scale: mode.calendarScale ?? 0) }
   @State private var events: [CalendarWork] = []
   @State private var eventsByDay: [Date: [CalendarWork]] = [:]
-  @State private var groupedTasks: [TaskLane: [JSON]] = [:]
   var body: some View {
     VStack(spacing: 0) {
       calendarHeader
@@ -138,7 +325,7 @@ struct TasksScreen: View {
           focus: $focus, hourHeight: hourHeight, previewMode: previewMode)
       }
     }
-    .background(Brand.surface)
+    .background(mode == .status ? Brand.canvas : Brand.surface)
     .onChange(of: board.items, initial: true) { _, _ in rebuildCalendar() }
     .onChange(of: focus) { _, _ in rebuildCalendar() }
     .onChange(of: mode) { _, _ in Haptics.selection(); rebuildCalendar() }
@@ -151,7 +338,7 @@ struct TasksScreen: View {
       withAnimation(animation) { mode = TaskDisplayMode(rawValue: next) ?? mode }
     })
     .navigationTitle("任务").navigationBarTitleDisplayMode(.inline)
-    .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+    .toolbarBackground(.regularMaterial, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
       ToolbarItem(placement: .topBarTrailing) {
@@ -223,19 +410,13 @@ struct TasksScreen: View {
         }
       }
     }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)
-      .background(Brand.surface)
+      .background(mode == .status ? Brand.canvas : Brand.surface)
   }
   private func rebuildCalendar() {
     let nextEvents = calendarWork(board.items, dates: dates)
     events = nextEvents
     eventsByDay = Dictionary(grouping: nextEvents) {
       calendar.startOfDay(for: $0.date)
-    }
-    groupedTasks = Dictionary(grouping: board.items, by: taskLane).mapValues { items in
-      items.sorted {
-        let left = taskSortDate($0), right = taskSortDate($1)
-        return left == right ? $0["title"].text < $1["title"].text : left < right
-      }
     }
   }
   private var animation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.24) }
@@ -248,77 +429,43 @@ struct TasksScreen: View {
   }
   private var statusContent: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 0) {
-        ForEach(visibleStatusLanes, id: \.0) { lane, items in
-          VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline) {
-              Circle().fill(statusTint(lane)).frame(width: 7, height: 7)
-              Text(statusTitle(lane)).font(.headline.weight(.semibold)).foregroundStyle(Brand.ink)
-              Text("\(items.count)").font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
-              Spacer()
-              if !dynamicTypeSize.isAccessibilitySize {
-                Text(statusNote(lane)).font(.caption2).foregroundStyle(Brand.muted)
+      LazyVStack(alignment: .leading, spacing: 16) {
+        if let item = board.items.first(where: taskRunNeedsAttention) {
+          NavigationLink {
+            TaskDetailScreen(
+              account: account, taskID: item["id"].text, initial: item, board: board,
+              previewMode: previewMode, onViewed: { board.markSeen($0) })
+          } label: {
+            MaterialAttentionCard(item: item)
+          }.buttonStyle(.plain)
+        }
+        ForEach(TaskPortfolioScope.allCases, id: \.self) { scope in
+          let items = board.items.filter { taskPortfolioScope($0) == scope }
+          if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+              HStack(alignment: .firstTextBaseline) {
+                Text(scope.title).font(.headline).foregroundStyle(Brand.ink)
+                Text("\(items.count)").font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
+                Spacer()
+                Text(scope.subtitle).font(.caption2).foregroundStyle(Brand.muted)
+                  .lineLimit(1)
               }
-            }.padding(.bottom, 8)
-              .accessibilityElement(children: .combine)
-              .accessibilityAddTraits(.isHeader)
-            ForEach(items, id: \.self) { item in
-              NavigationLink {
-                TaskDetailScreen(
-                  account: account, taskID: item["id"].text, initial: item, board: board,
-                  previewMode: previewMode, onViewed: { board.markSeen($0) })
-              } label: {
-                TaskStatusRow(item: item)
-              }.buttonStyle(.plain)
+              ForEach(items, id: \.self) { item in
+                NavigationLink {
+                  TaskDetailScreen(
+                    account: account, taskID: item["id"].text, initial: item, board: board,
+                    previewMode: previewMode, onViewed: { board.markSeen($0) })
+                } label: {
+                  MaterialTaskCard(item: item)
+                }.buttonStyle(.plain)
+              }
             }
           }
-          .padding(.vertical, 16)
-          .overlay(alignment: .bottom) { Rectangle().fill(Brand.line).frame(height: 0.5) }
         }
-        if visibleStatusLanes.isEmpty {
-          VStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-              .font(.title2).foregroundStyle(Brand.muted)
-            Text("这里暂时没有任务").font(.headline)
-            Text("在对话里说需要做什么，我会替你记录和推进。").font(.subheadline)
-              .foregroundStyle(Brand.muted)
-          }.frame(maxWidth: .infinity).padding(.vertical, 54)
+        if board.items.isEmpty {
+          MaterialEmptyTasks()
         }
-      }.padding(.horizontal, 20).padding(.bottom, 24)
-    }
-  }
-  private var visibleStatusLanes: [(TaskLane, [JSON])] {
-    let lanes: [TaskLane] = [.attention, .active, .scheduled, .other, .finished]
-    return lanes.compactMap { lane in
-      let items = groupedTasks[lane] ?? []
-      return items.isEmpty ? nil : (lane, items)
-    }
-  }
-  private func statusTitle(_ lane: TaskLane) -> String {
-    switch lane {
-    case .attention: return "需要你处理"
-    case .active: return "正在进行"
-    case .scheduled: return "按计划"
-    case .other: return "其他任务"
-    case .finished: return "已完成"
-    }
-  }
-  private func statusNote(_ lane: TaskLane) -> String {
-    switch lane {
-    case .attention: return "先处理这些"
-    case .active: return "暂时不用操作"
-    case .scheduled: return "下一次时间"
-    case .other: return ""
-    case .finished: return ""
-    }
-  }
-  private func statusTint(_ lane: TaskLane) -> Color {
-    switch lane {
-    case .attention: return Brand.attention
-    case .active: return Brand.blue
-    case .scheduled: return Brand.ink
-    case .other: return Brand.muted
-    case .finished: return Brand.muted.opacity(0.7)
+      }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 28)
     }
   }
   private var monthGrid: some View {
@@ -379,6 +526,112 @@ struct TasksScreen: View {
     }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
       .background(Brand.raised, in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
       .overlay(alignment: .top) { Capsule().fill(Brand.line).frame(width: 30, height: 3).padding(.top, 8) }
+  }
+}
+
+private func materialStatusColor(_ item: JSON) -> Color {
+  if taskRunNeedsAttention(item) { return Brand.attention }
+  if ["running", "ready", "delivering"].contains(taskStatus(item)) { return Brand.blue }
+  if taskPortfolioScope(item) == .completed { return Brand.muted }
+  return Brand.blue
+}
+
+private struct MaterialStatusPill: View {
+  let text: String
+  let color: Color
+
+  var body: some View {
+    Text(text)
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(color)
+      .padding(.horizontal, 10)
+      .padding(.vertical, 5)
+      .background(color.opacity(0.11), in: Capsule())
+  }
+}
+
+private struct MaterialAttentionCard: View {
+  let item: JSON
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: "exclamationmark")
+        .font(.system(size: 18, weight: .bold))
+        .foregroundStyle(Brand.attention)
+        .frame(width: 34, height: 34)
+        .background(Brand.attention.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
+      VStack(alignment: .leading, spacing: 4) {
+        Text(taskAttentionTitle(item)).font(.subheadline.weight(.semibold)).foregroundStyle(
+          Brand.ink)
+        Text(taskAttentionDetail(item)).font(.caption).foregroundStyle(Brand.muted)
+          .lineLimit(3).multilineTextAlignment(.leading)
+        Text(item["title"].text).font(.caption2.weight(.medium)).foregroundStyle(Brand.attention)
+          .lineLimit(1)
+      }
+      Spacer(minLength: 4)
+      Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+        .foregroundStyle(Brand.muted).padding(.top, 8)
+    }
+    .padding(14)
+    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.attention.opacity(0.2)))
+    .accessibilityIdentifier("tasks.attention")
+  }
+}
+
+private struct MaterialTaskCard: View {
+  let item: JSON
+  private var scope: TaskPortfolioScope { taskPortfolioScope(item) }
+  private var run: JSON { taskCurrentRun(item) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        MaterialStatusPill(
+          text: taskDisplayLabel(item), color: materialStatusColor(item))
+        Text(taskTemporalScope(item).title).font(.caption2).foregroundStyle(Brand.muted)
+        Spacer(minLength: 4)
+        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+          .foregroundStyle(Brand.muted)
+      }
+      Text(item["title"].text)
+        .font(.headline.weight(.semibold))
+        .foregroundStyle(Brand.ink)
+        .lineLimit(2).multilineTextAlignment(.leading)
+      Text(taskCardSummary(item))
+        .font(.subheadline)
+        .foregroundStyle(Brand.muted)
+        .lineLimit(3).multilineTextAlignment(.leading)
+      if !run["agent_id"].text.isEmpty {
+        HStack(spacing: 6) {
+          Image(systemName: "person.2").font(.caption2)
+          Text("执行 Agent").font(.caption2)
+          if !run["usage"]["steps"].text.isEmpty {
+            Text("· \(run["usage"]["steps"].int) 步").font(.caption2)
+          }
+        }.foregroundStyle(Brand.muted)
+      }
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line.opacity(0.75)))
+    .shadow(color: .black.opacity(0.035), radius: 8, y: 2)
+    .accessibilityIdentifier("task.card.\(item["id"].text)")
+  }
+}
+
+private struct MaterialEmptyTasks: View {
+  var body: some View {
+    VStack(spacing: 12) {
+      Image(systemName: "task_alt")
+        .font(.system(size: 26, weight: .regular)).foregroundStyle(Brand.blue)
+        .frame(width: 48, height: 48).background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 16))
+      Text("还没有任务").font(.headline).foregroundStyle(Brand.ink)
+      Text("在对话里说出目标，需要并行或后台执行的复杂工作会出现在这里。")
+        .font(.subheadline).foregroundStyle(Brand.muted).multilineTextAlignment(.center)
+    }
+    .frame(maxWidth: .infinity).padding(.vertical, 48)
   }
 }
 
@@ -632,106 +885,660 @@ private struct CalendarTimeGrid: View {
   }
 }
 
-private func taskNotificationLabel(_ value: String) -> String {
-  ["pending": "等待发送", "inflight": "正在发送", "accepted": "系统已接收", "unknown": "回执未知", "failed": "发送失败", "cancelled": "已取消"][value] ?? value
-}
-
-private struct TaskExecutionSummary: View {
+private struct TaskDetailHero: View {
   let item: JSON
-  private var execution: JSON { item["execution"] }
-  private var run: JSON { item["runs"].items.first ?? .null }
+
   var body: some View {
-    if run != .null && !["succeeded", "cancelled"].contains(run["status"].text) &&
-      (!run["progress"].text.isEmpty || !run["wait_reason"].text.isEmpty || !run["next_step"].text.isEmpty) {
-    VStack(alignment: .leading, spacing: 14) {
-      let progress = execution["checkpoint"]["progress"].text.isEmpty ? run["progress"].text : execution["checkpoint"]["progress"].text
-      if !progress.isEmpty { Text(progress).font(.subheadline).lineLimit(3) }
-      if !run["wait_reason"].text.isEmpty {
-        Label(run["wait_reason"].text, systemImage: "moon.zzz")
-          .font(.caption).foregroundStyle(Brand.blue)
+    VStack(alignment: .leading, spacing: 12) {
+      HStack(spacing: 8) {
+        MaterialStatusPill(
+          text: taskDisplayLabel(item), color: materialStatusColor(item))
+        Text(taskTemporalScope(item).title)
+          .font(.caption2.weight(.medium)).foregroundStyle(Brand.muted)
+        Spacer(minLength: 4)
+        if !["", "now"].contains(item["schedule"]["mode"].text) {
+          Label(taskSchedule(item["schedule"]), systemImage: "schedule")
+            .font(.caption2).foregroundStyle(Brand.muted)
+        }
       }
-      if !run["next_step"].text.isEmpty {
-        Label(run["next_step"].text, systemImage: "arrow.up.right").font(.caption).foregroundStyle(Brand.muted)
-      }
-    }.padding(16).background(Brand.mist, in: RoundedRectangle(cornerRadius: 14))
+      Text(item["title"].text)
+        .font(.title2.weight(.semibold))
+        .foregroundStyle(Brand.ink)
+        .lineLimit(3)
+      Text(item["objective"].text)
+        .font(.subheadline)
+        .foregroundStyle(Brand.muted)
+        .lineLimit(4)
+        .lineSpacing(3)
+      Label(taskExecutionMode(item).title, systemImage: taskExecutionMode(item).symbol)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(Brand.blue)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Brand.softBlue, in: Capsule())
     }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 22))
+    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.line.opacity(0.8)))
+    .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+    .accessibilityIdentifier("task.summary")
   }
 }
 
-private struct TaskExecutionDetails: View {
+private struct TaskAttentionPanel: View {
   let item: JSON
+
   var body: some View {
-    DisclosureGroup("执行细节") {
-      VStack(alignment: .leading, spacing: 12) {
-        let kind = item["executor_kind"].text.isEmpty ? item["execution"]["executor"].text : item["executor_kind"].text
-        if !kind.isEmpty { Label(kind == "program" ? "程序规则" : "专属 Agent", systemImage: "cpu") }
-        if item["execution"]["usage"] != .null {
-          Text("\(item["execution"]["usage"]["steps"].int) 步 · \(item["execution"]["usage"]["tokens"].int) tokens").monospacedDigit()
-        }
-        if let run = item["runs"].items.first, !["", "none"].contains(run["notification_status"].text) {
-          Label("结果通知 · " + taskNotificationLabel(run["notification_status"].text), systemImage: "bell")
-        }
-        if !item["context"]["brief"].text.isEmpty {
-          DisclosureGroup("初始上下文") { Text(item["context"]["brief"].text).textSelection(.enabled) }
-        }
-        if !item["plan"].items.isEmpty {
-          DisclosureGroup("执行计划") {
-            ForEach(item["plan"].items, id: \.self) { step in
-              Text(step["title"].text.isEmpty ? step["description"].text : step["title"].text)
-            }
-          }
-        }
-        if !item["evidence"].items.isEmpty {
-          VStack(alignment: .leading, spacing: 6) {
-            Text("Agent 提供的依据").font(.caption).foregroundStyle(Brand.muted)
-            ForEach(item["evidence"].items, id: \.self) { evidence in
-              Text(evidence["summary"].text).font(.subheadline)
-              Text(evidence["ref"].text).font(.caption2).foregroundStyle(Brand.muted)
-            }
-          }
-        }
-      }.font(.caption).padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading)
-    }.font(.subheadline).foregroundStyle(Brand.muted)
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: "exclamationmark")
+        .font(.system(size: 17, weight: .bold))
+        .foregroundStyle(Brand.attention)
+        .frame(width: 32, height: 32)
+        .background(Brand.attention.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+      VStack(alignment: .leading, spacing: 5) {
+        Text(taskAttentionTitle(item)).font(.subheadline.weight(.semibold))
+          .foregroundStyle(Brand.ink)
+        Text(taskAttentionDetail(item)).font(.caption).foregroundStyle(Brand.muted)
+          .lineSpacing(2)
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.attention.opacity(0.2)))
+    .accessibilityIdentifier("task.attention")
   }
 }
 
-private struct TaskAgentNode: View {
+private struct MaterialRunOverview: View {
+  let item: JSON
+  private var run: JSON { taskCurrentRun(item) }
+  private var usage: JSON { run["usage"] }
+  private var budget: JSON { item["budget"] }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack {
+        Text("本次运行").font(.headline).foregroundStyle(Brand.ink)
+        Spacer()
+        Text(taskDisplayLabel(item)).font(.caption).foregroundStyle(
+          materialStatusColor(item))
+      }
+      if !run["progress"].text.isEmpty {
+        Text(run["progress"].text).font(.subheadline).foregroundStyle(Brand.ink)
+          .lineSpacing(2).lineLimit(4)
+      } else if run["status"].text == "paused" {
+        Text("执行进度已保存，恢复后从当前步骤继续。")
+          .font(.subheadline).foregroundStyle(Brand.muted)
+      }
+      if taskExecutionMode(item) == .program {
+        Label("由任务系统按时执行，不需要 Agent", systemImage: "bolt.badge.clock")
+          .font(.caption)
+          .foregroundStyle(Brand.muted)
+      } else {
+        HStack(spacing: 10) {
+          TaskMetricChip(
+            icon: "number", value: compactMetric(usage["tokens"].int),
+            label: budget["max_tokens"].int > 0
+              ? "/ \(compactMetric(budget["max_tokens"].int))" : "tokens")
+          TaskMetricChip(
+            icon: "list.number",
+            value: "\(usage["steps"].int)", label: "/ \(compactMetric(budget["max_steps"].int)) 步")
+          TaskMetricChip(
+            icon: "timer", value: durationLabel(usage["active_seconds"].double),
+            label: "运行")
+        }
+        if budget["max_tokens"].int > 0 {
+          ProgressView(
+            value: min(Double(usage["tokens"].int), Double(budget["max_tokens"].int)),
+            total: Double(budget["max_tokens"].int))
+            .tint(run["error_code"].text == "BUDGET_EXHAUSTED" ? Brand.attention : Brand.blue)
+        }
+      }
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+  }
+
+  private func durationLabel(_ seconds: Double) -> String {
+    guard seconds > 0 else { return "—" }
+    return seconds < 60
+      ? "\(Int(seconds.rounded()))s" : "\(Int((seconds / 60).rounded()))m"
+  }
+
+  private func compactMetric(_ value: Int) -> String {
+    if value >= 1_000_000 {
+      return String(format: "%.1fm", Double(value) / 1_000_000).replacingOccurrences(
+        of: ".0", with: "")
+    }
+    if value >= 1_000 {
+      return String(format: "%.1fk", Double(value) / 1_000).replacingOccurrences(
+        of: ".0", with: "")
+    }
+    return "\(value)"
+  }
+}
+
+private struct TaskMetricChip: View {
+  let icon: String
+  let value: String
+  let label: String
+
+  var body: some View {
+    HStack(spacing: 5) {
+      Image(systemName: icon).font(.caption2)
+      Text(value).font(.caption.weight(.semibold)).monospacedDigit()
+        .lineLimit(1).minimumScaleFactor(0.8)
+      Text(label).font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
+    }
+    .foregroundStyle(Brand.muted)
+    .padding(.horizontal, 9).frame(minHeight: 30)
+    .background(Brand.base, in: Capsule())
+  }
+}
+
+private struct MaterialPlanCard: View {
+  let item: JSON
+
+  var body: some View {
+    let plan = item["execution"]["plan"].items.isEmpty
+      ? item["plan"].items : item["execution"]["plan"].items
+    VStack(alignment: .leading, spacing: 12) {
+      Text("计划").font(.headline).foregroundStyle(Brand.ink)
+      if plan.isEmpty {
+        Text("执行 Agent 尚未提交结构化计划。").font(.subheadline).foregroundStyle(Brand.muted)
+      } else {
+        ForEach(Array(plan.enumerated()), id: \.offset) { index, step in
+          HStack(alignment: .top, spacing: 10) {
+            Image(systemName: planSymbol(step["state"].text))
+              .font(.system(size: 15, weight: .medium))
+              .foregroundStyle(planColor(step["state"].text))
+              .frame(width: 20, height: 22)
+            Text(step["title"].text.isEmpty ? step["description"].text : step["title"].text)
+              .font(.subheadline).foregroundStyle(Brand.ink)
+              .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            Text("\(index + 1)").font(.caption2.monospacedDigit()).foregroundStyle(Brand.muted)
+          }
+        }
+      }
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+  }
+
+  private func planSymbol(_ state: String) -> String {
+    ["done", "completed", "succeeded"].contains(state)
+      ? "checkmark.circle.fill" : ["doing", "in_progress", "running"].contains(state)
+        ? "circle.dotted" : "circle"
+  }
+  private func planColor(_ state: String) -> Color {
+    ["done", "completed", "succeeded"].contains(state)
+      ? Color.green : ["doing", "in_progress", "running"].contains(state)
+        ? Brand.blue : Brand.muted.opacity(0.65)
+  }
+}
+
+private struct MaterialWorkflowCard: View {
+  let item: JSON
+
+  private var nodes: [JSON] { item["execution"]["workflow"]["nodes"].items }
+  private var names: [String: String] {
+    Dictionary(uniqueKeysWithValues: nodes.map { ($0["id"].text, $0["title"].text) })
+  }
+
+  private func color(_ status: String) -> Color {
+    if ["failed", "blocked", "cancelled"].contains(status) { return Brand.attention }
+    if status == "succeeded" { return .green }
+    if status == "running" { return Brand.blue }
+    return Brand.muted
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(alignment: .firstTextBaseline) {
+        Label("执行依赖", systemImage: "point.3.connected.trianglepath.dotted")
+          .font(.headline)
+          .foregroundStyle(Brand.ink)
+        Spacer()
+        Text("\(nodes.filter { $0["status"].text == "succeeded" }.count)/\(nodes.count)")
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(Brand.muted)
+      }
+      Text("节点会等依赖完成后自动开始；这里只展示协作关系，不展示工具调用。")
+        .font(.caption)
+        .foregroundStyle(Brand.muted)
+        .lineSpacing(2)
+      ForEach(Array(nodes.enumerated()), id: \.offset) { index, node in
+        HStack(alignment: .top, spacing: 10) {
+          VStack(spacing: 0) {
+            ZStack {
+              Circle().fill(color(node["status"].text).opacity(0.13)).frame(width: 28, height: 28)
+              Image(
+                systemName: node["status"].text == "succeeded"
+                  ? "checkmark" : node["status"].text == "running" ? "play.fill" : "circle.fill"
+              )
+              .font(.system(size: 10, weight: .bold))
+              .foregroundStyle(color(node["status"].text))
+            }
+            if index < nodes.count - 1 {
+              Rectangle()
+                .fill(Brand.line)
+                .frame(width: 1, height: 34)
+            }
+          }
+          VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 7) {
+              Text(node["title"].text)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Brand.ink)
+              Spacer(minLength: 4)
+              MaterialStatusPill(
+                text: taskLabel(node["status"].text),
+                color: color(node["status"].text))
+            }
+            let dependencies = node["depends_on"].items.map(\.text)
+            if !dependencies.isEmpty {
+              Text(
+                "依赖 " + dependencies.map { names[$0] ?? $0 }.joined(separator: "、")
+              )
+              .font(.caption2)
+              .foregroundStyle(Brand.muted)
+            }
+            if !node["result"].text.isEmpty {
+              Text(node["result"].text)
+                .font(.caption)
+                .foregroundStyle(Brand.muted)
+                .lineLimit(2)
+            }
+          }
+          .padding(12)
+          .background(Brand.base, in: RoundedRectangle(cornerRadius: 14))
+        }
+      }
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .accessibilityIdentifier("task.workflow")
+  }
+}
+
+private struct MaterialExecutionTeam: View {
+  let item: JSON
+
+  var body: some View {
+    let execution = item["execution"]
+    let agent = execution["task_agent"]
+    let children = execution["subagents"].items
+    let mode = taskExecutionMode(item)
+    VStack(alignment: .leading, spacing: 12) {
+      HStack {
+        Text(mode == .program ? "执行方式" : "执行团队").font(.headline).foregroundStyle(Brand.ink)
+        Spacer()
+        Text(
+          mode == .program
+            ? mode.title
+            : children.isEmpty ? "等待委派" : "\(children.count + 1) 个 Agent"
+        )
+          .font(.caption).foregroundStyle(Brand.muted)
+      }
+      Text(mode.detail)
+        .font(.caption)
+        .foregroundStyle(Brand.muted)
+        .lineSpacing(2)
+      if mode == .program {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: mode.symbol)
+            .foregroundStyle(Brand.blue)
+            .frame(width: 30, height: 30)
+            .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 10))
+          VStack(alignment: .leading, spacing: 3) {
+            Text("不启动 Agent").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+            Text("到点后由任务系统执行已确定的动作，并记录实际送达结果。")
+              .font(.caption).foregroundStyle(Brand.muted)
+          }
+        }
+      } else if agent != .null {
+        NavigationLink {
+          AgentContextScreen(
+            agent: agent, taskTitle: item["title"].text, isTaskAgent: true, parentTitle: "")
+        } label: {
+          MaterialAgentCard(
+            agent: agent, isTaskAgent: true,
+            memberTitle: mode == .agentTeam
+              ? "Leader · 主执行 Agent"
+              : mode == .dynamicWorkflow ? "主流程 Agent" : "主执行 Agent")
+        }.buttonStyle(.plain)
+      }
+      if mode != .program && children.isEmpty && agent == .null {
+        HStack(alignment: .top, spacing: 10) {
+          Image(systemName: "info.circle").foregroundStyle(Brand.blue)
+          Text("正在准备执行 Agent。绑定到本任务运行的成员才会显示在这里。")
+            .font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 16))
+      } else if mode != .program {
+        ForEach(children, id: \.self) { child in
+          NavigationLink {
+            AgentContextScreen(
+              agent: child, taskTitle: item["title"].text, isTaskAgent: false,
+              parentTitle: agent["title"].text)
+          } label: {
+            MaterialAgentCard(
+              agent: child, isTaskAgent: false,
+              memberTitle: child["delegation_role"].text == "teammate"
+                ? "Team 成员"
+                : child["delegation_role"].text == "workflow_node" ? "工作流节点" : "绑定子 Agent")
+          }.buttonStyle(.plain)
+            .padding(.leading, 14)
+            .overlay(alignment: .leading) {
+              Rectangle().fill(Brand.blue.opacity(0.2)).frame(width: 2).padding(.vertical, 18)
+            }
+        }
+      }
+    }
+    .padding(18)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+  }
+}
+
+private struct MaterialAgentCard: View {
   let agent: JSON
   let isTaskAgent: Bool
-  var body: some View {
-    DisclosureGroup {
-      VStack(alignment: .leading, spacing: 8) {
-        if !agent["result"].text.isEmpty {
-          Text(agent["result"].text).font(.subheadline).textSelection(.enabled)
-        }
-        DisclosureGroup("过程与要求") {
-          VStack(alignment: .leading, spacing: 8) {
-            Text(agent["objective"].text).font(.caption).textSelection(.enabled)
-            Text("完成条件：" + agent["success_criteria"].text).font(.caption).foregroundStyle(Brand.muted)
-            ForEach(agent["notes"].items, id: \.self) { note in Text(note["content"].text).font(.caption) }
-            ForEach(agent["activity"]["entries"].items, id: \.self) { entry in
-              VStack(alignment: .leading, spacing: 4) {
-                Text(entry["tool"].text.isEmpty ? entry["kind"].text : entry["tool"].text).font(.caption2).foregroundStyle(Brand.muted)
-                if !entry["content"].text.isEmpty { Text(entry["content"].text).font(.caption) }
-              }.padding(.vertical, 4)
-            }
-          }.frame(maxWidth: .infinity, alignment: .leading)
-        }.font(.caption)
-      }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-    } label: {
-      HStack(spacing: 10) {
-        let status = agent["execution_status"].text.isEmpty ? agent["status"].text : agent["execution_status"].text
-        Image(systemName: status == "succeeded" ? "checkmark.circle.fill" : (isTaskAgent ? "cpu" : "person.crop.circle"))
-          .font(.title3).foregroundStyle(status == "succeeded" ? Color.green : Brand.blue)
-          .frame(width: 34, height: 34).background(Brand.mist, in: RoundedRectangle(cornerRadius: 10))
-        VStack(alignment: .leading, spacing: 4) {
-          Text((isTaskAgent ? "任务 Agent · " : "协作者 · ") + agent["title"].text).font(.subheadline.weight(.medium))
-          Text(taskLabel(status)).font(.caption2).foregroundStyle(Brand.muted)
-        }
-      }.foregroundStyle(Brand.ink)
+  var memberTitle: String? = nil
+  private var status: String {
+    agent["execution_status"].text.isEmpty ? agent["status"].text : agent["execution_status"].text
+  }
+  private var latestSummary: String {
+    let result = agent["result"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !result.isEmpty { return String(result.prefix(260)) }
+    if let note = agent["notes"].items.last?["content"].text, !note.isEmpty {
+      return String(note.prefix(260))
+    }
+    return "等待第一条执行记录"
+  }
 
-    }.padding(.vertical, 8)
-      .accessibilityIdentifier(isTaskAgent ? "task.agent" : "task.subagent.\(agent["agent_id"].text)")
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: isTaskAgent ? "smart_toy" : "person.2")
+          .font(.system(size: 17, weight: .medium))
+          .foregroundStyle(statusColor)
+          .frame(width: 36, height: 36)
+          .background(statusColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+        VStack(alignment: .leading, spacing: 4) {
+          Text(agent["title"].text.isEmpty ? (isTaskAgent ? "执行 Agent" : "子 Agent") : agent["title"].text)
+            .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(2)
+            .accessibilityIdentifier(
+              isTaskAgent ? "task.agent.title" : "task.subagent.title.\(agent["agent_id"].text)")
+          HStack(spacing: 6) {
+            Text(memberTitle ?? (isTaskAgent ? "主执行 Agent" : "绑定子 Agent"))
+            Text("·")
+            Text(taskLabel(status))
+          }.font(.caption2).foregroundStyle(statusColor)
+        }
+        Spacer(minLength: 4)
+        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+          .foregroundStyle(Brand.muted).padding(.top, 10)
+      }
+      Text(latestSummary).font(.subheadline).foregroundStyle(Brand.muted)
+        .lineSpacing(2).lineLimit(3)
+      HStack(spacing: 6) {
+        Text("查看上下文、沟通与执行记录")
+          .font(.caption2.weight(.medium)).foregroundStyle(Brand.blue)
+        Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(Brand.blue)
+      }
+    }
+    .padding(14)
+    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 16))
+    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.line.opacity(0.75)))
+  }
+
+  private var statusColor: Color {
+    if ["failed", "blocked", "expired"].contains(status) { return Brand.attention }
+    if ["paused", "waiting"].contains(status) { return Brand.muted }
+    if status == "succeeded" { return Color.green }
+    return Brand.blue
+  }
+}
+
+private struct AgentContextScreen: View {
+  let agent: JSON
+  let taskTitle: String
+  let isTaskAgent: Bool
+  let parentTitle: String
+  @State private var toolsExpanded = false
+
+  private var status: String {
+    agent["execution_status"].text.isEmpty ? agent["status"].text : agent["execution_status"].text
+  }
+  private var activities: [TaskHumanActivity] { taskHumanActivity(agent) }
+  private var tools: [TaskHumanActivity] {
+    activities.filter { !$0.tool.isEmpty }
+  }
+  private var communication: [(String, String, String)] {
+    var values: [(String, String, String)] = []
+    for message in agent["communications"].items {
+      let outgoing = message["sender_agent_id"].text == agent["agent_id"].text
+      let counterpart =
+        outgoing ? message["recipient_title"].text : message["sender_title"].text
+      values.append(
+        (
+          outgoing ? "发给 \(counterpart)" : "来自 \(counterpart)",
+          message["content"].text,
+          recordDate(message["created_at"].double)
+        ))
+    }
+    for turn in agent["turns"].items {
+      values.append(("来自主 Agent 的指令", turn["content"].text, recordDate(turn["created_at"].double)))
+    }
+    for note in agent["notes"].items {
+      values.append(("Agent 回报", note["content"].text, recordDate(note["created_at"].double)))
+    }
+    let result = agent["result"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !result.isEmpty {
+      values.append(("最终结果", result, recordDate(agent["finished_at"].double)))
+    }
+    return values
+  }
+
+  var body: some View {
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
+          HStack {
+            MaterialStatusPill(text: taskLabel(status), color: Brand.blue)
+            Text(isTaskAgent ? "主执行 Agent" : "绑定子 Agent")
+              .font(.caption).foregroundStyle(Brand.muted)
+            Spacer()
+          }
+          Text(agent["title"].text.isEmpty ? "Agent" : agent["title"].text)
+            .font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
+          Text(
+            isTaskAgent
+              ? "负责「\(taskTitle)」的主执行 Agent"
+              : "受 \(parentTitle.isEmpty ? "主执行 Agent" : parentTitle) 委派，绑定同一个 TaskRun"
+          ).font(.caption).foregroundStyle(Brand.muted)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+
+        AgentDetailCard(title: "上下文与职责", icon: "doc.text") {
+          VStack(alignment: .leading, spacing: 10) {
+            if !agent["objective"].text.isEmpty {
+              Text(agent["objective"].text).font(.subheadline).foregroundStyle(Brand.ink)
+                .lineSpacing(2)
+            }
+            if !agent["success_criteria"].text.isEmpty {
+              Text("完成标准：\(agent["success_criteria"].text)")
+                .font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
+            }
+          }
+        }
+
+        AgentDetailCard(title: "Agent 间通信", icon: "arrow.left.arrow.right") {
+          if communication.isEmpty {
+            Text("还没有可展示的委派指令或回报。").font(.caption).foregroundStyle(Brand.muted)
+          } else {
+            VStack(alignment: .leading, spacing: 12) {
+              ForEach(Array(communication.enumerated()), id: \.offset) { _, item in
+                VStack(alignment: .leading, spacing: 4) {
+                  HStack {
+                    Text(item.0).font(.caption.weight(.semibold)).foregroundStyle(Brand.ink)
+                    Spacer()
+                    if !item.2.isEmpty {
+                      Text(item.2).font(.caption2).foregroundStyle(Brand.muted)
+                    }
+                  }
+                  Text(item.1).font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
+                }
+                .padding(12)
+                .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
+              }
+            }
+          }
+        }
+
+        AgentDetailCard(title: "执行记录", icon: "list.bullet.rectangle") {
+          if activities.isEmpty {
+            Text("还没有结构化执行记录。").font(.caption).foregroundStyle(Brand.muted)
+          } else {
+            VStack(alignment: .leading, spacing: 10) {
+              ForEach(activities) { activity in
+                HStack(alignment: .top, spacing: 9) {
+                  Circle().fill(Brand.blue.opacity(0.7)).frame(width: 6, height: 6)
+                    .padding(.top, 5)
+                  VStack(alignment: .leading, spacing: 3) {
+                    Text(activity.title).font(.caption).foregroundStyle(Brand.ink)
+                    if !activity.status.isEmpty {
+                      Text(activity.status).font(.caption2).foregroundStyle(Brand.muted)
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        AgentDetailCard(title: "工具调用", icon: "wrench.and.screwdriver") {
+          if tools.isEmpty {
+            Text("还没有可展示的工具调用。").font(.caption).foregroundStyle(Brand.muted)
+          } else {
+            Button {
+              withAnimation(.snappy(duration: 0.22)) { toolsExpanded.toggle() }
+            } label: {
+              HStack {
+                Text(toolsExpanded ? "收起工具调用" : "查看 \(tools.count) 条工具调用")
+                  .font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
+                Spacer()
+                Image(systemName: "chevron.down").font(.caption.weight(.semibold))
+                  .rotationEffect(.degrees(toolsExpanded ? 180 : 0)).foregroundStyle(Brand.muted)
+              }
+            }.buttonStyle(.plain)
+            if toolsExpanded {
+              VStack(alignment: .leading, spacing: 8) {
+                ForEach(tools) { item in
+                  HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "wrench.and.screwdriver").font(.caption2)
+                      .foregroundStyle(Brand.muted).frame(width: 16)
+                    VStack(alignment: .leading, spacing: 2) {
+                      Text(item.title).font(.caption).foregroundStyle(Brand.ink)
+                      Text([item.tool, item.status].filter { !$0.isEmpty }.joined(separator: " · "))
+                        .font(.caption2).foregroundStyle(Brand.muted)
+                    }
+                  }
+                }
+              }.padding(.top, 8)
+            }
+          }
+        }
+      }.padding(16)
+    }
+    .background(Brand.canvas)
+    .navigationTitle("Agent 详情")
+    .navigationBarTitleDisplayMode(.inline)
+  }
+
+  private func recordDate(_ stamp: Double) -> String {
+    guard stamp > 0 else { return "" }
+    return Date(timeIntervalSince1970: stamp).formatted(
+      .dateTime.month(.abbreviated).day().hour().minute())
+  }
+}
+
+private struct AgentDetailCard<Content: View>: View {
+  let title: String
+  let icon: String
+  @ViewBuilder let content: Content
+
+  init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.icon = icon
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Label(title, systemImage: icon).font(.headline).foregroundStyle(Brand.ink)
+      content
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
+    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+  }
+}
+
+private struct MaterialTaskDefinitionCard: View {
+  let item: JSON
+  @State private var expanded = false
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Button {
+        withAnimation(.snappy(duration: 0.22)) { expanded.toggle() }
+      } label: {
+        HStack {
+          Label("任务定义", systemImage: "description")
+            .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+          Spacer()
+          Image(systemName: "chevron.down").font(.caption.weight(.semibold))
+            .rotationEffect(.degrees(expanded ? 180 : 0)).foregroundStyle(Brand.muted)
+        }
+      }.buttonStyle(.plain)
+      if expanded {
+        VStack(alignment: .leading, spacing: 10) {
+          Text(item["objective"].text).font(.caption).foregroundStyle(Brand.ink)
+            .lineSpacing(2)
+          VStack(alignment: .leading, spacing: 3) {
+            Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.muted)
+            Text(item["success_criteria"].text).font(.caption).foregroundStyle(Brand.muted)
+              .lineSpacing(2)
+          }
+          HStack(spacing: 8) {
+            Text(taskTemporalScope(item).title)
+            if !["", "now"].contains(item["schedule"]["mode"].text) {
+              Text("·")
+              Text(taskSchedule(item["schedule"]))
+            }
+          }.font(.caption2).foregroundStyle(Brand.muted)
+        }
+      }
+    }
+    .padding(16)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
+    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line))
   }
 }
 
@@ -752,70 +1559,41 @@ struct TaskDetailScreen: View {
   private var item: JSON { value == .null ? initial : value }
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 20) {
-        VStack(alignment: .leading, spacing: 14) {
-          HStack {
-            Label(taskDisplayLabel(item), systemImage: taskSymbol(taskStatus(item))).font(
-              .caption
-            ).foregroundStyle(
-              ["failed", "blocked", "expired"].contains(taskStatus(item))
-                ? Brand.attention : Brand.muted)
-            Spacer()
-            if !["", "now"].contains(item["schedule"]["mode"].text) { Text(taskSchedule(item["schedule"])).font(.caption).foregroundStyle(.secondary) }
-          }
-          Text(item["title"].text).font(.system(.title, design: .rounded, weight: .semibold))
-            .tracking(-0.8)
-          Text(item["objective"].text).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-          DisclosureGroup("任务要求") {
-            VStack(alignment: .leading, spacing: 7) {
-              Text(item["objective"].text)
-              Label("怎样算完成", systemImage: "flag").foregroundStyle(Brand.muted)
-              Text(item["success_criteria"].text)
-            }.font(.caption).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-          }.font(.caption).foregroundStyle(Brand.muted)
-
+      LazyVStack(alignment: .leading, spacing: 16) {
+        TaskDetailHero(item: item)
+        if taskRunNeedsAttention(item) {
+          TaskAttentionPanel(item: item)
         }
-        TaskExecutionSummary(item: item)
-        if let run = item["runs"].items.first, !run["result"].text.isEmpty {
-          VStack(alignment: .leading, spacing: 13) {
-            Label(
-              run["status"].text == "succeeded" ? "这次的成果" : "最新进展", systemImage: "checkmark.circle"
-            ).font(.caption).foregroundStyle(Brand.muted)
-            Text(run["result"].text).font(.subheadline).lineLimit(3)
-            DisclosureGroup("查看完整成果") { MessageContent(content: run["result"].text, account: account) }
-              .font(.caption)
-          }.frame(maxWidth: .infinity, alignment: .leading).padding(20).background(
-            Brand.mist, in: RoundedRectangle(cornerRadius: 16))
+        if taskCurrentRun(item) != .null {
+          MaterialRunOverview(item: item)
         }
-        if item["execution"]["task_agent"] != .null {
+        if taskExecutionMode(item) == .dynamicWorkflow,
+          !item["execution"]["workflow"]["nodes"].items.isEmpty
+        {
+          MaterialWorkflowCard(item: item)
+        }
+        if taskExecutionMode(item) != .program {
+          MaterialPlanCard(item: item)
+        }
+        MaterialExecutionTeam(item: item)
+        if let result = item["runs"].items.first?["result"].text, !result.isEmpty {
           VStack(alignment: .leading, spacing: 10) {
-            Label("执行协作 · \(1 + item["execution"]["subagents"].items.count) 个 Agent", systemImage: "person.2")
-              .font(.caption.weight(.medium)).foregroundStyle(Brand.muted)
-            TaskAgentNode(agent: item["execution"]["task_agent"], isTaskAgent: true)
-            ForEach(item["execution"]["subagents"].items, id: \.self) { agent in
-              TaskAgentNode(agent: agent, isTaskAgent: false)
-                .padding(.leading, 16)
-                .overlay(alignment: .leading) { Rectangle().fill(Brand.line).frame(width: 1) }
-            }
-          }.accessibilityIdentifier("task.execution")
+            Label("任务结果", systemImage: "check_circle")
+              .font(.headline).foregroundStyle(Brand.ink)
+            MessageContent(content: result, account: account)
+          }
+          .padding(18)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+          .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.green.opacity(0.18)))
         }
-        TaskExecutionDetails(item: item)
-        if !item["execution"]["events"].items.isEmpty {
-          DisclosureGroup("事件记录 · \(item["execution"]["events"].items.count) 条") {
-            ForEach(item["execution"]["events"].items, id: \.self) { event in
-              VStack(alignment: .leading, spacing: 4) {
-                Text(event["type"].text).font(.caption.weight(.medium))
-                Text(taskDate(event["created_at"].double)).font(.caption2).foregroundStyle(Brand.muted)
-                let content = event["data"]["content"].text
-                let reason = event["data"]["reason"].text
-                if !content.isEmpty || !reason.isEmpty { Text(content.isEmpty ? reason : content).font(.caption) }
-              }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 6)
-            }
-          }.font(.subheadline)
+        MaterialTaskDefinitionCard(item: item)
+        if !error.isEmpty {
+          Text(error).font(.caption).foregroundStyle(Brand.attention)
+            .padding(.horizontal, 4)
         }
-        if !error.isEmpty { Text(error).font(.caption).foregroundStyle(.secondary) }
-      }.padding(24)
-    }.onAppear { onViewed(item) }.background(Brand.surface).navigationTitle("任务详情")
+      }.padding(16)
+    }.onAppear { onViewed(item) }.background(Brand.canvas).navigationTitle("任务详情")
       .navigationBarTitleDisplayMode(.inline)
       .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
       .toolbar {
@@ -823,13 +1601,17 @@ struct TaskDetailScreen: View {
         ToolbarItem(placement: .topBarTrailing) {
           Menu {
             if ["paused", "cancelled"].contains(item["state"].text) {
-              Button("重新安排", systemImage: "play") { Task { await action("resume") } }
+              if taskCurrentRun(item)["error_code"].text == "BUDGET_EXHAUSTED" {
+                Text("请在对话中调整预算后继续")
+              } else {
+                Button("继续任务", systemImage: "play") { Task { await action("resume") } }
+              }
             } else {
               if item["source"].text != "conversation",
                 !["succeeded", "failed", "expired", "cancelled"].contains(
                   item["runs"].items.first?["status"].text ?? "")
               {
-                Button("暂停日程", systemImage: "pause") { Task { await action("pause") } }
+                Button("暂停任务", systemImage: "pause") { Task { await action("pause") } }
               }
               Button("取消任务", systemImage: "xmark.circle", role: .destructive) {
                 deleting = true
@@ -994,6 +1776,280 @@ struct TaskExperiencePreview: View {
         ContentUnavailableView("未提供任务数据", systemImage: "list.bullet.rectangle",
           description: Text("提供任务接口返回的数据后，再查看任务详情。"))
       }
+    }
+  }
+}
+
+struct MultiAgentTaskPreview: View {
+  let account: AccountService
+
+  private var item: JSON {
+    .object([
+      "id": .string("preview-multi-agent"), "revision": .number(1),
+      "state": .string("active"), "completion": .string("achieve"),
+      "scope": .string("ongoing"), "needs_attention": .bool(true),
+      "title": .string("Multi-Agent 入门深度调研与学习路线"),
+      "objective": .string("调研多智能体架构、主流框架和学习路线，汇总为一份可执行报告。"),
+      "success_criteria": .string("形成有来源、去重且可直接执行的学习报告。"),
+      "executor_kind": .string("agent"), "source": .string("conversation"),
+      "execution_mode": .string("agent_team"),
+      "schedule": .object(["mode": .string("now")]),
+      "budget": .object([
+        "max_steps": .number(60), "max_tokens": .number(200000),
+        "max_active_seconds": .number(2400),
+      ]),
+      "plan": .array([
+        .object(["id": .string("concepts"), "title": .string("调研核心架构"), "state": .string("done")]),
+        .object(["id": .string("frameworks"), "title": .string("比较主流框架"), "state": .string("doing")]),
+        .object(["id": .string("roadmap"), "title": .string("设计学习路线"), "state": .string("todo")]),
+        .object(["id": .string("report"), "title": .string("整合报告"), "state": .string("todo")]),
+      ]),
+      "runs": .array([
+        .object([
+          "id": .string("preview-run"), "status": .string("paused"), "stage": .string("execute"),
+          "progress": .string("已收集架构模式与三家框架的官方资料，正在等待恢复执行。"),
+          "error_code": .string("BUDGET_EXHAUSTED"),
+          "agent_id": .string("preview-task-agent"),
+          "usage": .object([
+            "tokens": .number(194296), "steps": .number(15),
+            "active_seconds": .number(29),
+          ]),
+        ])
+      ]),
+      "execution": .object([
+        "executor": .string("agent"),
+        "mode": .string("agent_team"),
+        "plan": .array([
+          .object(["title": .string("调研核心架构"), "state": .string("done")]),
+          .object(["title": .string("比较主流框架"), "state": .string("doing")]),
+          .object(["title": .string("设计学习路线"), "state": .string("todo")]),
+          .object(["title": .string("整合报告"), "state": .string("todo")]),
+        ]),
+        "task_agent": .object([
+          "agent_id": .string("preview-task-agent"), "title": .string("Multi-Agent 调研主 Agent"),
+          "status": .string("paused"), "execution_status": .string("paused"),
+          "objective": .string("负责拆分调研任务、监督子 Agent 并整合最终报告。"),
+          "success_criteria": .string("汇总所有子任务并完成来源核验。"),
+          "notes": .array([
+            .object(["content": .string("已确认研究范围，并完成架构模式的第一轮资料收集。")])
+          ]),
+          "communications": .array([
+            .object([
+              "id": .string("preview-message-1"),
+              "sender_agent_id": .string("preview-child-1"),
+              "recipient_agent_id": .string("preview-task-agent"),
+              "sender_title": .string("架构模式调研"),
+              "recipient_title": .string("Multi-Agent 调研主 Agent"),
+              "content": .string("已发现三种架构模式的边界差异，建议纳入最终报告。"),
+              "created_at": .number(1_763_600_000),
+            ])
+          ]),
+          "activity": .object([
+            "entries": .array([
+              .object([
+                "id": .number(1), "kind": .string("assistant.message"),
+                "content": .string("先把研究拆成架构、框架和学习路线三个并行方向。"),
+                "tool_calls": .array([
+                  .object([
+                    "name": .string("subagent_spawn"),
+                    "description": .string("委派架构模式与框架选型调研"),
+                  ])
+                ]),
+              ]),
+              .object([
+                "id": .number(2), "kind": .string("tool.terminal"),
+                "tool": .string("browser"), "tool_description": .string("查阅 Anthropic 多智能体研究"),
+                "status": .string("succeeded"), "content": .string(""),
+              ]),
+              .object([
+                "id": .number(3), "kind": .string("assistant.message"),
+                "content": .string("资料已整理，下一步需要汇总各子 Agent 的结论。"),
+                "tool_calls": .array([]),
+              ]),
+            ])
+          ]),
+        ]),
+        "subagents": .array([
+          .object([
+            "agent_id": .string("preview-child-1"), "title": .string("架构模式调研"),
+            "delegation_role": .string("teammate"),
+            "status": .string("paused"), "execution_status": .string("paused"),
+            "objective": .string("梳理 9 种多智能体架构及适用场景。"),
+            "success_criteria": .string("每种模式都有代表实现和取舍。"),
+            "result": .string("已整理 Orchestrator-Worker、Supervisor 和并行模式。"),
+            "notes": .array([]),
+            "activity": .object([
+              "entries": .array([
+                .object([
+                  "id": .number(1), "kind": .string("tool.terminal"),
+                  "tool": .string("browser"), "tool_description": .string("查阅多智能体架构综述"),
+                  "status": .string("succeeded"), "content": .string(""),
+                ])
+              ])
+            ]),
+          ]),
+          .object([
+            "agent_id": .string("preview-child-2"), "title": .string("框架选型调研"),
+            "delegation_role": .string("teammate"),
+            "status": .string("succeeded"), "execution_status": .string("succeeded"),
+            "objective": .string("比较 LangGraph、AutoGen、CrewAI 等框架。"),
+            "success_criteria": .string("提供选型决策树。"),
+            "result": .string("已完成 10 个框架的定位与核心抽象比较。"),
+            "notes": .array([]), "activity": .object(["entries": .array([])]),
+          ]),
+          .object([
+            "agent_id": .string("preview-child-3"), "title": .string("学习路线调研"),
+            "delegation_role": .string("teammate"),
+            "status": .string("failed"), "execution_status": .string("failed"),
+            "objective": .string("整理学习阶段和实战项目。"),
+            "success_criteria": .string("形成四阶段路线。"),
+            "result": .string("资料源不可用，尚未完成。"),
+            "notes": .array([]), "activity": .object(["entries": .array([])]),
+          ]),
+        ]),
+        "team_messages": .array([
+          .object([
+            "id": .string("preview-message-1"),
+            "sender_agent_id": .string("preview-child-1"),
+            "recipient_agent_id": .string("preview-task-agent"),
+            "sender_title": .string("架构模式调研"),
+            "recipient_title": .string("Multi-Agent 调研主 Agent"),
+            "content": .string("已发现三种架构模式的边界差异，建议纳入最终报告。"),
+            "created_at": .number(1_763_600_000),
+          ])
+        ]),
+        "workflow": .object(["nodes": .array([]), "edges": .array([])]),
+        "events": .array([]),
+      ]),
+    ])
+  }
+
+  var body: some View {
+    NavigationStack {
+      TaskDetailScreen(
+        account: account, taskID: "preview-multi-agent", initial: item, previewMode: true)
+    }
+  }
+}
+
+struct WorkflowTaskPreview: View {
+  let account: AccountService
+
+  private var item: JSON {
+    let agents: [(String, String, String)] = [
+      ("preview-wf-design", "交互稿检查", "succeeded"),
+      ("preview-wf-backend", "接口回归", "running"),
+      ("preview-wf-review", "交叉复核", "pending"),
+      ("preview-wf-release", "发布说明", "pending"),
+    ]
+    return .object([
+      "id": .string("preview-workflow"),
+      "state": .string("active"),
+      "scope": .string("temporary"),
+      "completion": .string("achieve"),
+      "title": .string("发布前三路核验与整合"),
+      "objective": .string("并行完成设计、接口与发布检查，依赖满足后统一复核并生成发布说明。"),
+      "success_criteria": .string("所有检查有结果，复核通过并形成发布说明。"),
+      "executor_kind": .string("agent"),
+      "execution_mode": .string("dynamic_workflow"),
+      "schedule": .object(["mode": .string("now")]),
+      "budget": .object([
+        "max_tokens": .number(80000),
+        "max_steps": .number(40),
+        "max_active_seconds": .number(1800),
+      ]),
+      "plan": .array([
+        .object(["title": .string("并行检查"), "state": .string("doing")]),
+        .object(["title": .string("交叉复核"), "state": .string("todo")]),
+        .object(["title": .string("生成发布说明"), "state": .string("todo")]),
+      ]),
+      "runs": .array([
+        .object([
+          "id": .string("preview-workflow-run"),
+          "status": .string("running"),
+          "progress": .string("设计检查已完成，接口回归正在执行。"),
+          "agent_id": .string("preview-workflow-leader"),
+          "usage": .object([
+            "tokens": .number(21400),
+            "steps": .number(8),
+            "active_seconds": .number(96),
+          ]),
+        ])
+      ]),
+      "execution": .object([
+        "executor": .string("agent"),
+        "mode": .string("dynamic_workflow"),
+        "plan": .array([]),
+        "task_agent": .object([
+          "agent_id": .string("preview-workflow-leader"),
+          "title": .string("发布流程 Leader"),
+          "status": .string("running"),
+          "execution_status": .string("running"),
+          "objective": .string("建立依赖，等待节点结果并完成最终整合。"),
+          "success_criteria": .string("所有节点成功且发布说明完整。"),
+          "result": .string(""),
+          "notes": .array([]),
+          "activity": .object(["entries": .array([])]),
+          "communications": .array([]),
+        ]),
+        "subagents": .array(
+          agents.map { id, title, status in
+            .object([
+              "agent_id": .string(id),
+              "title": .string(title),
+              "status": .string(status),
+              "execution_status": .string(status),
+              "delegation_role": .string("workflow_node"),
+              "objective": .string("执行 \(title) 并返回可核验结论。"),
+              "success_criteria": .string("结论完整且有证据。"),
+              "result": .string(status == "succeeded" ? "已完成交互稿一致性检查。" : ""),
+              "notes": .array([]),
+              "activity": .object(["entries": .array([])]),
+              "communications": .array([]),
+            ])
+          }),
+        "workflow": .object([
+          "nodes": .array([
+            .object([
+              "id": .string("design"), "title": .string("交互稿检查"),
+              "depends_on": .array([]), "status": .string("succeeded"),
+              "result": .string("主要流程无阻断问题。"),
+              "agent_id": .string("preview-wf-design"),
+            ]),
+            .object([
+              "id": .string("backend"), "title": .string("接口回归"),
+              "depends_on": .array([]), "status": .string("running"),
+              "result": .string(""), "agent_id": .string("preview-wf-backend"),
+            ]),
+            .object([
+              "id": .string("review"), "title": .string("交叉复核"),
+              "depends_on": .array([.string("design"), .string("backend")]),
+              "status": .string("pending"), "result": .string(""),
+              "agent_id": .string("preview-wf-review"),
+            ]),
+            .object([
+              "id": .string("release"), "title": .string("发布说明"),
+              "depends_on": .array([.string("review")]),
+              "status": .string("pending"), "result": .string(""),
+              "agent_id": .string("preview-wf-release"),
+            ]),
+          ]),
+          "edges": .array([
+            .object(["from": .string("design"), "to": .string("review")]),
+            .object(["from": .string("backend"), "to": .string("review")]),
+            .object(["from": .string("review"), "to": .string("release")]),
+          ]),
+        ]),
+        "team_messages": .array([]),
+        "events": .array([]),
+      ]),
+    ])
+  }
+
+  var body: some View {
+    NavigationStack {
+      TaskDetailScreen(
+        account: account, taskID: "preview-workflow", initial: item, previewMode: true)
     }
   }
 }

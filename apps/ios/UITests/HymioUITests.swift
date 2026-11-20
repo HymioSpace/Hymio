@@ -27,22 +27,68 @@ final class HymioUITests: XCTestCase {
 
   @MainActor func testTaskExecutionGraphExpandsTaskAgentAndLeafResults() throws {
     let app = XCUIApplication()
-    app.launchArguments = ["-HymioTaskPreview"]
-    app.launchEnvironment["HYMIO_TASK_REVIEW_JSON"] = #"{"id":"ui-test-task","state":"active","title":"界面测试任务","objective":"检查协作节点展开","success_criteria":"可以展开查看结果","executor_kind":"agent","runs":[{"id":"ui-test-run","status":"running","progress":"","next_step":""}],"execution":{"executor":"agent","task_agent":{"agent_id":"parent","title":"执行节点","status":"running","execution_status":"running","result":"主节点测试结果","objective":"检查展开","success_criteria":"能够展开","notes":[],"activity":{"entries":[]}},"subagents":[{"agent_id":"child","title":"子节点","status":"succeeded","result":"子节点测试结果","objective":"检查子节点","success_criteria":"能够展开","notes":[],"activity":{"entries":[]}}],"events":[]}}"#
+    app.launchArguments = ["-HymioMultiAgentTaskPreview"]
     app.launch()
     XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
-    XCTAssertFalse(app.staticTexts["需要关注"].exists)
-    XCTAssertFalse(app.staticTexts["验收"].exists)
-    XCTAssertFalse(app.staticTexts["0 步 · 0 tokens"].exists)
-    XCTAssertFalse(app.staticTexts["子节点测试结果"].exists)
-    let coordinator = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "任务 Agent · 执行节点")).firstMatch
-    XCTAssertTrue(coordinator.isHittable)
-    coordinator.tap()
-    XCTAssertTrue(app.staticTexts["主节点测试结果"].exists)
-    let leaf = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "协作者 · 子节点")).firstMatch
-    for _ in 0..<3 { if leaf.isHittable { break }; app.swipeUp() }
-    leaf.tap()
-    XCTAssertTrue(app.staticTexts["子节点测试结果"].exists)
+    XCTAssertTrue(app.staticTexts["Multi-Agent 入门深度调研与学习路线"].exists)
+    XCTAssertTrue(app.staticTexts["长期任务"].exists)
+    XCTAssertTrue(app.staticTexts["Agent Team"].exists)
+    XCTAssertTrue(app.staticTexts["本轮预算已用尽"].exists)
+    XCTAssertTrue(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "194.3k"))
+        .firstMatch.exists)
+    XCTAssertFalse(app.staticTexts["执行细节"].exists)
+    XCTAssertFalse(app.staticTexts["事件记录"].exists)
+    for _ in 0..<6 where !app.staticTexts["执行团队"].isHittable { app.swipeUp() }
+    XCTAssertTrue(app.staticTexts["执行团队"].exists)
+    XCTAssertTrue(app.staticTexts["Multi-Agent 调研主 Agent"].exists)
+    XCTAssertFalse(app.staticTexts["查阅 Anthropic 多智能体研究"].exists)
+    for _ in 0..<4 where !app.staticTexts["架构模式调研"].isHittable { app.swipeUp() }
+    XCTAssertTrue(app.staticTexts["架构模式调研"].isHittable)
+    XCTAssertTrue(app.staticTexts["已整理 Orchestrator-Worker、Supervisor 和并行模式。"].exists)
+    for _ in 0..<4 where !app.staticTexts["资料源不可用，尚未完成。"].isHittable { app.swipeUp() }
+    XCTAssertTrue(app.staticTexts["资料源不可用，尚未完成。"].isHittable)
+    for _ in 0..<6 where !app.staticTexts["Multi-Agent 调研主 Agent"].isHittable { app.swipeDown() }
+    app.staticTexts["Multi-Agent 调研主 Agent"].tap()
+    XCTAssertTrue(app.navigationBars["Agent 详情"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["上下文与职责"].exists)
+    XCTAssertTrue(app.staticTexts["Agent 间通信"].exists)
+    XCTAssertTrue(
+      app.staticTexts["已发现三种架构模式的边界差异，建议纳入最终报告。"].exists)
+    XCTAssertTrue(app.staticTexts["执行记录"].exists)
+    let toolButton = app.buttons.matching(
+      NSPredicate(format: "label CONTAINS %@", "条工具调用")).firstMatch
+    for _ in 0..<4 where !toolButton.isHittable { app.swipeUp() }
+    XCTAssertTrue(toolButton.isHittable)
+    toolButton.tap()
+    XCTAssertTrue(app.staticTexts["查阅 Anthropic 多智能体研究"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "<!DOCTYPE")).firstMatch.exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "material-multi-agent-task-panel"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  @MainActor func testDynamicWorkflowShowsDependenciesWithoutToolNoise() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioWorkflowTaskPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts["动态工作流"].exists)
+    XCTAssertTrue(app.staticTexts["临时任务"].exists)
+    for _ in 0..<5 where !app.staticTexts["执行依赖"].isHittable { app.swipeUp() }
+    XCTAssertTrue(app.staticTexts["执行依赖"].exists)
+    XCTAssertTrue(app.staticTexts["交互稿检查"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["依赖 交互稿检查、接口回归"].exists)
+    XCTAssertTrue(app.staticTexts["交叉复核"].exists)
+    XCTAssertTrue(app.staticTexts["等待依赖"].exists)
+    XCTAssertFalse(app.staticTexts["执行细节"].exists)
+    XCTAssertFalse(app.staticTexts["事件记录"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "material-dynamic-workflow"
+    shot.lifetime = .keepAlways
+    add(shot)
   }
 
   @MainActor func testTaskPreviewWithoutDataDoesNotInventTask() throws {
@@ -51,6 +97,170 @@ final class HymioUITests: XCTestCase {
     app.launch()
     XCTAssertTrue(app.staticTexts["未提供任务数据"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["准备周末徒步路线"].exists)
+  }
+
+  @MainActor func testMaterialTaskPanelTwentyFourRoundVerificationMatrix() throws {
+    func json(_ value: [String: Any]) -> String {
+      String(
+        data: try! JSONSerialization.data(withJSONObject: value, options: []),
+        encoding: .utf8)!
+    }
+    func fixture(
+      index: Int, scope: String, mode: String, runStatus: String, agentStatus: String,
+      subagentStatuses: [String]
+    ) -> String {
+      var task: [String: Any] = [
+        "id": "matrix-\(index)", "state": agentStatus == "succeeded" ? "closed" : "active",
+        "completion": scope == "ongoing" ? "maintain" : "achieve",
+        "scope": scope, "needs_attention": ["paused", "failed", "blocked"].contains(runStatus),
+        "title": "验证任务 \(index)：Multi-Agent 研究",
+        "objective": "验证任务列表、执行团队、计划、预算和等待状态在 Material 任务面板中的表达。",
+        "success_criteria": "所有关键信息可读，且不展示原始 HTML 或调试 JSON。",
+        "executor_kind": mode == "program" ? "program" : "agent",
+        "execution_mode": mode, "source": "conversation",
+        "schedule": ["mode": scope == "ongoing" ? "daily" : "now", "time": "08:00"],
+        "budget": ["max_steps": 60, "max_tokens": 200000, "max_active_seconds": 2400],
+        "plan": [
+          ["title": "收集资料", "state": index % 2 == 0 ? "done" : "doing"],
+          ["title": "比较方案", "state": "todo"],
+          ["title": "整合结论", "state": "todo"],
+        ],
+      ]
+      task["runs"] = [
+        [
+          "id": "run-\(index)", "status": runStatus, "stage": "execute",
+          "progress": "正在整理可验证的研究结论。",
+          "error_code": runStatus == "paused" ? "BUDGET_EXHAUSTED" : "",
+          "agent_id": "agent-\(index)",
+          "usage": ["tokens": 120000, "steps": 12, "active_seconds": 42],
+        ]
+      ]
+      let children: [[String: Any]] = subagentStatuses.enumerated().map { offset, status in
+        [
+          "agent_id": "child-\(index)-\(offset)", "title": "子 Agent \(offset + 1)",
+          "status": status, "execution_status": status,
+          "objective": "完成一个边界清晰的调研子任务。",
+          "success_criteria": "返回带来源的结论。",
+          "result": status == "succeeded" ? "子任务已完成。" : "",
+          "notes": [], "activity": ["entries": []],
+        ]
+      }
+      let taskAgent: [String: Any] = [
+          "agent_id": "agent-\(index)", "title": "研究执行 Agent",
+          "status": agentStatus, "execution_status": runStatus == "paused" ? "paused" : agentStatus,
+          "objective": "组织调研并汇总结论。", "success_criteria": "形成统一报告。",
+          "result": agentStatus == "succeeded" ? "报告已经完成。" : "",
+          "notes": [],
+          "activity": [
+            "entries": [
+              [
+                "id": 1, "kind": "assistant.message", "content": "先拆分研究任务。",
+                "tool_calls": [["name": "subagent_spawn", "description": "委派边界清晰的调研任务"]],
+              ],
+              [
+                "id": 2, "kind": "tool.terminal", "tool": "browser",
+                "tool_description": "查阅官方研究资料", "status": "succeeded", "content": "",
+              ],
+            ]
+          ],
+        ]
+      let workflowNodes: [[String: Any]] =
+        mode == "dynamic_workflow"
+        ? [
+          [
+            "id": "source", "title": "收集来源", "depends_on": [],
+            "status": "succeeded", "result": "来源已收集。",
+          ],
+          [
+            "id": "compare", "title": "比较结论", "depends_on": ["source"],
+            "status": "running", "result": "",
+          ],
+          [
+            "id": "report", "title": "形成报告", "depends_on": ["compare"],
+            "status": "pending", "result": "",
+          ],
+        ] : []
+      let messages: [[String: Any]] =
+        mode == "agent_team"
+        ? [[
+          "id": "message-\(index)",
+          "sender_agent_id": "child-\(index)-0",
+          "recipient_agent_id": "agent-\(index)",
+          "sender_title": "子 Agent 1",
+          "recipient_title": "研究执行 Agent",
+          "content": "已核对来源并回报关键差异。",
+          "created_at": 1_763_600_000,
+        ]] : []
+      let taskAgentPayload: Any = mode == "program" ? NSNull() : taskAgent
+      let subagentsPayload: Any = mode == "program" ? [] : children
+      task["execution"] = [
+        "executor": mode == "program" ? "program" : "agent",
+        "mode": mode,
+        "plan": task["plan"]!,
+        "task_agent": taskAgentPayload,
+        "subagents": subagentsPayload,
+        "team_messages": messages,
+        "workflow": [
+          "nodes": workflowNodes,
+          "edges": mode == "dynamic_workflow"
+            ? [
+              ["from": "source", "to": "compare"],
+              ["from": "compare", "to": "report"],
+            ] : [],
+        ],
+        "events": [],
+      ]
+      return json(task)
+    }
+
+    let cases: [(String, String, String, String, [String])] = [
+      ("ongoing", "parallel_subagents", "running", "running", ["running"]),
+      ("temporary", "parallel_subagents", "paused", "paused", ["paused", "succeeded"]),
+      ("ongoing", "agent_team", "running", "running", ["running", "succeeded"]),
+      ("temporary", "agent_team", "paused", "paused", ["paused"]),
+      ("ongoing", "dynamic_workflow", "running", "running", ["running", "pending"]),
+      ("temporary", "dynamic_workflow", "queued", "running", ["waiting"]),
+      ("ongoing", "program", "waiting", "running", []),
+      ("temporary", "program", "succeeded", "succeeded", []),
+    ]
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioTaskPreview"]
+    for round in 0..<24 {
+      let scenario = cases[round % cases.count]
+      app.launchEnvironment["HYMIO_TASK_REVIEW_JSON"] = fixture(
+        index: round + 1, scope: scenario.0, mode: scenario.1, runStatus: scenario.2,
+        agentStatus: scenario.3, subagentStatuses: scenario.4)
+      app.launch()
+      XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
+      XCTAssertTrue(app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "验证任务 \(round + 1)")).firstMatch.exists)
+      XCTAssertTrue(app.staticTexts["长期任务"].exists || app.staticTexts["临时任务"].exists)
+      let modeLabel = [
+        "parallel_subagents": "Agent 并行",
+        "agent_team": "Agent Team",
+        "dynamic_workflow": "动态工作流",
+        "program": "自动执行",
+      ][scenario.1]!
+      XCTAssertTrue(app.staticTexts[modeLabel].exists)
+      if scenario.1 == "program" {
+        XCTAssertFalse(app.staticTexts["需要你处理"].exists)
+        XCTAssertFalse(app.staticTexts["等待条件满足"].exists)
+        if scenario.2 == "waiting" { XCTAssertTrue(app.staticTexts["发送中"].exists) }
+      }
+      XCTAssertFalse(app.staticTexts["执行细节"].exists)
+      XCTAssertFalse(app.staticTexts["事件记录"].exists)
+      XCTAssertFalse(app.staticTexts["查阅官方研究资料"].exists)
+      XCTAssertFalse(app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "<!DOCTYPE")).firstMatch.exists)
+      if round < 8 {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "material-task-matrix-\(round + 1)"
+        shot.lifetime = .keepAlways
+        add(shot)
+      }
+      app.terminate()
+      print("MATERIAL_TASK_VERIFICATION_ROUND=\(round + 1)")
+    }
   }
 
   @MainActor func testTaskSnapshotRestoresAndFailedMutationRollsBack() throws {
@@ -360,8 +570,7 @@ final class HymioUITests: XCTestCase {
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
         .firstMatch.exists)
     XCTAssertTrue(app.staticTexts["需要你处理"].waitForExistence(timeout: 5))
-    XCTAssertTrue(app.staticTexts["正在进行"].exists)
-    XCTAssertTrue(app.staticTexts["按计划"].exists)
+    XCTAssertTrue(app.staticTexts["临时任务"].exists)
     app.buttons["切换到日历"].tap()
     app.buttons["周"].tap()
     XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))

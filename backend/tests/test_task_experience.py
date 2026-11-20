@@ -8,6 +8,7 @@ import pytest
 
 from hymio_backend.context.discovery import Discovery
 from hymio_backend.session_store import SessionStore
+from hymio_backend.tasks.remote import task_execution_mode, task_scope
 from hymio_backend.tasks.service import TaskService
 from hymio_backend.tasks.store import TaskStore
 
@@ -131,3 +132,44 @@ def test_task_audience_defaults_private_and_roundtrips(environment):
     assert edited["for_user"] is False
     with pytest.raises(ValueError):
         service.store.create("u1", {**fields, "for_user": "true"})
+
+
+def test_task_scope_distinguishes_long_running_and_temporary_work():
+    temporary = {
+        "completion": "achieve",
+        "trigger": {"mode": "now"},
+        "policy": {"run_deadline_seconds": 300, "run_budget": {"max_active_seconds": 600}},
+    }
+    assert task_scope(temporary) == "temporary"
+    assert task_scope({**temporary, "completion": "maintain"}) == "ongoing"
+    assert task_scope({**temporary, "trigger": {"mode": "event"}}) == "ongoing"
+    research = {
+        **temporary,
+        "policy": {"run_deadline_seconds": 2400, "run_budget": {"max_active_seconds": 2400}},
+    }
+    # A bounded one-off task can run for a long time without becoming a
+    # periodic or tracking task. Temporal scope comes from recurrence, not runtime.
+    assert task_scope(research) == "temporary"
+
+
+def test_execution_mode_is_independent_from_task_timeline():
+    base = {
+        "completion": "achieve",
+        "trigger": {"mode": "now"},
+        "executor": {
+            "kind": "agent",
+            "tool_profile": "research_readonly",
+            "model_profile": "default",
+        },
+    }
+    assert task_execution_mode(base) == "parallel_subagents"
+    for mode in ("parallel_subagents", "agent_team", "dynamic_workflow"):
+        assert task_execution_mode(
+            {**base, "executor": {**base["executor"], "mode": mode}}
+        ) == mode
+        assert task_scope({**base, "executor": {**base["executor"], "mode": mode}}) == (
+            "temporary"
+        )
+    assert task_execution_mode(
+        {**base, "executor": {"kind": "program", "action": "notify", "params": {"text": "x"}}}
+    ) == "program"

@@ -43,6 +43,10 @@ import SwiftUI
             MonoTaskStatesPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskPreview") {
             TaskExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMultiAgentTaskPreview") {
+            MultiAgentTaskPreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioWorkflowTaskPreview") {
+            WorkflowTaskPreview(account: account)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorsPreview") {
             NavigationStack { ConnectorsScreen(account: account, preview: true) }
           } else if ProcessInfo.processInfo.arguments.contains("-HymioConnectorDetailPreview") {
