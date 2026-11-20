@@ -37,7 +37,7 @@ def task_routes(settings, sessions, service, bearer, body):
                     await service.oath(
                         uid,
                         "/subagents/activity",
-                        {"agent_id": request.path_params["agent_id"], "limit": 60},
+                        {"agent_id": request.path_params["agent_id"], "limit": 200},
                     )
                 )
             if action == "list":
