@@ -42,6 +42,7 @@ import { LoginScreen } from './LoginScreen';
 import { deviceRequest } from './deviceApi';
 import { ApprovalCard } from './ApprovalCard';
 import { rememberApproval } from './authorization';
+import { scheduleLatestScroll } from './bottomAnchor';
 const client = new OathClient();
 client.channelKind = desktop ? 'desk' : 'web';
 export default function App() {
@@ -422,17 +423,11 @@ export default function App() {
   function pinToLatest() {
     following.current = true;
     setNearBottom(true);
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        const el = viewport.current;
-        if (!el || !following.current) return;
-        if (bottomAnchor.current) {
-          bottomAnchor.current.scrollIntoView({ block: 'end', behavior: 'instant' });
-        } else {
-          el.scrollTop = el.scrollHeight;
-        }
-      }),
-    );
+    scheduleLatestScroll({
+      viewport: viewport.current,
+      anchor: bottomAnchor.current,
+      shouldFollow: () => following.current,
+    });
   }
   useEffect(() => {
     const el = viewport.current;
