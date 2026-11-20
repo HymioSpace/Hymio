@@ -204,6 +204,12 @@ export function TasksPanel({
             onControl={(action) => void control(chosen, action)}
           />
         )}
+        {!chosen && (
+          <section className="task-detail-placeholder" aria-label="未选择任务">
+            <CheckCircle2 size={24} />
+            <p>选择一个任务</p>
+          </section>
+        )}
       </div>
     </Sheet>
   );

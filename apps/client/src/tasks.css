@@ -1313,6 +1313,9 @@
   }
 }
 @media (max-width: 720px) {
+  .task-detail-placeholder {
+    display: none;
+  }
   .task-detail {
     padding: 20px;
   }
