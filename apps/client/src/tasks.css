@@ -1353,6 +1353,23 @@
   font-size: 12px;
   line-height: 1.6;
 }
+.task-definition-rendered {
+  margin-top: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.task-definition-scroll {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: var(--md-sys-shape-corner-medium, 12px);
+  background: var(--md-sys-color-surface-container-low, var(--surface));
+  text-align: left;
+}
+.task-definition-scroll .markdown {
+  text-align: left;
+}
 .task-detail-actions {
   display: flex;
   align-items: center;

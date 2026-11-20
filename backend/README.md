@@ -62,21 +62,27 @@ The Dockerfile builds the same backend. Mount private configuration and credenti
 ## Nostalgia and dreaming
 
 Run the sibling Nostalgia service separately. Casdoor already uses port 8000 locally, so publish
-Nostalgia on 8001 (`NOSTALGIA_PUBLISHED_PORT=8001` for its Compose). Obtain the stable Hymio user ID
-from authenticated `GET /auth/me`. Configure a Nostalgia token scoped to that user's context;
-the Nostalgia-side user ID can match the Hymio user ID or be independently mapped by its token.
-
-Copy `nostalgia-connections.example.json` to ignored `private/nostalgia-connections.json`, replace
-the user ID and endpoint, and put the token in `private/nostalgia-token` with private file permissions.
-`token_file` resolves relative to the connections JSON. Add to `hymio.toml`:
+Nostalgia on 8001 (`NOSTALGIA_PUBLISHED_PORT=8001` for its Compose). Hymio is the only account
+users create. On both password registration and OIDC login, Backend provisions a Nostalgia
+namespace and token for the stable Hymio user ID. No second registration or per-user operator
+step is required. Add to `hymio.toml`:
 
 ```toml
-nostalgia_connections_file = "./private/nostalgia-connections.json"
+nostalgia_url = "http://nostalgia:8000"
 ```
 
-Restart Backend. An absent binding is denied, never routed to another user's default endpoint.
-Backend must be able to reach the configured Nostalgia URL. From Docker, use service DNS or a
-host gateway instead of localhost. No context token is sent to the browser, Oath or the model.
+Nostalgia's provisioning endpoint trusts the shared internal service credential in Backend's
+`service_token_file`; configure the same private credential as Nostalgia's
+`dreaming_provider_token_file`. Backend encrypts the generated per-user token with a key stored
+next to its SQLite database and sends that token only to Nostalgia. It is never exposed to the
+browser, Oath or the model. Provisioning is idempotent across retries and Backend workers.
+
+Login still succeeds if Nostalgia is temporarily unavailable. The first memory operation retries
+provisioning automatically, so users never need to register again. `nostalgia_connections_file`
+remains supported as a migration and operator fallback for existing manually configured users.
+An absent binding is denied, never routed to another user's default endpoint. Backend must be able
+to reach the configured Nostalgia URL. From Docker, use service DNS or a host gateway instead of
+localhost.
 
 The unified launcher prepares `extensions/tools/_connection.local` and mounts the context tools
 and skills along with the device tools. For a separately managed Oath deployment, mount
