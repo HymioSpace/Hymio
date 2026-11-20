@@ -319,12 +319,15 @@ final class HymioUITests: XCTestCase {
       XCTAssertTrue(app.staticTexts.matching(
         NSPredicate(format: "label CONTAINS %@", "验证任务 \(round + 1)")).firstMatch.exists)
       XCTAssertTrue(app.staticTexts["长期任务"].exists || app.staticTexts["临时任务"].exists)
-      let modeLabel = [
-        "parallel_subagents": "Agent 并行",
-        "agent_team": "Agent Team",
-        "dynamic_workflow": "动态工作流",
-        "program": "自动执行",
-      ][scenario.1]!
+      let modeLabel =
+        scenario.1 == "parallel_subagents" && scenario.4.count < 2
+        ? "Agent 执行"
+        : [
+          "parallel_subagents": "Agent 并行",
+          "agent_team": "Agent Team",
+          "dynamic_workflow": "动态工作流",
+          "program": "自动执行",
+        ][scenario.1]!
       XCTAssertTrue(app.staticTexts[modeLabel].exists)
       if scenario.1 == "program" {
         XCTAssertFalse(app.staticTexts["需要你处理"].exists)
