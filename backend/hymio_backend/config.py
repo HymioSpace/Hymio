@@ -52,6 +52,7 @@ class Settings:
     observability_max_events: int = 20000
     vault_role_id_file: Path | None = None
     vault_secret_id_file: Path | None = None
+    nostalgia_url: str = ""
     nostalgia_connections_file: Path | None = None
     connectors_config_file: Path | None = None
     apns_key_file: Path | None = None
@@ -71,6 +72,8 @@ class Settings:
             data.setdefault("prometheus_url", os.environ["HYMIO_PROMETHEUS_URL"])
         if os.environ.get("HYMIO_APNS_KEY_FILE"):
             data["apns_key_file"] = os.environ["HYMIO_APNS_KEY_FILE"]
+        if os.environ.get("HYMIO_NOSTALGIA_URL"):
+            data["nostalgia_url"] = os.environ["HYMIO_NOSTALGIA_URL"]
         for key, env in (
             ("apns_key_id", "HYMIO_APNS_KEY_ID"),
             ("apns_team_id", "HYMIO_APNS_TEAM_ID"),
@@ -178,6 +181,17 @@ class Settings:
                 or parsed.password
             ):
                 raise ValueError("Invalid Grafana URL")
+        if result.nostalgia_url:
+            parsed = urlsplit(result.nostalgia_url)
+            if (
+                parsed.scheme not in ("http", "https")
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("Invalid Nostalgia service URL")
         agent = urlsplit(result.oath_ws)
         if (
             agent.scheme not in ("ws", "wss")
