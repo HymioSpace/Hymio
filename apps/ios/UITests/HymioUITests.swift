@@ -72,6 +72,47 @@ final class HymioUITests: XCTestCase {
     add(shot)
   }
 
+  @MainActor func testSubagentDetailRendersReadableBriefAndMarkdownRecord() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioMultiAgentTaskPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
+    let child = app.staticTexts["架构模式调研"]
+    for _ in 0..<8 where !child.isHittable { app.swipeUp() }
+    XCTAssertTrue(child.waitForExistence(timeout: 5), app.debugDescription)
+    child.tap()
+    XCTAssertTrue(app.navigationBars["Agent 详情"].waitForExistence(timeout: 5))
+    XCTAssertFalse(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Dependencies:"))
+        .firstMatch.exists)
+    XCTAssertFalse(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "Return a bounded result")
+      ).firstMatch.exists)
+    let brief = app.descendants(matching: .any).matching(
+      NSPredicate(format: "label == %@", "查看完整职责")
+    ).firstMatch
+    XCTAssertTrue(brief.waitForExistence(timeout: 5), app.debugDescription)
+    let complete = app.descendants(matching: .any).matching(
+      NSPredicate(format: "label == %@", "展开内容")
+    ).firstMatch
+    for _ in 0..<5 where !complete.isHittable { app.swipeUp() }
+    XCTAssertTrue(complete.isHittable, app.debugDescription)
+    complete.tap()
+    XCTAssertTrue(app.staticTexts["低嘌呤菜品池"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "鸡蛋"))
+        .firstMatch.waitForExistence(timeout: 5),
+      app.debugDescription)
+    XCTAssertFalse(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "|---|"))
+        .firstMatch.exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "subagent-readable-brief-and-record"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   @MainActor func testDynamicWorkflowShowsDependenciesWithoutToolNoise() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioWorkflowTaskPreview"]
@@ -543,6 +584,9 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.buttons["此刻"].waitForExistence(timeout: 10))
     XCTAssertTrue(app.buttons["对话"].exists)
     XCTAssertTrue(app.buttons["我的"].exists)
+    let dock = app.descendants(matching: .any).matching(identifier: "product.dock").firstMatch
+    XCTAssertTrue(dock.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertLessThanOrEqual(dock.frame.height, 92)
     XCTAssertFalse(app.buttons["回忆"].exists)
     app.buttons["我的"].tap()
     XCTAssertTrue(app.buttons["任务"].waitForExistence(timeout: 5))
@@ -598,10 +642,32 @@ final class HymioUITests: XCTestCase {
     app.buttons["chat.send"].tap()
     XCTAssertTrue(app.staticTexts["draft only"].waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), app.debugDescription)
+    XCTAssertTrue(app.staticTexts["draft only"].isHittable, app.debugDescription)
     XCTAssertTrue(app.staticTexts["收到，我正在处理。"].waitForExistence(timeout: 5), app.debugDescription)
     XCTAssertTrue(app.staticTexts["收到，我正在处理。"].isHittable, app.debugDescription)
     let sent = XCTAttachment(screenshot: app.screenshot())
     sent.name = "chat-after-send-no-blank"; sent.lifetime = .keepAlways; add(sent)
+  }
+
+  @MainActor func testSentMessageStaysVisibleBeforeFirstReply() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioActualChatPreview", "-HymioPreviewNoReply"]
+    app.launch()
+    let editor = app.descendants(matching: .any).matching(identifier: "chat.input").firstMatch
+    XCTAssertTrue(editor.waitForExistence(timeout: 10), app.debugDescription)
+    editor.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    editor.typeText("只显示已发送消息")
+    app.buttons["chat.send"].tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), app.debugDescription)
+    let message = app.staticTexts["只显示已发送消息"]
+    XCTAssertTrue(message.waitForExistence(timeout: 5), app.debugDescription)
+    XCTAssertTrue(message.isHittable, app.debugDescription)
+    XCTAssertFalse(app.buttons["最新消息"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "chat-sent-message-visible-before-reply"
+    shot.lifetime = .keepAlways
+    add(shot)
   }
 
   @MainActor func testExpandedExplorationDoesNotBlankDuringNewContent() throws {
@@ -611,12 +677,17 @@ final class HymioUITests: XCTestCase {
     let fold = app.buttons.matching(identifier: "trace.fold").firstMatch
     XCTAssertTrue(fold.waitForExistence(timeout: 10), app.debugDescription)
     fold.tap()
+    XCTAssertTrue(fold.isHittable, app.debugDescription)
     XCTAssertTrue(app.staticTexts["chat.stress.complete"].waitForExistence(timeout: 35))
+    XCTAssertTrue(fold.isHittable, app.debugDescription)
     let final = app.staticTexts.matching(
       NSPredicate(format: "label CONTAINS %@", "最终结果已整理好。")
     ).firstMatch
-    XCTAssertTrue(final.waitForExistence(timeout: 5))
-    XCTAssertTrue(final.isHittable, app.debugDescription)
+    if app.buttons["最新消息"].exists {
+      app.buttons["最新消息"].tap()
+      XCTAssertTrue(final.waitForExistence(timeout: 5), app.debugDescription)
+      XCTAssertTrue(final.isHittable, app.debugDescription)
+    }
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "expanded-exploration-new-content-anchor"
     shot.lifetime = .keepAlways

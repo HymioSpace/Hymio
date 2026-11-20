@@ -16,6 +16,7 @@ import {
   Zap,
 } from 'lucide-react';
 import type { LoginState } from './useLogin';
+import { MessageMarkdown } from './MessageView';
 import {
   taskExecutionMode,
   taskIsCancelled,
@@ -281,6 +282,7 @@ export function TasksPanel({
         {chosen && (
           <TaskDetail
             task={chosen}
+            login={login}
             busy={busy}
             archived={archiveOpen}
             onBack={() => setSelected('')}
@@ -332,6 +334,7 @@ function TaskCard({
 
 function TaskDetail({
   task,
+  login,
   busy,
   archived,
   onBack,
@@ -339,6 +342,7 @@ function TaskDetail({
   onDeleteArchived,
 }: {
   task: Work;
+  login: LoginState;
   busy: boolean;
   archived: boolean;
   onBack: () => void;
@@ -407,7 +411,7 @@ function TaskDetail({
 
       {mode === 'dynamic_workflow' &&
         (nodes.length > 0 ? (
-          <WorkflowPanel nodes={nodes} edges={edges} agents={children} />
+          <WorkflowPanel nodes={nodes} edges={edges} agents={children} login={login} />
         ) : (
           <section className="task-workflow task-workflow-pending" aria-label="工作流准备中">
             <div className="workflow-pending-heading">
@@ -442,6 +446,7 @@ function TaskDetail({
             <>
               <AgentDetail
                 agent={task.execution.task_agent}
+                login={login}
                 lead
                 label={mode === 'agent_team' ? 'Leader' : '主执行 Agent'}
                 showCommunications={mode === 'agent_team'}
@@ -451,6 +456,7 @@ function TaskDetail({
                   <AgentDetail
                     key={agent.agent_id}
                     agent={agent}
+                    login={login}
                     label={agent.delegation_role === 'teammate' ? 'Team 成员' : '绑定子 Agent'}
                     showCommunications={mode === 'agent_team'}
                   />
@@ -476,7 +482,10 @@ function TaskDetail({
       <details className="task-definition">
         <summary>任务定义</summary>
         <p>{task.objective}</p>
-        <p>完成标准：{task.success_criteria}</p>
+        <div className="task-agent-success">
+          <strong>完成标准</strong>
+          <span>{task.success_criteria}</span>
+        </div>
         {task.schedule?.mode && <p>时间：{scheduleLabel(task)}</p>}
       </details>
 
@@ -541,10 +550,12 @@ function WorkflowPanel({
   nodes,
   edges,
   agents,
+  login,
 }: {
   nodes: WorkflowNode[];
   edges: { from: string; to: string }[];
   agents: ExecutionAgent[];
+  login: LoginState;
 }) {
   const names = Object.fromEntries(nodes.map((node) => [node.id, node.title]));
   const nodeByID = Object.fromEntries(nodes.map((node) => [node.id, node]));
@@ -674,7 +685,12 @@ function WorkflowPanel({
             <h4>{selected.title}</h4>
           </div>
           {selected.objective && <p>{selected.objective}</p>}
-          {selected.success_criteria && <small>完成标准：{selected.success_criteria}</small>}
+          {selected.success_criteria && (
+            <p className="task-node-success">
+              <strong>完成标准</strong>
+              {selected.success_criteria}
+            </p>
+          )}
           {selectedAgent && (
             <small>
               Agent：{selectedAgent.title} ·{' '}
@@ -688,6 +704,7 @@ function WorkflowPanel({
               <summary>查看节点 Agent 的执行记录</summary>
               <AgentDetail
                 agent={selectedAgent}
+                login={login}
                 label="工作流节点 Agent"
                 showCommunications={false}
               />
@@ -720,11 +737,13 @@ function PlanPanel({ plan }: { plan: unknown[] }) {
 
 function AgentDetail({
   agent,
+  login,
   lead = false,
   label,
   showCommunications = false,
 }: {
   agent: ExecutionAgent;
+  login: LoginState;
   lead?: boolean;
   label: string;
   showCommunications?: boolean;
@@ -745,25 +764,46 @@ function AgentDetail({
       {agent.result && <p className="task-agent-result">{agent.result}</p>}
       <section>
         <h4>上下文与职责</h4>
-        <p>{agent.objective}</p>
-        <p>完成标准：{agent.success_criteria}</p>
+        <p className="task-agent-brief-summary">{readableSummary(visibleAgentBrief(agent.objective))}</p>
+        {visibleAgentBrief(agent.objective) !== readableSummary(visibleAgentBrief(agent.objective)) && (
+          <details className="task-agent-brief">
+            <summary>查看职责、约束与交付要求</summary>
+            <MessageMarkdown content={visibleAgentBrief(agent.objective)} login={login} />
+          </details>
+        )}
+        <div className="task-agent-success">
+          <strong>完成标准</strong>
+          <span>{agent.success_criteria}</span>
+        </div>
       </section>
       {showCommunications && !!agent.communications?.length && (
         <section>
           <h4>Agent 间通信</h4>
           {agent.communications.map((message) => (
-            <Communication key={message.id} message={message} agentID={agent.agent_id} />
+            <Communication
+              key={message.id}
+              message={message}
+              agentID={agent.agent_id}
+              login={login}
+            />
           ))}
         </section>
       )}
       {!!activities.length && (
         <section>
           <h4>执行记录</h4>
-          {activities.map((activity) => (
-            <p className="task-agent-activity-line" key={activity.id}>
-              {activity.title}
-            </p>
-          ))}
+          {activities.map((activity) =>
+            activity.detail ? (
+              <details className="task-agent-activity-line" key={activity.id}>
+                <summary>{activity.title}</summary>
+                <MessageMarkdown content={activity.detail} login={login} />
+              </details>
+            ) : (
+              <p className="task-agent-activity-line" key={activity.id}>
+                {activity.title}
+              </p>
+            ),
+          )}
         </section>
       )}
       {!!activities.some((activity) => activity.tool) && (
@@ -783,7 +823,15 @@ function AgentDetail({
   );
 }
 
-function Communication({ message, agentID }: { message: TeamMessage; agentID: string }) {
+function Communication({
+  message,
+  agentID,
+  login,
+}: {
+  message: TeamMessage;
+  agentID: string;
+  login: LoginState;
+}) {
   const outgoing = message.sender_agent_id === agentID;
   return (
     <div className="task-communication">
@@ -791,13 +839,48 @@ function Communication({ message, agentID }: { message: TeamMessage; agentID: st
         {message.sender_title || 'Agent'} → {message.recipient_title || 'Agent'}
         {outgoing ? '（发出）' : '（收到）'}
       </small>
-      <p>{message.content}</p>
+      <MessageMarkdown content={message.content} login={login} />
     </div>
   );
 }
 
+function visibleAgentBrief(value: string) {
+  return value
+    .split('\n')
+    .filter((line) => {
+      const normalized = line.trim().toLowerCase();
+      return (
+        !normalized.startsWith('dependencies:') &&
+        normalized !== 'return a bounded result for this workflow node.'
+      );
+    })
+    .join('\n')
+    .trim();
+}
+
+function readableSummary(value: string, limit = 220) {
+  for (const raw of value.split('\n')) {
+    let line = raw.trim();
+    if (
+      !line ||
+      line.startsWith('```') ||
+      (line.startsWith('|') && /^[|\-\s:]+$/.test(line))
+    )
+      continue;
+    line = line
+      .replace(/^[#>*\-\s•]+/, '')
+      .replace(/^\|/, '')
+      .replace(/\|$/, '')
+      .replace(/\|/g, ' · ')
+      .trim();
+    if (!line) continue;
+    return line.length > limit ? `${line.slice(0, limit)}…` : line;
+  }
+  return '';
+}
+
 function semanticActivities(agent: ExecutionAgent) {
-  const result: { id: string; title: string; tool: string }[] = [];
+  const result: { id: string; title: string; detail: string; tool: string }[] = [];
   const seen = new Set<string>();
   for (const entry of agent.activity?.entries || []) {
     const values = [
@@ -813,11 +896,14 @@ function semanticActivities(agent: ExecutionAgent) {
       const key = `${value.title}|${value.tool}`;
       if (!value.title || seen.has(key)) continue;
       seen.add(key);
-      result.push({ id: `${entry.id}-${result.length}`, ...value });
+      result.push({ id: `${entry.id}-${result.length}`, detail: '', ...value });
     }
     if (entry.kind === 'assistant.message' && entry.content) {
-      const title = entry.content.slice(0, 220);
-      if (!seen.has(title)) result.push({ id: String(entry.id), title, tool: '' });
+      const title = readableSummary(entry.content);
+      if (title && !seen.has(entry.content)) {
+        seen.add(entry.content);
+        result.push({ id: `${entry.id}-message`, title, detail: entry.content, tool: '' });
+      }
     }
   }
   return result.slice(-20);

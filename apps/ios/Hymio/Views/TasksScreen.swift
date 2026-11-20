@@ -234,8 +234,50 @@ func humanToolName(_ value: String) -> String {
 private struct TaskHumanActivity: Identifiable {
   let id: String
   let title: String
+  let detail: String
   let tool: String
   let status: String
+}
+
+private func taskReadableSummary(_ value: String, limit: Int = 120) -> String {
+  for raw in value.components(separatedBy: .newlines) {
+    var line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !line.isEmpty else { continue }
+    let lowered = line.lowercased()
+    guard !lowered.hasPrefix("dependencies:"),
+      lowered != "return a bounded result for this workflow node.",
+      !line.hasPrefix("```"),
+      !(line.hasPrefix("|") && line.allSatisfy { "|-: ".contains($0) })
+    else { continue }
+    while let first = line.first, "#>*-• ".contains(first) {
+      line.removeFirst()
+    }
+    if line.hasPrefix("|") {
+      line = line.split(separator: "|").map {
+        $0.trimmingCharacters(in: .whitespacesAndNewlines)
+      }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+    line = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !line.isEmpty else { continue }
+    return line.count > limit ? String(line.prefix(limit)) + "…" : line
+  }
+  return ""
+}
+
+private func taskVisibleAgentBrief(_ value: String) -> String {
+  value.components(separatedBy: .newlines).compactMap { raw -> String? in
+    let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    let lowered = line.lowercased()
+    if lowered.hasPrefix("dependencies:")
+      || lowered == "return a bounded result for this workflow node."
+    {
+      return nil
+    }
+    return line
+  }
+  .joined(separator: "\n")
+  .replacingOccurrences(of: "\n\n\n", with: "\n\n")
+  .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
@@ -249,7 +291,7 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
       if seen.insert(key).inserted {
         result.append(
           TaskHumanActivity(
-            id: entryID, title: title, tool: humanToolName(entry["tool"].text),
+            id: entryID, title: title, detail: "", tool: humanToolName(entry["tool"].text),
             status: taskLabel(entry["status"].text)))
       }
     }
@@ -260,7 +302,7 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
       if seen.insert(key).inserted {
         result.append(
           TaskHumanActivity(
-            id: entryID + "-\(index)", title: description,
+            id: entryID + "-tool-\(index)", title: description, detail: "",
             tool: humanToolName(call["name"].text), status: ""))
       }
     }
@@ -268,10 +310,12 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
     if entry["kind"].text == "assistant.message", !content.isEmpty,
       !content.hasPrefix("<"), !content.hasPrefix("{"), !content.hasPrefix("[")
     {
-      let text = String(content.prefix(220))
-      let key = "message|" + text
-      if seen.insert(key).inserted {
-        result.append(TaskHumanActivity(id: entryID, title: text, tool: "", status: ""))
+      let summary = taskReadableSummary(content)
+      let key = "message|" + content
+      if !summary.isEmpty, seen.insert(key).inserted {
+        result.append(
+          TaskHumanActivity(
+            id: entryID + "-message", title: summary, detail: content, tool: "", status: ""))
       }
     }
   }
@@ -1260,6 +1304,7 @@ private struct MaterialPlanCard: View {
 }
 
 private struct MaterialWorkflowCard: View {
+  @ObservedObject var account: AccountService
   let item: JSON
   @State private var selectedID = ""
 
@@ -1440,8 +1485,12 @@ private struct MaterialWorkflowCard: View {
             Text(selected["objective"].text).font(.caption).foregroundStyle(Brand.muted)
           }
           if !selected["success_criteria"].text.isEmpty {
-            Text("完成标准：\(selected["success_criteria"].text)")
-              .font(.caption2).foregroundStyle(Brand.muted)
+            HStack(alignment: .top, spacing: 6) {
+              Image(systemName: "checkmark.seal.fill")
+                .font(.caption2).foregroundStyle(Brand.blue).padding(.top, 2)
+              Text(selected["success_criteria"].text)
+                .font(.caption).foregroundStyle(Brand.ink).lineSpacing(2)
+            }
           }
           if !selected["result"].text.isEmpty {
             Text(selected["result"].text).font(.caption).foregroundStyle(Brand.muted)
@@ -1452,7 +1501,7 @@ private struct MaterialWorkflowCard: View {
           if let agent = selectedAgent(selected) {
             NavigationLink {
               AgentContextScreen(
-                agent: agent, taskTitle: item["title"].text, isTaskAgent: false,
+                account: account, agent: agent, taskTitle: item["title"].text, isTaskAgent: false,
                 parentTitle: "主流程 Agent", showsCommunication: false)
             } label: {
               Label("查看节点 Agent 执行记录", systemImage: "arrow.up.right")
@@ -1481,6 +1530,7 @@ private struct MaterialWorkflowCard: View {
 }
 
 private struct MaterialExecutionTeam: View {
+  @ObservedObject var account: AccountService
   let item: JSON
 
   var body: some View {
@@ -1512,7 +1562,8 @@ private struct MaterialExecutionTeam: View {
       } else if agent != .null {
         NavigationLink {
           AgentContextScreen(
-            agent: agent, taskTitle: item["title"].text, isTaskAgent: true, parentTitle: "",
+            account: account, agent: agent, taskTitle: item["title"].text, isTaskAgent: true,
+            parentTitle: "",
             showsCommunication: mode == .agentTeam)
         } label: {
           MaterialAgentCard(
@@ -1534,7 +1585,7 @@ private struct MaterialExecutionTeam: View {
         ForEach(children, id: \.self) { child in
           NavigationLink {
             AgentContextScreen(
-              agent: child, taskTitle: item["title"].text, isTaskAgent: false,
+              account: account, agent: child, taskTitle: item["title"].text, isTaskAgent: false,
               parentTitle: agent["title"].text,
               showsCommunication: mode == .agentTeam)
           } label: {
@@ -1618,6 +1669,7 @@ private struct MaterialAgentCard: View {
 }
 
 private struct AgentContextScreen: View {
+  @ObservedObject var account: AccountService
   let agent: JSON
   let taskTitle: String
   let isTaskAgent: Bool
@@ -1631,6 +1683,9 @@ private struct AgentContextScreen: View {
   private var activities: [TaskHumanActivity] { taskHumanActivity(agent) }
   private var tools: [TaskHumanActivity] {
     activities.filter { !$0.tool.isEmpty }
+  }
+  private var visibleObjective: String {
+    taskVisibleAgentBrief(agent["objective"].text)
   }
   private var communication: [(String, String, String)] {
     var values: [(String, String, String)] = []
@@ -1671,117 +1726,123 @@ private struct AgentContextScreen: View {
   var body: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 16) {
-        VStack(alignment: .leading, spacing: 10) {
-          HStack {
-            MaterialStatusPill(text: taskLabel(status), color: Brand.blue)
-            Text(isTaskAgent ? "主执行 Agent" : "绑定子 Agent")
-              .font(.caption).foregroundStyle(Brand.muted)
-            Spacer()
+        HStack(alignment: .top, spacing: 14) {
+          Image(systemName: isTaskAgent ? "point.3.connected.trianglepath.dotted" : "person.2.fill")
+            .font(.system(size: 20, weight: .medium))
+            .foregroundStyle(Brand.blue)
+            .frame(width: 46, height: 46)
+            .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 14))
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+              MaterialStatusPill(text: taskLabel(status), color: Brand.blue)
+              Text(isTaskAgent ? "主执行 Agent" : "绑定子 Agent")
+                .font(.caption).foregroundStyle(Brand.muted)
+            }
+            Text(agent["title"].text.isEmpty ? "Agent" : agent["title"].text)
+              .font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
+            Text(
+              isTaskAgent
+                ? "负责「\(taskTitle)」"
+                : "由 \(parentTitle.isEmpty ? "主执行 Agent" : parentTitle) 委派"
+            ).font(.caption).foregroundStyle(Brand.muted)
           }
-          Text(agent["title"].text.isEmpty ? "Agent" : agent["title"].text)
-            .font(.title2.weight(.semibold)).foregroundStyle(Brand.ink)
-          Text(
-            isTaskAgent
-              ? "负责「\(taskTitle)」的主执行 Agent"
-              : "受 \(parentTitle.isEmpty ? "主执行 Agent" : parentTitle) 委派，绑定同一个 TaskRun"
-          ).font(.caption).foregroundStyle(Brand.muted)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
-        .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
+        .background(Brand.surfaceContainer, in: RoundedRectangle(cornerRadius: MaterialShape.large))
 
-        AgentDetailCard(title: "上下文与职责", icon: "doc.text") {
-          VStack(alignment: .leading, spacing: 10) {
-            if !agent["objective"].text.isEmpty {
-              Text(agent["objective"].text).font(.subheadline).foregroundStyle(Brand.ink)
-                .lineSpacing(2)
-            }
-            if !agent["success_criteria"].text.isEmpty {
-              Text("完成标准：\(agent["success_criteria"].text)")
-                .font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
+        VStack(spacing: 0) {
+          AgentDetailCard(title: "职责与完成标准", icon: "scope", divider: false) {
+            VStack(alignment: .leading, spacing: 14) {
+              if !visibleObjective.isEmpty {
+                AgentBriefContent(source: visibleObjective, account: account)
+              }
+              if !agent["success_criteria"].text.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                  RoundedRectangle(cornerRadius: 2).fill(Brand.blue).frame(width: 3)
+                  VStack(alignment: .leading, spacing: 5) {
+                    Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
+                    Text(agent["success_criteria"].text)
+                      .font(.subheadline).foregroundStyle(Brand.ink).lineSpacing(2)
+                  }
+                }
+                .padding(.vertical, 2)
+              }
             }
           }
-        }
 
-        if showsCommunication {
-          AgentDetailCard(title: "Agent 间通信", icon: "arrow.left.arrow.right") {
-            if communication.isEmpty {
-              Text("还没有可展示的委派指令或回报。").font(.caption).foregroundStyle(Brand.muted)
+          if showsCommunication {
+            AgentDetailCard(title: "协作记录", icon: "arrow.left.arrow.right") {
+              if communication.isEmpty {
+                Text("还没有可展示的委派指令或回报。")
+                  .font(.caption).foregroundStyle(Brand.muted)
+              } else {
+                VStack(alignment: .leading, spacing: 10) {
+                  ForEach(Array(communication.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 5) {
+                      HStack {
+                        Text(item.0).font(.caption.weight(.semibold)).foregroundStyle(Brand.ink)
+                        Spacer()
+                        if !item.2.isEmpty {
+                          Text(item.2).font(.caption2).foregroundStyle(Brand.muted)
+                        }
+                      }
+                      DisclosureGroup("查看内容") {
+                        MessageContent(content: item.1, account: account).padding(.top, 6)
+                      }
+                      .font(.caption).tint(Brand.blue)
+                    }
+                    .padding(12)
+                    .background(Brand.surfaceContainer, in: RoundedRectangle(cornerRadius: 12))
+                  }
+                }
+              }
+            }
+          }
+
+          AgentDetailCard(title: "执行脉络", icon: "point.3.connected.trianglepath.dotted") {
+            if activities.isEmpty {
+              Text("还没有结构化执行记录。").font(.caption).foregroundStyle(Brand.muted)
             } else {
-              VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(communication.enumerated()), id: \.offset) { _, item in
-                  VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                      Text(item.0).font(.caption.weight(.semibold)).foregroundStyle(Brand.ink)
-                      Spacer()
-                      if !item.2.isEmpty {
-                        Text(item.2).font(.caption2).foregroundStyle(Brand.muted)
+              VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
+                  AgentExecutionRecord(
+                    activity: activity,
+                    account: account,
+                    isLast: index == activities.count - 1)
+                }
+              }
+            }
+          }
+
+          if !tools.isEmpty {
+            AgentDetailCard(title: "工具记录", icon: "wrench.and.screwdriver") {
+              DisclosureGroup(isExpanded: $toolsExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                  ForEach(tools) { item in
+                    HStack(alignment: .top, spacing: 9) {
+                      Image(systemName: "terminal").font(.caption2)
+                        .foregroundStyle(Brand.muted).frame(width: 18)
+                      VStack(alignment: .leading, spacing: 2) {
+                        Text(item.title).font(.caption).foregroundStyle(Brand.ink)
+                        Text([item.tool, item.status].filter { !$0.isEmpty }.joined(separator: " · "))
+                          .font(.caption2).foregroundStyle(Brand.muted)
                       }
                     }
-                    Text(item.1).font(.caption).foregroundStyle(Brand.muted).lineSpacing(2)
                   }
-                  .padding(12)
-                  .background(Brand.base, in: RoundedRectangle(cornerRadius: 12))
-                }
+                }.padding(.top, 8)
+              } label: {
+                Text("\(tools.count) 条工具记录")
+                  .font(.caption.weight(.medium)).foregroundStyle(Brand.muted)
               }
+              .tint(Brand.blue)
             }
           }
         }
-
-        AgentDetailCard(title: "执行记录", icon: "list.bullet.rectangle") {
-          if activities.isEmpty {
-            Text("还没有结构化执行记录。").font(.caption).foregroundStyle(Brand.muted)
-          } else {
-            VStack(alignment: .leading, spacing: 10) {
-              ForEach(activities) { activity in
-                HStack(alignment: .top, spacing: 9) {
-                  Circle().fill(Brand.blue.opacity(0.7)).frame(width: 6, height: 6)
-                    .padding(.top, 5)
-                  VStack(alignment: .leading, spacing: 3) {
-                    Text(activity.title).font(.caption).foregroundStyle(Brand.ink)
-                    if !activity.status.isEmpty {
-                      Text(activity.status).font(.caption2).foregroundStyle(Brand.muted)
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        AgentDetailCard(title: "工具调用", icon: "wrench.and.screwdriver") {
-          if tools.isEmpty {
-            Text("还没有可展示的工具调用。").font(.caption).foregroundStyle(Brand.muted)
-          } else {
-            Button {
-              withAnimation(.snappy(duration: 0.22)) { toolsExpanded.toggle() }
-            } label: {
-              HStack {
-                Text(toolsExpanded ? "收起工具调用" : "查看 \(tools.count) 条工具调用")
-                  .font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
-                Spacer()
-                Image(systemName: "chevron.down").font(.caption.weight(.semibold))
-                  .rotationEffect(.degrees(toolsExpanded ? 180 : 0)).foregroundStyle(Brand.muted)
-              }
-            }.buttonStyle(.plain)
-            if toolsExpanded {
-              VStack(alignment: .leading, spacing: 8) {
-                ForEach(tools) { item in
-                  HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "wrench.and.screwdriver").font(.caption2)
-                      .foregroundStyle(Brand.muted).frame(width: 16)
-                    VStack(alignment: .leading, spacing: 2) {
-                      Text(item.title).font(.caption).foregroundStyle(Brand.ink)
-                      Text([item.tool, item.status].filter { !$0.isEmpty }.joined(separator: " · "))
-                        .font(.caption2).foregroundStyle(Brand.muted)
-                    }
-                  }
-                }
-              }.padding(.top, 8)
-            }
-          }
-        }
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.large))
+        .overlay(
+          RoundedRectangle(cornerRadius: MaterialShape.large)
+            .strokeBorder(Brand.line.opacity(0.8), lineWidth: 0.75))
       }.padding(16)
     }
     .background(Brand.canvas)
@@ -1796,26 +1857,117 @@ private struct AgentContextScreen: View {
   }
 }
 
+private struct AgentBriefContent: View {
+  let source: String
+  @ObservedObject var account: AccountService
+  @State private var expanded = false
+  private var summary: String { taskReadableSummary(source, limit: 220) }
+  private var needsExpansion: Bool {
+    source.components(separatedBy: .newlines).filter {
+      !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }.count > 1 || source.count > 240
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if !summary.isEmpty {
+        Text(summary).font(.subheadline).foregroundStyle(Brand.ink).lineSpacing(2)
+      }
+      if needsExpansion {
+        DisclosureGroup(isExpanded: $expanded) {
+          MessageContent(content: source, account: account)
+            .padding(.top, 8)
+        } label: {
+          Text(expanded ? "收起职责详情" : "查看完整职责")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Brand.blue)
+        }
+        .tint(Brand.blue)
+      }
+    }
+    .accessibilityIdentifier("agent.brief")
+  }
+}
+
+private struct AgentExecutionRecord: View {
+  let activity: TaskHumanActivity
+  @ObservedObject var account: AccountService
+  var isLast = false
+  @State private var expanded = false
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      VStack(spacing: 0) {
+        Circle()
+          .fill(activity.detail.isEmpty ? Brand.muted.opacity(0.55) : Brand.blue)
+          .frame(width: 8, height: 8)
+          .padding(.top, 6)
+        if !isLast {
+          Rectangle().fill(Brand.line).frame(width: 1).frame(maxHeight: .infinity)
+            .padding(.top, 5)
+        }
+      }
+      .frame(width: 12)
+      VStack(alignment: .leading, spacing: 6) {
+        Text(activity.title).font(.caption).foregroundStyle(Brand.ink).lineSpacing(2)
+        if !activity.tool.isEmpty || !activity.status.isEmpty {
+          Text([activity.tool, activity.status].filter { !$0.isEmpty }.joined(separator: " · "))
+            .font(.caption2).foregroundStyle(Brand.muted)
+        }
+        if !activity.detail.isEmpty {
+          DisclosureGroup(isExpanded: $expanded) {
+            MessageContent(content: activity.detail, account: account)
+              .padding(12)
+              .background(Brand.surfaceContainer, in: RoundedRectangle(cornerRadius: 12))
+              .padding(.top, 5)
+          } label: {
+            Text(expanded ? "收起内容" : "展开内容")
+              .font(.caption.weight(.medium))
+              .foregroundStyle(Brand.blue)
+          }
+          .tint(Brand.blue)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.vertical, 12)
+    .overlay(alignment: .bottom) {
+      if !isLast {
+        Rectangle().fill(Brand.line.opacity(0.5)).frame(height: 0.5).padding(.leading, 22)
+      }
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("agent.activity.\(activity.id)")
+  }
+}
+
 private struct AgentDetailCard<Content: View>: View {
   let title: String
   let icon: String
+  var divider = true
   @ViewBuilder let content: Content
 
-  init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+  init(title: String, icon: String, divider: Bool = true, @ViewBuilder content: () -> Content) {
     self.title = title
     self.icon = icon
+    self.divider = divider
     self.content = content()
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Label(title, systemImage: icon).font(.headline).foregroundStyle(Brand.ink)
+      Label(title, systemImage: icon)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(Brand.ink)
       content
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
-    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
+    .overlay(alignment: .top) {
+      if divider {
+        Rectangle().fill(Brand.line.opacity(0.75)).frame(height: 0.75)
+      }
+    }
   }
 }
 
@@ -1841,8 +1993,8 @@ private struct MaterialTaskDefinitionCard: View {
           Text(item["objective"].text).font(.caption).foregroundStyle(Brand.ink)
             .lineSpacing(2)
           VStack(alignment: .leading, spacing: 3) {
-            Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.muted)
-            Text(item["success_criteria"].text).font(.caption).foregroundStyle(Brand.muted)
+            Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
+            Text(item["success_criteria"].text).font(.caption).foregroundStyle(Brand.ink)
               .lineSpacing(2)
           }
           HStack(spacing: 8) {
@@ -1893,7 +2045,7 @@ struct TaskDetailScreen: View {
           if item["execution"]["workflow"]["nodes"].items.isEmpty {
             MaterialWorkflowPendingCard()
           } else {
-            MaterialWorkflowCard(item: item)
+            MaterialWorkflowCard(account: account, item: item)
           }
         }
         if taskExecutionMode(item) != .program,
@@ -1902,7 +2054,7 @@ struct TaskDetailScreen: View {
           MaterialPlanCard(item: item)
         }
         if taskExecutionMode(item) != .dynamicWorkflow {
-          MaterialExecutionTeam(item: item)
+          MaterialExecutionTeam(account: account, item: item)
         }
         if let result = item["runs"].items.first?["result"].text, !result.isEmpty {
           VStack(alignment: .leading, spacing: 10) {
@@ -2091,8 +2243,11 @@ struct AgentActivityView: View {
             }
             if !entry["content"].text.isEmpty {
               DisclosureGroup {
-                Text(entry["content"].text).font(.subheadline).textSelection(.enabled)
-              } label: { Text(entry["content"].text).lineLimit(2).font(.caption).foregroundStyle(Brand.muted) }
+                MessageContent(content: entry["content"].text, account: account)
+              } label: {
+                Text(taskReadableSummary(entry["content"].text))
+                  .lineLimit(2).font(.caption).foregroundStyle(Brand.muted)
+              }
             }
             if !entry["trace_id"].text.isEmpty {
               NavigationLink("查看执行详情") {
@@ -2243,7 +2398,8 @@ struct MultiAgentTaskPreview: View {
             "agent_id": .string("preview-child-1"), "title": .string("架构模式调研"),
             "delegation_role": .string("teammate"),
             "status": .string("paused"), "execution_status": .string("paused"),
-            "objective": .string("梳理 9 种多智能体架构及适用场景。"),
+            "objective": .string(
+              "为急性发作期整理食材与烹饪边界，优先给出可直接执行的低嘌呤方案。\n只使用一次澄清机会，不把内部依赖编号写进回答。\n输出按食材、建议用量和烹饪方式分组。\nDependencies: []\nReturn a bounded result for this workflow node."),
             "success_criteria": .string("每种模式都有代表实现和取舍。"),
             "result": .string("已整理 Orchestrator-Worker、Supervisor 和并行模式。"),
             "notes": .array([]),
@@ -2253,6 +2409,12 @@ struct MultiAgentTaskPreview: View {
                   "id": .number(1), "kind": .string("tool.terminal"),
                   "tool": .string("browser"), "tool_description": .string("查阅多智能体架构综述"),
                   "status": .string("succeeded"), "content": .string(""),
+                ]),
+                .object([
+                  "id": .number(2), "kind": .string("assistant.message"),
+                  "content": .string(
+                    "# 低嘌呤菜品池\n\n## 蛋白来源\n\n| 食材 | 嘌呤等级 | 建议用量 |\n|---|---|---|\n| 鸡蛋 | 极低 | 1–2 个/餐 |\n| 低脂牛奶 | 极低 | 250ml |\n\n## 输出边界\n\n- 不生成 7 天日程\n- 不计算整日热量"),
+                  "tool_calls": .array([]),
                 ])
               ])
             ]),

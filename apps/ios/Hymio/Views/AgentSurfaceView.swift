@@ -579,7 +579,7 @@ struct AgentSurfaceView: View {
               "step_id": .string("anchor-final"),
               "content": .string("上一轮探索已经完成。"),
             ])
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(8))
           }
           for i in 0..<16 {
             emit("user.message", ["content": .string("整理第 \(i + 1) 件事")])

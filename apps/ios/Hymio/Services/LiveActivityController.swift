@@ -146,7 +146,7 @@ final class LiveActivityController: ObservableObject {
     )
     await activity.end(
       ActivityContent(state: done, staleDate: nil),
-      dismissalPolicy: .after(Date().addingTimeInterval(15 * 60))
+      dismissalPolicy: .immediate
     )
     await PushNotificationManager.shared.unregisterLiveActivity(
       account, activityID: activity.id)

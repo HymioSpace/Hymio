@@ -1229,6 +1229,50 @@
   color: var(--ink);
   font-size: 12px;
 }
+.task-agent-success {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--pale, var(--md-sys-color-primary-container));
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.task-agent-success strong {
+  color: var(--blue, var(--md-sys-color-primary));
+  font-size: 11px;
+}
+.task-node-success {
+  display: grid;
+  gap: 3px;
+  color: var(--ink) !important;
+}
+.task-node-success strong {
+  color: var(--blue, var(--md-sys-color-primary));
+  font-size: 11px;
+}
+.task-agent-node .task-agent-brief,
+.task-agent-node .task-agent-activity-line details,
+.task-agent-activity-line {
+  margin-top: 8px;
+}
+.task-agent-node details > summary,
+.task-agent-activity-line > summary {
+  min-height: 32px;
+  color: var(--blue, var(--md-sys-color-primary));
+  font-size: 11px;
+  cursor: pointer;
+}
+.task-agent-node details[open] > summary {
+  margin-bottom: 8px;
+}
+.task-agent-node .markdown {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.65;
+}
 .task-agent-activity-line {
   color: var(--muted) !important;
 }

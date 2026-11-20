@@ -282,13 +282,15 @@ private struct ProductDock: View {
       dockButton(.my, title: "我的", symbol: "person.crop.circle")
     }
     .padding(.horizontal, 12)
-    .padding(.top, 8)
-    .padding(.bottom, 4)
-    .frame(height: 80)
+    .padding(.top, 4)
+    .padding(.bottom, 0)
+    .frame(height: 56)
     .background(Brand.surfaceLow)
     .overlay(alignment: .top) {
       Rectangle().fill(Brand.line).frame(height: 0.5)
     }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("product.dock")
   }
 
   private func dockButton(_ tab: ProductTab, title: String, symbol: String) -> some View {
@@ -299,17 +301,17 @@ private struct ProductDock: View {
         selected = tab
       }
     } label: {
-      VStack(spacing: 4) {
+      VStack(spacing: 2) {
         Image(systemName: isSelected ? symbol + ".fill" : symbol)
-          .font(.system(size: 21, weight: isSelected ? .semibold : .regular))
-          .frame(width: 64, height: 32)
+          .font(.system(size: 18, weight: isSelected ? .semibold : .regular))
+          .frame(width: 52, height: 25)
           .background(isSelected ? Brand.primaryContainer : Color.clear, in: Capsule())
           .foregroundStyle(isSelected ? Brand.onPrimaryContainer : Brand.muted)
         Text(title)
-          .font(.caption.weight(isSelected ? .semibold : .medium))
+          .font(.caption2.weight(isSelected ? .semibold : .medium))
           .foregroundStyle(isSelected ? Brand.ink : Brand.muted)
       }
-      .frame(maxWidth: .infinity, minHeight: 64)
+      .frame(maxWidth: .infinity, minHeight: 46)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)

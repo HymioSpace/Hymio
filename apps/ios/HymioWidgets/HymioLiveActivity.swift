@@ -28,9 +28,7 @@ struct HymioLiveActivity: Widget {
         DynamicIslandExpandedRegion(.trailing) {
           VStack(alignment: .trailing, spacing: 4) {
             StatusGlyph(status: context.state.status)
-            ActivityClock(startedAt: context.state.startedAt)
-              .font(.caption2.monospacedDigit().weight(.medium))
-              .foregroundStyle(.secondary)
+            ActivityTime(state: context.state)
           }
         }
         DynamicIslandExpandedRegion(.bottom) {
@@ -89,9 +87,7 @@ private struct HymioLockScreenActivity: View {
             .font(.headline.weight(.semibold))
             .lineLimit(1)
           Spacer(minLength: 8)
-          ActivityClock(startedAt: state.startedAt)
-            .font(.caption.monospacedDigit().weight(.medium))
-            .opacity(0.76)
+          ActivityTime(state: state)
         }
         HStack(spacing: 7) {
           StatusGlyph(status: state.status)
@@ -123,10 +119,28 @@ private struct CompactMark: View {
   let state: HymioActivityAttributes.ContentState
 
   var body: some View {
-    Image(systemName: state.status == "waiting" ? "hand.raised.fill" : "water.waves")
+    Image(systemName: symbol)
       .font(.system(size: 16, weight: .semibold))
       .foregroundStyle(Color(red: 0.63, green: 0.72, blue: 1))
-      .accessibilityLabel(state.status == "waiting" ? "等待你确认" : "Hymio 正在处理")
+      .accessibilityLabel(label)
+  }
+
+  private var symbol: String {
+    switch state.status {
+    case "waiting": return "hand.raised.fill"
+    case "completed": return "checkmark.circle.fill"
+    case "failed": return "exclamationmark.circle.fill"
+    default: return "water.waves"
+    }
+  }
+
+  private var label: String {
+    switch state.status {
+    case "waiting": return "等待你确认"
+    case "completed": return "已经完成"
+    case "failed": return "遇到问题"
+    default: return "Hymio 正在处理"
+    }
   }
 }
 
@@ -148,10 +162,12 @@ private struct MinimalState: View {
   let state: HymioActivityAttributes.ContentState
 
   var body: some View {
-    Image(systemName: state.status == "waiting" ? "hand.raised.fill" : "water.waves")
+    Image(systemName: state.status == "completed"
+      ? "checkmark.circle.fill" : state.status == "waiting" ? "hand.raised.fill" : "water.waves")
       .font(.system(size: 13, weight: .bold))
       .foregroundStyle(Color(red: 0.65, green: 0.74, blue: 1))
-      .accessibilityLabel(state.status == "waiting" ? "等待确认" : "正在处理")
+      .accessibilityLabel(
+        state.status == "completed" ? "已经完成" : state.status == "waiting" ? "等待确认" : "正在处理")
   }
 }
 
@@ -201,6 +217,22 @@ private struct ActivityClock: View {
       countsDown: false,
       showsHours: true
     )
+  }
+}
+
+private struct ActivityTime: View {
+  let state: HymioActivityAttributes.ContentState
+
+  var body: some View {
+    if state.displaysElapsedTime {
+      ActivityClock(startedAt: state.startedAt)
+        .font(.caption.monospacedDigit().weight(.medium))
+        .foregroundStyle(.secondary)
+    } else {
+      Text(state.status == "completed" ? "已完成" : "已结束")
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.secondary)
+    }
   }
 }
 

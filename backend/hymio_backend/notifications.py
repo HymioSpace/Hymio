@@ -454,10 +454,10 @@ class NotificationService:
                 "event": event,
                 "content-state": state,
                 "relevance-score": 100 if status != "completed" else 20,
-                "stale-date": int(now + 8 * 3600),
+                "stale-date": int(now) if event == "end" else int(now + 8 * 3600),
             }
             if event == "end":
-                aps["dismissal-date"] = int(now + 900)
+                aps["dismissal-date"] = int(now)
             payload = {"aps": aps, "activity-id": activity["activity_id"]}
             try:
                 response = await self._send(

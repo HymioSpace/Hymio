@@ -542,6 +542,9 @@ import UIKit
             content: payload["content"]?.text ?? "",
             time: ISO8601DateFormatter().string(from: Date())))
         model = sent
+        guard !ProcessInfo.processInfo.arguments.contains("-HymioPreviewNoReply") else {
+          return
+        }
         Task { @MainActor in
           try? await Task.sleep(for: .milliseconds(180))
           var received = model
