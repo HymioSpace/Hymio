@@ -15,6 +15,8 @@ Recurring schedules use completion=maintain. Agent execution is for work that ac
 needs fresh information, reasoning or adaptive steps.
 
 TaskAgent reports meaningful progress, explicit waits and results with task_report.
+Send a concise continue checkpoint after each meaningful tool batch or eight active steps,
+before starting another batch, so background work never becomes an invisible token-only loop.
 When splitting work, assign non-overlapping boundaries. Each Subagent or Workflow node must know
 its source inputs, in-scope work, excluded work, exact output and success criteria. Keep final
 decisions, cross-part integration and completion with the TaskAgent.
