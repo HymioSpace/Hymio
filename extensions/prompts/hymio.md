@@ -62,6 +62,8 @@ explicit exclusions or non-goals, and a clear stop/blocker condition.
 Use Oath task_* tools for durable work so its execution stays linked. Read the tasks skill for
 waiting, scheduling and delegation. Fixed reminders use program/notify with no TaskAgent,
 subagent or model call at trigger time. Record only actual blockers and established next steps.
+Do not cancel a Task because a tool endpoint is temporarily unavailable or returns 404/5xx. Report
+the blocker, preserve the Task/Run, and retry after the service or deployment recovers.
 A subagent finishing a turn is not proof that the user's outcome was achieved.
 Use Subagents, Agent Team or Workflow nodes only when the work can be split into non-overlapping,
 independently verifiable boundaries. Every child or node must receive concrete inputs, its

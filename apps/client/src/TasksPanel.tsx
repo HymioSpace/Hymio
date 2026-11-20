@@ -8,6 +8,7 @@ import {
   Cpu,
   GitBranch,
   HelpCircle,
+  LoaderCircle,
   Trash2,
   UserRound,
   Users,
@@ -404,9 +405,18 @@ function TaskDetail({
         </section>
       )}
 
-      {mode === 'dynamic_workflow' && nodes.length > 0 && (
-        <WorkflowPanel nodes={nodes} edges={edges} agents={children} />
-      )}
+      {mode === 'dynamic_workflow' &&
+        (nodes.length > 0 ? (
+          <WorkflowPanel nodes={nodes} edges={edges} agents={children} />
+        ) : (
+          <section className="task-workflow task-workflow-pending" aria-label="工作流准备中">
+            <div className="workflow-pending-heading">
+              <LoaderCircle size={18} className="spin" />
+              <strong>工作流准备中</strong>
+            </div>
+            <p>任务 Agent 正在确定工作节点和依赖关系，定义完成后会自动显示 DAG。</p>
+          </section>
+        ))}
       {mode !== 'program' && mode !== 'dynamic_workflow' && !!task.plan?.length && (
         <PlanPanel plan={task.plan} />
       )}

@@ -560,6 +560,27 @@ struct AgentSurfaceView: View {
             client.injectSynthetic(Event(user_id: "synthetic", event_seq: seq, event_type: type,
               payload: .object(body), occur_dt: "2026-01-01T00:00:00Z"))
           }
+          if ProcessInfo.processInfo.arguments.contains("-HymioExpandAnchorReview") {
+            emit("user.message", ["content": .string("先核对上一轮资料")])
+            emit("assistant.message", [
+              "step_id": .string("anchor-activity"),
+              "content": .string("我先读取资料，再整理结论。"),
+              "tool_calls": .array([
+                .object([
+                  "name": .string("browser"),
+                  "arguments": .object([
+                    "description": .string("读取上一轮资料"),
+                    "url": .string("https://example.test"),
+                  ]),
+                ])
+              ]),
+            ])
+            emit("assistant.message", [
+              "step_id": .string("anchor-final"),
+              "content": .string("上一轮探索已经完成。"),
+            ])
+            try? await Task.sleep(for: .seconds(3))
+          }
           for i in 0..<16 {
             emit("user.message", ["content": .string("整理第 \(i + 1) 件事")])
             emit("assistant.message", ["step_id": .string("history-\(i)"), "content": .string("已整理好。保留清楚的结果与下一步。")])

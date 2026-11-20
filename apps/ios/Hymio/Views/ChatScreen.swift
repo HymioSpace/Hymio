@@ -21,7 +21,6 @@ struct ChatScreen: View {
   @State private var following = true
   @State private var atBottom = true
   @State private var sendBusy = false
-  @State private var lastFollowingScroll = Date.distantPast
   @State private var scrollPosition = ScrollPosition(edge: .bottom)
   @FocusState private var typing: Bool
   @State private var sentCount = 0
@@ -124,6 +123,8 @@ struct ChatScreen: View {
             .frame(maxWidth: 760).frame(maxWidth: .infinity)
         }
           .scrollBounceBehavior(.basedOnSize)
+          .defaultScrollAnchor(.bottom)
+          .defaultScrollAnchor(following ? .bottom : nil, for: .sizeChanges)
           .scrollPosition($scrollPosition)
           .contentShape(Rectangle())
           .simultaneousGesture(TapGesture().onEnded { typing = false })
@@ -135,15 +136,6 @@ struct ChatScreen: View {
           } action: { _, near in
             atBottom = near
           }
-          .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentSize.height
-          } action: { _, _ in
-            guard following else { return }
-            let now = Date()
-            guard now.timeIntervalSince(lastFollowingScroll) > 0.08 else { return }
-            lastFollowingScroll = now
-            scrollPosition.scrollTo(edge: .bottom)
-          }
           .onScrollPhaseChange { _, phase in
             if phase == .interacting { following = false }
             if phase == .idle && atBottom { following = true }
@@ -152,28 +144,7 @@ struct ChatScreen: View {
             if client.model.messages.last?.role == "user" || following {
               following = true
               atBottom = true
-              Task { @MainActor in
-                await Task.yield()
-                scrollPosition.scrollTo(edge: .bottom)
-              }
             }
-          }
-          .onChange(of: client.model.working) { _, working in
-            if working && following { scrollPosition.scrollTo(edge: .bottom) }
-          }
-          .onChange(of: client.model.messages.last?.content) { _, _ in
-            guard following else { return }
-            let now = Date()
-            guard now.timeIntervalSince(lastFollowingScroll) > 0.08 else { return }
-            lastFollowingScroll = now
-            scrollPosition.scrollTo(edge: .bottom)
-          }
-          .onChange(of: typing) { _, focused in
-            guard focused, following else { return }
-            scrollPosition.scrollTo(edge: .bottom)
-          }
-          .onAppear {
-            if following { scrollPosition.scrollTo(edge: .bottom) }
           }
           .overlay(alignment: .bottomTrailing) {
             if client.model.approvals.contains(where: { $0.status == "pending" }) {

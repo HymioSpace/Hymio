@@ -105,6 +105,15 @@ final class HymioUITests: XCTestCase {
     add(shot)
   }
 
+  @MainActor func testDynamicWorkflowShowsPreparingStateBeforeDAGExists() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioWorkflowTaskPreview"]
+    app.launchEnvironment["HYMIO_WORKFLOW_PREVIEW_PENDING"] = "1"
+    app.launch()
+    XCTAssertTrue(app.staticTexts["工作流准备中"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.staticTexts["Workflow DAG"].exists)
+  }
+
   @MainActor func testTraceShowsChronologicalModelAndToolEvents() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioTracePreview"]
@@ -593,6 +602,25 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["收到，我正在处理。"].isHittable, app.debugDescription)
     let sent = XCTAttachment(screenshot: app.screenshot())
     sent.name = "chat-after-send-no-blank"; sent.lifetime = .keepAlways; add(sent)
+  }
+
+  @MainActor func testExpandedExplorationDoesNotBlankDuringNewContent() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioActualChatPreview", "-HymioExpandAnchorReview"]
+    app.launch()
+    let fold = app.buttons.matching(identifier: "trace.fold").firstMatch
+    XCTAssertTrue(fold.waitForExistence(timeout: 10), app.debugDescription)
+    fold.tap()
+    XCTAssertTrue(app.staticTexts["chat.stress.complete"].waitForExistence(timeout: 35))
+    let final = app.staticTexts.matching(
+      NSPredicate(format: "label CONTAINS %@", "最终结果已整理好。")
+    ).firstMatch
+    XCTAssertTrue(final.waitForExistence(timeout: 5))
+    XCTAssertTrue(final.isHittable, app.debugDescription)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "expanded-exploration-new-content-anchor"
+    shot.lifetime = .keepAlways
+    add(shot)
   }
 
   @MainActor func testProductDockReturnsAfterSend() throws {

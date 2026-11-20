@@ -1195,6 +1195,26 @@ private struct TaskMetricChip: View {
   }
 }
 
+private struct MaterialWorkflowPendingCard: View {
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Label("工作流准备中", systemImage: "point.3.connected.trianglepath.dotted")
+        .font(.headline).foregroundStyle(Brand.ink)
+      HStack(spacing: 10) {
+        ProgressView().controlSize(.small)
+        Text("任务 Agent 正在确定工作节点和依赖关系，定义完成后会自动显示 DAG。")
+          .font(.subheadline).foregroundStyle(Brand.muted)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(18)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
+    .accessibilityIdentifier("workflow.preparing")
+  }
+}
+
 private struct MaterialPlanCard: View {
   let item: JSON
 
@@ -1850,10 +1870,12 @@ struct TaskDetailScreen: View {
         if taskCurrentRun(item) != .null {
           MaterialRunOverview(item: item)
         }
-        if taskExecutionMode(item) == .dynamicWorkflow,
-          !item["execution"]["workflow"]["nodes"].items.isEmpty
-        {
-          MaterialWorkflowCard(item: item)
+        if taskExecutionMode(item) == .dynamicWorkflow {
+          if item["execution"]["workflow"]["nodes"].items.isEmpty {
+            MaterialWorkflowPendingCard()
+          } else {
+            MaterialWorkflowCard(item: item)
+          }
         }
         if taskExecutionMode(item) != .program,
           taskExecutionMode(item) != .dynamicWorkflow
@@ -2264,6 +2286,8 @@ struct WorkflowTaskPreview: View {
   let account: AccountService
 
   private var item: JSON {
+    let pendingWorkflow =
+      ProcessInfo.processInfo.environment["HYMIO_WORKFLOW_PREVIEW_PENDING"] == "1"
     let agents: [(String, String, String)] = [
       ("preview-wf-design", "交互稿检查", "succeeded"),
       ("preview-wf-backend", "接口回归", "running"),
@@ -2337,7 +2361,7 @@ struct WorkflowTaskPreview: View {
             ])
           }),
         "workflow": .object([
-          "nodes": .array([
+          "nodes": .array(pendingWorkflow ? [] : [
             .object([
               "id": .string("design"), "title": .string("交互稿检查"),
               "depends_on": .array([]), "status": .string("succeeded"),
@@ -2362,7 +2386,7 @@ struct WorkflowTaskPreview: View {
               "agent_id": .string("preview-wf-release"),
             ]),
           ]),
-          "edges": .array([
+          "edges": .array(pendingWorkflow ? [] : [
             .object(["from": .string("design"), "to": .string("review")]),
             .object(["from": .string("backend"), "to": .string("review")]),
             .object(["from": .string("review"), "to": .string("release")]),
