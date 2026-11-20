@@ -281,6 +281,9 @@ private func taskReadableSummary(_ value: String, limit: Int = 120) -> String {
         $0.trimmingCharacters(in: .whitespacesAndNewlines)
       }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
+    line = line.replacingOccurrences(of: "**", with: "")
+      .replacingOccurrences(of: "__", with: "")
+      .replacingOccurrences(of: "`", with: "")
     line = line.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !line.isEmpty else { continue }
     return line.count > limit ? String(line.prefix(limit)) + "…" : line
@@ -289,7 +292,7 @@ private func taskReadableSummary(_ value: String, limit: Int = 120) -> String {
 }
 
 private func taskVisibleAgentBrief(_ value: String) -> String {
-  value.components(separatedBy: .newlines).compactMap { raw -> String? in
+  taskVisibleText(value).components(separatedBy: .newlines).compactMap { raw -> String? in
     let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     let lowered = line.lowercased()
     if lowered.hasPrefix("dependencies:")
@@ -304,34 +307,61 @@ private func taskVisibleAgentBrief(_ value: String) -> String {
   .trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
+private func taskVisibleText(_ value: String) -> String {
+  value.replacingOccurrences(of: "\\r\\n", with: "\n")
+    .replacingOccurrences(of: "\\n", with: "\n")
+    .replacingOccurrences(of: "\\r", with: "\n")
+    .replacingOccurrences(of: "\\t", with: "\t")
+    .replacingOccurrences(of: "\\\"", with: "\"")
+}
+
 private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
   var result: [TaskHumanActivity] = []
   var seen: Set<String> = []
+  var toolPositions: [String: Int] = [:]
+
+  func appendTool(
+    id: String, title rawTitle: String, tool rawTool: String, status: String, at stamp: Double
+  ) {
+    let title = taskVisibleText(rawTitle)
+    guard !title.isEmpty else { return }
+    let tool = humanToolName(rawTool)
+    let key = title + "|" + tool
+    if let index = toolPositions[key] {
+      let current = result[index]
+      if current.status.isEmpty && !status.isEmpty {
+        result[index] = TaskHumanActivity(
+          id: current.id, title: current.title, detail: current.detail, tool: current.tool,
+          status: status, createdAt: stamp > 0 ? stamp : current.createdAt)
+      }
+      return
+    }
+    toolPositions[key] = result.count
+    result.append(
+      TaskHumanActivity(
+        id: id, title: title, detail: "", tool: tool, status: status, createdAt: stamp))
+  }
+
   for entry in agent["activity"]["entries"].items {
     let entryID = String(entry["id"].int)
     if !entry["tool_description"].text.isEmpty {
-      let title = entry["tool_description"].text
-      let key = title + "|" + entry["tool"].text + "|" + entry["status"].text
-      if seen.insert(key).inserted {
-        result.append(
-          TaskHumanActivity(
-            id: entryID, title: title, detail: "", tool: humanToolName(entry["tool"].text),
-            status: taskLabel(entry["status"].text), createdAt: taskActivityTimestamp(entry)))
-      }
+      appendTool(
+        id: entryID,
+        title: entry["tool_description"].text,
+        tool: entry["tool"].text,
+        status: taskLabel(entry["status"].text),
+        at: taskActivityTimestamp(entry))
     }
     for (index, call) in entry["tool_calls"].items.enumerated() {
-      let description = call["description"].text
-      guard !description.isEmpty else { continue }
-      let key = description + "|" + call["name"].text
-      if seen.insert(key).inserted {
-        result.append(
-          TaskHumanActivity(
-            id: entryID + "-tool-\(index)", title: description, detail: "",
-            tool: humanToolName(call["name"].text), status: "",
-            createdAt: taskActivityTimestamp(entry)))
-      }
+      appendTool(
+        id: entryID + "-tool-\(index)",
+        title: call["description"].text,
+        tool: call["name"].text,
+        status: "",
+        at: taskActivityTimestamp(entry))
     }
-    let content = entry["content"].text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let content = taskVisibleText(entry["content"].text)
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     if entry["kind"].text == "assistant.message", !content.isEmpty,
       !content.hasPrefix("<"), !content.hasPrefix("{"), !content.hasPrefix("[")
     {
@@ -1753,7 +1783,7 @@ private struct AgentContextScreen: View {
       values.append(
         (
           "\(sender) → \(recipient)",
-          message["content"].text,
+          taskVisibleText(message["content"].text),
           recordDate(message["created_at"].double)
         ))
     }
@@ -1761,7 +1791,7 @@ private struct AgentContextScreen: View {
       values.append(
         (
           "主 Agent → \(agent["title"].text)",
-          turn["content"].text,
+          taskVisibleText(turn["content"].text),
           recordDate(turn["created_at"].double)
         ))
     }
@@ -1769,13 +1799,13 @@ private struct AgentContextScreen: View {
       values.append(
         (
           "\(agent["title"].text) → 主 Agent",
-          note["content"].text,
+          taskVisibleText(note["content"].text),
           recordDate(note["created_at"].double)
         ))
     }
     let result = agent["result"].text.trimmingCharacters(in: .whitespacesAndNewlines)
     if !result.isEmpty {
-      values.append(("最终结果", result, recordDate(agent["finished_at"].double)))
+      values.append(("最终结果", taskVisibleText(result), recordDate(agent["finished_at"].double)))
     }
     return values
   }
@@ -1819,7 +1849,7 @@ private struct AgentContextScreen: View {
                   RoundedRectangle(cornerRadius: 2).fill(Brand.blue).frame(width: 3)
                   VStack(alignment: .leading, spacing: 5) {
                     Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
-                    Text(agent["success_criteria"].text)
+                    Text(taskVisibleText(agent["success_criteria"].text))
                       .font(.subheadline).foregroundStyle(Brand.ink).lineSpacing(2)
                   }
                 }
@@ -1882,20 +1912,27 @@ private struct AgentContextScreen: View {
                         .foregroundStyle(Brand.muted).frame(width: 18)
                       VStack(alignment: .leading, spacing: 2) {
                         Text(item.title).font(.caption).foregroundStyle(Brand.ink)
+                          .accessibilityIdentifier("agent.tool.\(item.id)")
                         Text(
                           [item.tool, item.status, taskActivityDate(item.createdAt)]
                             .filter { !$0.isEmpty }.joined(separator: " · ")
                         )
                           .font(.caption2).foregroundStyle(Brand.muted)
                       }
+                      .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .multilineTextAlignment(.leading)
                   }
-                }.padding(.top, 8)
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
               } label: {
                 Text("\(tools.count) 条工具记录")
                   .font(.caption.weight(.medium)).foregroundStyle(Brand.muted)
               }
               .tint(Brand.blue)
+              .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
         }
@@ -1917,11 +1954,12 @@ private struct AgentBriefContent: View {
   let source: String
   @ObservedObject var account: AccountService
   @State private var expanded = false
-  private var summary: String { taskReadableSummary(source, limit: 220) }
+  private var visibleSource: String { taskVisibleText(source) }
+  private var summary: String { taskReadableSummary(visibleSource, limit: 220) }
   private var needsExpansion: Bool {
-    source.components(separatedBy: .newlines).filter {
+    visibleSource.components(separatedBy: .newlines).filter {
       !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }.count > 1 || source.count > 240
+    }.count > 1 || visibleSource.count > 240
   }
 
   var body: some View {
@@ -1931,7 +1969,7 @@ private struct AgentBriefContent: View {
       }
       if needsExpansion {
         DisclosureGroup(isExpanded: $expanded) {
-          MessageContent(content: source, account: account)
+          MessageContent(content: visibleSource, account: account)
             .padding(.top, 8)
         } label: {
           Text(expanded ? "收起职责详情" : "查看完整职责")
@@ -2474,7 +2512,7 @@ struct MultiAgentTaskPreview: View {
             "delegation_role": .string("teammate"),
             "status": .string("paused"), "execution_status": .string("paused"),
             "objective": .string(
-              "为急性发作期整理食材与烹饪边界，优先给出可直接执行的低嘌呤方案。\n只使用一次澄清机会，不把内部依赖编号写进回答。\n输出按食材、建议用量和烹饪方式分组。\nDependencies: []\nReturn a bounded result for this workflow node."),
+              "为急性发作期整理食材与烹饪边界，优先给出可直接执行的低嘌呤方案。\\n\\n**完成边界**\\n只使用一次澄清机会，不把内部依赖编号写进回答。\n输出按食材、建议用量和烹饪方式分组。\nDependencies: []\nReturn a bounded result for this workflow node."),
             "success_criteria": .string("每种模式都有代表实现和取舍。"),
             "result": .string("已整理 Orchestrator-Worker、Supervisor 和并行模式。"),
             "notes": .array([]),

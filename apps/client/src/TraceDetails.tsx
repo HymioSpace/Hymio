@@ -42,9 +42,15 @@ function messageText(value: unknown): string {
     .join('\n');
 }
 
-function contentText(value: unknown) {
+function contentText(value: unknown): string {
   const text = messageText(value);
   if (text) return text;
+  const valueObject = obj(value);
+  for (const key of ['payload', 'content', 'text', 'message', 'preview']) {
+    if (valueObject[key] == null) continue;
+    const nested: string = contentText(valueObject[key]);
+    if (nested) return nested;
+  }
   if (value == null) return '';
   try {
     return JSON.stringify(value);
@@ -136,7 +142,7 @@ function entrySummary(entry: TimelineEntry) {
   if (entry.name === 'oath.tool.response') {
     return contentText(value.content).slice(0, 220) || str(value.error) || '工具已返回结果';
   }
-  if (entry.event) return str(value.content) || str(value.preview) || '查看事件详情';
+  if (entry.event) return contentText(value).slice(0, 220) || '查看事件详情';
   if (str(entry.span.attributes['oath.tool.name'])) {
     return `结果：${str(entry.span.attributes['oath.tool.outcome']) || entry.span.status}`;
   }

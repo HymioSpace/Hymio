@@ -63,7 +63,9 @@ final class HymioUITests: XCTestCase {
     for _ in 0..<4 where !toolButton.isHittable { app.swipeUp() }
     XCTAssertTrue(toolButton.isHittable)
     toolButton.tap()
-    XCTAssertTrue(app.staticTexts["查阅 Anthropic 多智能体研究"].waitForExistence(timeout: 5))
+    let toolRecord = app.staticTexts["agent.tool.2"]
+    XCTAssertTrue(toolRecord.waitForExistence(timeout: 5))
+    XCTAssertLessThan(toolRecord.frame.minX, app.frame.midX)
     XCTAssertFalse(app.staticTexts.matching(
       NSPredicate(format: "label CONTAINS %@", "<!DOCTYPE")).firstMatch.exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
@@ -93,11 +95,19 @@ final class HymioUITests: XCTestCase {
       NSPredicate(format: "label == %@", "查看完整职责")
     ).firstMatch
     XCTAssertTrue(brief.waitForExistence(timeout: 5), app.debugDescription)
+    if brief.isHittable { brief.tap() }
     let rendered = app.descendants(matching: .any).matching(
       NSPredicate(format: "label == %@", "收起内容")
     ).firstMatch
     for _ in 0..<5 where !rendered.isHittable { app.swipeUp() }
     XCTAssertTrue(rendered.isHittable, app.debugDescription)
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "完成边界")
+      ).firstMatch.waitForExistence(timeout: 5))
+    XCTAssertFalse(
+      app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "\\\\n"))
+        .firstMatch.exists)
     XCTAssertTrue(app.staticTexts["低嘌呤菜品池"].waitForExistence(timeout: 5))
     XCTAssertTrue(
       app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "鸡蛋"))
@@ -169,6 +179,12 @@ final class HymioUITests: XCTestCase {
       XCTAssertTrue(app.staticTexts[label].exists, "Missing trace event: \(label)")
     }
     XCTAssertTrue(app.staticTexts["Read the comparison page"].exists)
+    let requestEvent = app.descendants(matching: .any)["trace.event.2"]
+    for _ in 0..<6 where !requestEvent.isHittable { app.swipeDown() }
+    if requestEvent.isHittable { requestEvent.tap() }
+    XCTAssertTrue(app.staticTexts["3 条输入消息"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.descendants(matching: .any)["trace.request.message.0"].waitForExistence(timeout: 5))
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "trace-event-order-request-tool-result"
     shot.lifetime = .keepAlways

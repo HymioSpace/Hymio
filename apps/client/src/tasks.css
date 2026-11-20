@@ -1306,11 +1306,17 @@
 }
 .task-agent-tools p {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin: 7px 0;
   color: var(--ink);
   font-size: 11px;
+  text-align: left;
+}
+.task-agent-tools p > span {
+  min-width: 0;
+  text-align: left;
 }
 .task-agent-tools small {
   color: var(--muted);

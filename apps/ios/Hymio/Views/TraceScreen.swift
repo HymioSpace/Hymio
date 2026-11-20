@@ -225,7 +225,7 @@ private struct TraceTimelineEntry: Identifiable {
         ? body["content"].pretty : traceContentText(body["content"])
       return content.isEmpty ? body["error"].text : String(content.prefix(220))
     }
-    let content = traceContentText(body["content"])
+    let content = traceContentText(body)
     return content.isEmpty ? event["name"].text : content
   }
 }
@@ -264,7 +264,7 @@ private func traceEventBody(_ event: JSON) -> JSON {
 
 private func traceContentText(_ value: JSON) -> String {
   switch value {
-  case .string(let text): return text
+  case .string(let text): return traceVisibleText(text)
   case .array(let parts):
     return parts.compactMap { part in
       if case .string(let text) = part["text"] { return text }
@@ -279,6 +279,13 @@ private func traceContentText(_ value: JSON) -> String {
   default:
     return ""
   }
+}
+
+private func traceVisibleText(_ value: String) -> String {
+  value.replacingOccurrences(of: "\\r\\n", with: "\n")
+    .replacingOccurrences(of: "\\n", with: "\n")
+    .replacingOccurrences(of: "\\r", with: "\n")
+    .replacingOccurrences(of: "\\t", with: "\t")
 }
 
 private func traceStartedAt(_ seconds: Double) -> String {
@@ -411,7 +418,11 @@ struct TraceRecordScreen: View {
           ForEach(timeline) { entry in
             DisclosureGroup {
               if let event = entry.event {
-                TraceJsonTree(value: event)
+                TraceEventInspector(
+                  event: event,
+                  span: entry.span,
+                  account: account
+                )
               }
               if fullTrace != .null {
                 DisclosureGroup("所属 Span") { TraceJsonTree(value: entry.span) }
@@ -434,6 +445,7 @@ struct TraceRecordScreen: View {
                       .accessibilityIdentifier("trace.event.time.\(entry.sequence)")
                   }
                   Text(entry.title).font(.subheadline.weight(.medium))
+                    .accessibilityIdentifier("trace.event.\(entry.sequence)")
                   Text(entry.summary).font(.caption).foregroundStyle(.secondary)
                     .lineLimit(3).lineSpacing(2)
                 }
@@ -481,6 +493,166 @@ struct TraceRecordScreen: View {
         "oath-biz/query_trace?agent_id=\(agentID)&trace_id=\(traceID.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
       )
     } catch { fullError = "完整数据读取失败，请重试。" }
+  }
+}
+
+private struct TraceEventInspector: View {
+  let event: JSON
+  let span: JSON
+  @ObservedObject var account: AccountService
+
+  private var name: String { event["name"].text }
+  private var payload: JSON { traceEventBody(event) }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      if name == "gen_ai.request" {
+        request
+      } else if name == "gen_ai.response" {
+        response
+      } else {
+        eventContent
+      }
+      DisclosureGroup("查看原始属性") {
+        TraceBoundedJSON(value: event["attributes"])
+          .padding(.top, 8)
+      }
+      .font(.caption)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var request: some View {
+    let messages = payload["messages"].items
+    let count = payload["message_count"].int > 0 ? payload["message_count"].int : messages.count
+    return VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 8) {
+        Label("\(count) 条输入消息", systemImage: "text.bubble")
+        if payload["messages_truncated"] == .bool(true) {
+          Text("摘要")
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.quaternary, in: Capsule())
+        }
+      }
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(.secondary)
+
+      ForEach(Array(messages.enumerated()), id: \.offset) { offset, message in
+        let content = traceContentText(message["content"])
+        DisclosureGroup {
+          VStack(alignment: .leading, spacing: 10) {
+            if !content.isEmpty {
+              MessageContent(content: content, account: account)
+            }
+            if !message["tool_calls"].items.isEmpty {
+              TraceBoundedJSON(value: message["tool_calls"])
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(12)
+          .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        } label: {
+          VStack(alignment: .leading, spacing: 3) {
+            Text(traceRoleLabel(message["role"].text))
+              .font(.caption.weight(.semibold))
+              .foregroundStyle(Brand.blue)
+            Text(content.isEmpty ? "结构化消息" : content)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+              .multilineTextAlignment(.leading)
+          }
+          .accessibilityIdentifier("trace.request.message.\(offset)")
+        }
+        .tint(Brand.blue)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var response: some View {
+    let content = traceContentText(payload["content"])
+    let calls = payload["tool_calls"].items
+    return VStack(alignment: .leading, spacing: 10) {
+      if !content.isEmpty {
+        MessageContent(content: content, account: account)
+          .accessibilityIdentifier("trace.response.content")
+      } else if !calls.isEmpty {
+        Label("返回 \(calls.count) 个工具调用", systemImage: "wrench.and.screwdriver")
+          .font(.caption.weight(.semibold))
+      }
+      if !calls.isEmpty {
+        DisclosureGroup("查看工具调用") {
+          TraceBoundedJSON(value: payload["tool_calls"])
+            .padding(.top, 6)
+        }
+        .font(.caption)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder private var eventContent: some View {
+    let content = traceContentText(payload["content"])
+    let description = traceVisibleText(payload["description"].text)
+    if !description.isEmpty {
+      Text(description)
+        .font(.subheadline)
+        .foregroundStyle(.primary)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    if !content.isEmpty {
+      Text(content)
+        .font(.caption)
+        .textSelection(.enabled)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    } else if payload != .null {
+      DisclosureGroup("查看事件正文") {
+        TraceBoundedJSON(value: payload)
+          .padding(.top, 6)
+      }
+      .font(.caption)
+    }
+  }
+}
+
+private struct TraceBoundedJSON: View {
+  let value: JSON
+  @State private var expanded = false
+
+  var body: some View {
+    DisclosureGroup(isExpanded: $expanded) {
+      ScrollView([.horizontal, .vertical]) {
+        Text(value.pretty)
+          .font(.system(.caption, design: .monospaced))
+          .textSelection(.enabled)
+          .fixedSize(horizontal: true, vertical: true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(12)
+      }
+      .frame(maxHeight: 360)
+      .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+    } label: {
+      Text(expanded ? "收起原始 JSON" : "展开原始 JSON")
+        .font(.caption.weight(.medium))
+        .foregroundStyle(Brand.blue)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private func traceRoleLabel(_ role: String) -> String {
+  switch role {
+  case "system": return "系统"
+  case "user": return "用户"
+  case "assistant": return "助手"
+  case "tool": return "工具"
+  default: return role.isEmpty ? "消息" : role
   }
 }
 struct TraceJsonTree: View {
@@ -539,8 +711,25 @@ struct TraceTimelinePreview: View {
             "name": .string("gen_ai.request"),
             "unix_nano": .number(1_100_000_000),
             "attributes": .object([
-              "body": .string(
-                "{\"messages\":[{\"role\":\"user\",\"content\":\"Compare two sources\"}]}")
+              "body": .object([
+                "message_count": .number(3),
+                "messages": .array([
+                  .object([
+                    "role": .string("system"),
+                    "content": .string("Use evidence and keep the comparison concise."),
+                  ]),
+                  .object([
+                    "role": .string("user"),
+                    "content": .string("Compare two sources"),
+                  ]),
+                  .object([
+                    "role": .string("tool"),
+                    "content": .string(
+                      String(repeating: "Long tool output that must not create blank space. ", count: 80)
+                    ),
+                  ]),
+                ]),
+              ])
             ]),
           ]),
           .object([

@@ -775,7 +775,7 @@ function AgentDetail({
         </strong>
         <span>{statusLabel(status)}</span>
       </summary>
-      {agent.result && <p className="task-agent-result">{agent.result}</p>}
+      {agent.result && <p className="task-agent-result">{visibleText(agent.result)}</p>}
       <section>
         <h4>上下文与职责</h4>
         <p className="task-agent-brief-summary">{readableSummary(visibleAgentBrief(agent.objective))}</p>
@@ -787,7 +787,7 @@ function AgentDetail({
         )}
         <div className="task-agent-success">
           <strong>完成标准</strong>
-          <span>{agent.success_criteria}</span>
+          <span>{visibleText(agent.success_criteria)}</span>
         </div>
       </section>
       {showCommunications && !!agent.communications?.length && (
@@ -872,13 +872,13 @@ function Communication({
         {message.sender_title || 'Agent'} → {message.recipient_title || 'Agent'}
         {outgoing ? '（发出）' : '（收到）'}
       </small>
-      <MessageMarkdown content={message.content} login={login} />
+      <MessageMarkdown content={visibleText(message.content)} login={login} />
     </div>
   );
 }
 
 function visibleAgentBrief(value: string) {
-  return value
+  return visibleText(value)
     .split('\n')
     .filter((line) => {
       const normalized = line.trim().toLowerCase();
@@ -889,6 +889,15 @@ function visibleAgentBrief(value: string) {
     })
     .join('\n')
     .trim();
+}
+
+function visibleText(value: string) {
+  return value
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"');
 }
 
 function readableSummary(value: string, limit = 220) {
@@ -905,6 +914,7 @@ function readableSummary(value: string, limit = 220) {
       .replace(/^\|/, '')
       .replace(/\|$/, '')
       .replace(/\|/g, ' · ')
+      .replace(/\*\*|__|`/g, '')
       .trim();
     if (!line) continue;
     return line.length > limit ? `${line.slice(0, limit)}…` : line;
@@ -926,14 +936,14 @@ function semanticActivities(agent: ExecutionAgent) {
       ...(entry.tool_description
         ? [
             {
-              title: entry.tool_description,
+              title: visibleText(entry.tool_description),
               tool: entry.tool || '工具',
               createdAt: activityEpoch(entry.created_at),
             },
           ]
         : []),
       ...(entry.tool_calls || []).map((call) => ({
-        title: call.description || call.name,
+        title: visibleText(call.description || call.name),
         tool: call.name,
         createdAt: activityEpoch(entry.created_at),
       })),
@@ -949,13 +959,14 @@ function semanticActivities(agent: ExecutionAgent) {
       });
     }
     if (entry.kind === 'assistant.message' && entry.content) {
-      const title = readableSummary(entry.content);
-      if (title && !seen.has(entry.content)) {
-        seen.add(entry.content);
+      const content = visibleText(entry.content);
+      const title = readableSummary(content);
+      if (title && !seen.has(content)) {
+        seen.add(content);
         result.push({
           id: `${entry.id}-message`,
           title,
-          detail: entry.content,
+          detail: content,
           tool: '',
           createdAt: activityEpoch(entry.created_at),
         });
