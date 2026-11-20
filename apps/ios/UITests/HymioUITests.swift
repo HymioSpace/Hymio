@@ -85,6 +85,12 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["等待依赖"].exists)
     XCTAssertFalse(app.staticTexts["执行细节"].exists)
     XCTAssertFalse(app.staticTexts["事件记录"].exists)
+    for _ in 0..<5 where !app.buttons["动态工作流说明"].isHittable { app.swipeDown() }
+    app.buttons["动态工作流说明"].tap()
+    XCTAssertTrue(app.alerts["动态工作流"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.alerts["动态工作流"].staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "先拆成有依赖关系")).firstMatch.exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "material-dynamic-workflow"
     shot.lifetime = .keepAlways

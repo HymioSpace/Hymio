@@ -893,3 +893,434 @@
   margin-top: 18px;
   color: var(--muted);
 }
+
+/* Material task workspace: compact labels, optional explanations, deeper details. */
+.task-group + .task-group {
+  margin-top: 22px;
+}
+.task-group > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.task-group > h3 span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-card.attention {
+  border-color: color-mix(in srgb, #d99234 32%, var(--line));
+  background: color-mix(in srgb, #fff6e7 70%, var(--surface));
+}
+.task-card-copy {
+  gap: 6px;
+}
+.task-card-title {
+  font-size: 14px;
+}
+.task-card-meta {
+  gap: 8px;
+}
+.tasks-empty {
+  gap: 10px;
+  padding: 64px 16px;
+  color: var(--muted);
+}
+.tasks-empty strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+.tasks-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 26px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--subtle);
+}
+.task-detail {
+  padding: 26px 30px 36px;
+}
+.task-detail > .task-back {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 15px;
+  color: var(--muted);
+}
+.task-detail-hero {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.task-detail-heading {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.task-scope {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-detail-hero h3 {
+  margin: 14px 0 8px;
+  font-size: 23px;
+}
+.task-mode-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 25px;
+  padding: 3px 7px 3px 9px;
+  border-radius: 999px;
+  color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 9%, var(--surface));
+  font-size: 11px;
+  font-weight: 500;
+}
+.task-mode-help {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+}
+.task-mode-help > summary {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  list-style: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.task-mode-help > summary::-webkit-details-marker {
+  display: none;
+}
+.task-mode-help > div {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 7px);
+  right: -6px;
+  width: min(230px, 70vw);
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 10px 30px #1e263b1c;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+.task-attention-card {
+  display: flex;
+  gap: 11px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, #d99234 30%, var(--line));
+  border-radius: 14px;
+  color: #8a581a;
+  background: color-mix(in srgb, #fff6e7 78%, var(--surface));
+}
+.task-attention-card strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.task-attention-card p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.task-run-card,
+.task-workflow,
+.task-plan,
+.task-execution {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.task-run-card > header,
+.task-workflow > header,
+.task-execution > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.task-run-card > header strong,
+.task-workflow > header strong,
+.task-execution > header strong,
+.task-plan > strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.task-run-card > header span,
+.task-workflow > header span,
+.task-execution > header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-run-card > p {
+  margin: 11px 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.task-run-card > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-run-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+.task-run-metrics span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--subtle);
+  font-size: 10px;
+}
+.task-workflow ol,
+.task-plan ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.task-workflow li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 9px;
+  min-height: 47px;
+}
+.task-workflow li:not(:last-child)::before {
+  position: absolute;
+  top: 18px;
+  bottom: -2px;
+  left: 10px;
+  width: 1px;
+  background: var(--line);
+  content: '';
+}
+.workflow-node-dot {
+  z-index: 1;
+  width: 21px;
+  height: 21px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.workflow-running .workflow-node-dot {
+  border-color: var(--blue);
+  background: color-mix(in srgb, var(--blue) 14%, var(--surface));
+}
+.workflow-succeeded .workflow-node-dot {
+  border-color: #4a8c78;
+  background: #4a8c78;
+}
+.workflow-failed .workflow-node-dot,
+.workflow-blocked .workflow-node-dot {
+  border-color: #bd7447;
+  background: #bd7447;
+}
+.task-workflow li > div {
+  padding: 1px 0 12px;
+}
+.task-workflow li header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.task-workflow li strong {
+  font-size: 13px;
+  font-weight: 500;
+}
+.task-workflow li small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.task-workflow li p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.task-plan ol {
+  gap: 10px;
+  margin-top: 13px;
+}
+.task-plan li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-size: 13px;
+}
+.task-plan li > span {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.task-plan li > .plan-doing {
+  border: 2px dotted var(--blue);
+}
+.task-plan li > .plan-done {
+  border-color: #4a8c78;
+  background: #4a8c78;
+}
+.task-program-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.task-agent-node {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--subtle);
+}
+.task-agent-node > summary {
+  gap: 9px;
+}
+.task-agent-node > summary strong {
+  font-size: 13px;
+}
+.task-agent-node > summary strong small {
+  margin-top: 2px;
+  font-size: 10px;
+}
+.task-agent-node > summary > span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.task-agent-node section {
+  padding: 12px 0 2px;
+}
+.task-agent-node h4 {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.task-agent-node section > p {
+  margin: 4px 0;
+  color: var(--ink);
+  font-size: 12px;
+}
+.task-agent-activity-line {
+  color: var(--muted) !important;
+}
+.task-agent-tools {
+  border-top: 1px solid var(--line);
+}
+.task-agent-tools p {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 7px 0;
+  color: var(--ink);
+  font-size: 11px;
+}
+.task-agent-tools small {
+  color: var(--muted);
+}
+.task-communication {
+  margin: 8px 0;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+.task-communication small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.task-communication p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.task-definition {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.task-definition summary {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.task-definition p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.task-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.task-detail-actions button {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--surface);
+}
+.task-detail-actions > span,
+.task-detail-actions > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.task-detail-actions > small {
+  margin-left: auto;
+}
+.task-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  .task-card.attention,
+  .task-attention-card {
+    background: #392e21;
+    border-color: #695238;
+  }
+}
+@media (max-width: 720px) {
+  .task-detail {
+    padding: 20px;
+  }
+  .task-detail-hero h3 {
+    font-size: 21px;
+  }
+  .task-detail-actions > small {
+    width: 100%;
+    margin-left: 0;
+  }
+}

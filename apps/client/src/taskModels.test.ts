@@ -1,0 +1,86 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  taskExecutionMode,
+  taskNeedsAttention,
+  taskPortfolioScope,
+  taskStatusLabel,
+  taskTemporalScope,
+  type Work,
+} from './taskModels.ts';
+
+function task(overrides: Partial<Work> = {}): Work {
+  return {
+    id: 'task-1',
+    title: 'Research',
+    objective: 'Find the answer',
+    success_criteria: 'Evidence-backed answer',
+    state: 'active',
+    schedule: { mode: 'now', timezone: 'Asia/Shanghai' },
+    runs: [
+      {
+        id: 'run-1',
+        status: 'running',
+        result: '',
+        progress: 'Working',
+        next_step: '',
+        due_at: null,
+        updates: [],
+      },
+    ],
+    updated_at: 1,
+    ...overrides,
+  };
+}
+
+test('temporal scope stays visible when a task completes', () => {
+  const completed = task({
+    state: 'closed',
+    close_reason: 'achieved',
+    completion: 'achieve',
+  });
+  completed.runs[0].status = 'succeeded';
+  assert.equal(taskTemporalScope(completed), 'temporary');
+  assert.equal(taskPortfolioScope(completed), 'completed');
+
+  const recurring = task({
+    completion: 'maintain',
+    schedule: { mode: 'daily', time: '08:00', timezone: 'Asia/Shanghai' },
+  });
+  assert.equal(taskTemporalScope(recurring), 'ongoing');
+});
+
+test('execution mode is independent from timing', () => {
+  for (const mode of ['parallel_subagents', 'agent_team', 'dynamic_workflow'] as const) {
+    assert.equal(taskExecutionMode(task({ execution_mode: mode })), mode);
+    assert.equal(taskTemporalScope(task({ execution_mode: mode })), 'temporary');
+  }
+  assert.equal(taskExecutionMode(task({ executor_kind: 'program' })), 'program');
+});
+
+test('only user waits need attention and program delivery reads as sending', () => {
+  const delivery = task({
+    executor_kind: 'program',
+    runs: [
+      {
+        ...task().runs[0],
+        status: 'waiting',
+        wait_kind: null,
+      },
+    ],
+  });
+  assert.equal(taskNeedsAttention(delivery), false);
+  assert.equal(taskStatusLabel(delivery), '发送中');
+
+  const question = task({
+    runs: [
+      {
+        ...task().runs[0],
+        status: 'waiting',
+        wait_kind: 'user',
+      },
+    ],
+  });
+  assert.equal(taskNeedsAttention(question), true);
+  assert.equal(taskStatusLabel(question), '等待你回复');
+});

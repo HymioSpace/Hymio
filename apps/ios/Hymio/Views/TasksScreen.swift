@@ -550,6 +550,38 @@ private struct MaterialStatusPill: View {
   }
 }
 
+private struct TaskModePill: View {
+  let item: JSON
+  @State private var showHelp = false
+
+  var body: some View {
+    HStack(spacing: 4) {
+      Label(taskExecutionMode(item).title, systemImage: taskExecutionMode(item).symbol)
+        .font(.caption.weight(.medium))
+      Button {
+        showHelp.toggle()
+      } label: {
+        Image(systemName: "questionmark.circle")
+          .font(.caption.weight(.medium))
+          .frame(width: 28, height: 28)
+          .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("\(taskExecutionMode(item).title)说明")
+      .alert(taskExecutionMode(item).title, isPresented: $showHelp) {
+        Button("知道了") {}
+      } message: {
+        Text(taskExecutionMode(item).detail)
+      }
+    }
+    .foregroundStyle(Brand.blue)
+    .padding(.leading, 10)
+    .padding(.trailing, 2)
+    .padding(.vertical, 2)
+    .background(Brand.softBlue, in: Capsule())
+  }
+}
+
 private struct MaterialAttentionCard: View {
   let item: JSON
 
@@ -910,12 +942,7 @@ private struct TaskDetailHero: View {
         .foregroundStyle(Brand.muted)
         .lineLimit(4)
         .lineSpacing(3)
-      Label(taskExecutionMode(item).title, systemImage: taskExecutionMode(item).symbol)
-        .font(.caption.weight(.medium))
-        .foregroundStyle(Brand.blue)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Brand.softBlue, in: Capsule())
+      TaskModePill(item: item)
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -972,11 +999,7 @@ private struct MaterialRunOverview: View {
         Text("执行进度已保存，恢复后从当前步骤继续。")
           .font(.subheadline).foregroundStyle(Brand.muted)
       }
-      if taskExecutionMode(item) == .program {
-        Label("由任务系统按时执行，不需要 Agent", systemImage: "bolt.badge.clock")
-          .font(.caption)
-          .foregroundStyle(Brand.muted)
-      } else {
+      if taskExecutionMode(item) != .program {
         HStack(spacing: 10) {
           TaskMetricChip(
             icon: "number", value: compactMetric(usage["tokens"].int),
@@ -1110,10 +1133,6 @@ private struct MaterialWorkflowCard: View {
           .font(.caption.monospacedDigit())
           .foregroundStyle(Brand.muted)
       }
-      Text("节点会等依赖完成后自动开始；这里只展示协作关系，不展示工具调用。")
-        .font(.caption)
-        .foregroundStyle(Brand.muted)
-        .lineSpacing(2)
       ForEach(Array(nodes.enumerated()), id: \.offset) { index, node in
         HStack(alignment: .top, spacing: 10) {
           VStack(spacing: 0) {
@@ -1189,10 +1208,6 @@ private struct MaterialExecutionTeam: View {
         )
           .font(.caption).foregroundStyle(Brand.muted)
       }
-      Text(mode.detail)
-        .font(.caption)
-        .foregroundStyle(Brand.muted)
-        .lineSpacing(2)
       if mode == .program {
         HStack(alignment: .top, spacing: 10) {
           Image(systemName: mode.symbol)
@@ -1201,8 +1216,6 @@ private struct MaterialExecutionTeam: View {
             .background(Brand.softBlue, in: RoundedRectangle(cornerRadius: 10))
           VStack(alignment: .leading, spacing: 3) {
             Text("不启动 Agent").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
-            Text("到点后由任务系统执行已确定的动作，并记录实际送达结果。")
-              .font(.caption).foregroundStyle(Brand.muted)
           }
         }
       } else if agent != .null {
@@ -1293,7 +1306,7 @@ private struct MaterialAgentCard: View {
       Text(latestSummary).font(.subheadline).foregroundStyle(Brand.muted)
         .lineSpacing(2).lineLimit(3)
       HStack(spacing: 6) {
-        Text("查看上下文、沟通与执行记录")
+        Text("查看详情")
           .font(.caption2.weight(.medium)).foregroundStyle(Brand.blue)
         Image(systemName: "arrow.up.right").font(.caption2).foregroundStyle(Brand.blue)
       }
