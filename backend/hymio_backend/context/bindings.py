@@ -62,9 +62,8 @@ class ContextBindings:
             existing = self.get(user_id)
             if existing:
                 return True
-            if self._static_binding(user_id):
-                return True
-            url = self._provisioning_url()
+            static = self._static_credentials(user_id)
+            url = static[0] if static else self._provisioning_url()
             service_file = Path(self.settings.service_token_file)
             try:
                 service_token = service_file.read_text().strip()
@@ -72,13 +71,18 @@ class ContextBindings:
                 raise ContextBindingError("Provisioning credential unavailable") from exc
             if not service_token:
                 raise ContextBindingError("Provisioning credential is empty")
-            # Deterministic provisioning makes retries and multi-worker startup converge on
-            # the same credential instead of racing with different random tokens.
-            token = hmac.new(
-                service_token.encode(),
-                b"hymio-nostalgia-context:" + user_id.encode(),
-                hashlib.sha256,
-            ).hexdigest()
+            if static:
+                # Migrate the legacy token in place so removing the JSON fallback later cannot
+                # break an existing account.
+                token = static[1]
+            else:
+                # Deterministic provisioning makes retries and multi-worker startup converge on
+                # the same credential instead of racing with different random tokens.
+                token = hmac.new(
+                    service_token.encode(),
+                    b"hymio-nostalgia-context:" + user_id.encode(),
+                    hashlib.sha256,
+                ).hexdigest()
             try:
                 response = httpx.put(
                     url + "/v1/admin/tokens/" + quote(user_id, safe=""),
@@ -100,15 +104,33 @@ class ContextBindings:
                 )
             return True
 
-    def _static_binding(self, user_id):
+    def _static_credentials(self, user_id):
         path = getattr(self.settings, "nostalgia_connections_file", None)
         if not path:
-            return False
+            return None
         try:
-            bindings = json.loads(Path(path).read_text())["users"]
+            path = Path(path)
+            entry = json.loads(path.read_text())["users"][user_id]
+            url = str(entry["url"]).rstrip("/")
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("Invalid static context URL")
+            token_file = Path(entry["token_file"])
+            if not token_file.is_absolute():
+                token_file = path.parent / token_file
+            token = token_file.read_text().strip()
+            if len(token) < 16:
+                raise ValueError("Invalid static context credential")
+            return url, token
         except (OSError, KeyError, TypeError, ValueError):
-            return False
-        return user_id in bindings
+            return None
 
     def _provisioning_url(self):
         configured = getattr(self.settings, "nostalgia_url", "")

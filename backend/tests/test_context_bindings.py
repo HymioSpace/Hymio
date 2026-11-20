@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -60,6 +61,46 @@ def test_retry_reuses_the_same_credential_and_context_access_repairs_a_missing_b
             db.execute("DELETE FROM context_bindings WHERE user_id='user-1'")
         assert NostalgiaClient(settings).connection("user-1") == first
     assert sent_tokens[0] == sent_tokens[1]
+
+
+def test_legacy_static_binding_is_migrated_to_an_encrypted_dynamic_binding(tmp_path):
+    service = tmp_path / "service-token"
+    service.write_text("internal-service-token")
+    legacy_token = "legacy-token-1234567890"
+    (tmp_path / "legacy.token").write_text(legacy_token)
+    connections = tmp_path / "connections.json"
+    connections.write_text(
+        json.dumps(
+            {
+                "users": {
+                    "user-1": {
+                        "url": "http://legacy-nostalgia:8000",
+                        "token_file": "legacy.token",
+                    }
+                }
+            }
+        )
+    )
+    settings = SimpleNamespace(
+        database=tmp_path / "hymio.sqlite",
+        service_token_file=service,
+        nostalgia_connections_file=connections,
+        nostalgia_url="http://nostalgia:8000",
+    )
+    response = httpx.Response(
+        200,
+        request=httpx.Request(
+            "PUT", "http://legacy-nostalgia:8000/v1/admin/tokens/user-1"
+        ),
+    )
+    with patch(
+        "hymio_backend.context.bindings.httpx.put", return_value=response
+    ) as provision:
+        bindings = ContextBindings(settings)
+        assert bindings.ensure("user-1")
+    assert provision.call_args.args[0] == "http://legacy-nostalgia:8000/v1/admin/tokens/user-1"
+    assert provision.call_args.kwargs["json"]["token"] == legacy_token
+    assert bindings.get("user-1") == ("http://legacy-nostalgia:8000", legacy_token)
 
 
 def test_provisioning_failure_does_not_create_a_binding(tmp_path):
