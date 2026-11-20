@@ -15,6 +15,7 @@ import {
 import type { LoginState } from './useLogin';
 import {
   taskExecutionMode,
+  taskIsCancelled,
   taskModeDescription,
   taskModeLabel,
   taskNeedsAttention,
@@ -68,7 +69,7 @@ export function TasksPanel({
 
   async function load() {
     const value = await request();
-    setTasks(value.tasks);
+    setTasks(value.tasks.filter((task: Work) => !taskIsCancelled(task)));
     setError('');
   }
 
@@ -78,7 +79,7 @@ export function TasksPanel({
       request()
         .then((value) => {
           if (active) {
-            setTasks(value.tasks);
+            setTasks(value.tasks.filter((task: Work) => !taskIsCancelled(task)));
             setError('');
           }
         })
@@ -127,6 +128,7 @@ export function TasksPanel({
         expected_revision: task.revision,
       });
       setDetail(updated);
+      if (taskIsCancelled(updated)) setSelected('');
       await load();
     } catch (cause) {
       setError((cause as Error).message);
@@ -547,7 +549,10 @@ function Communication({ message, agentID }: { message: TeamMessage; agentID: st
   const outgoing = message.sender_agent_id === agentID;
   return (
     <div className="task-communication">
-      <small>{outgoing ? `发给 ${message.recipient_title}` : `来自 ${message.sender_title}`}</small>
+      <small>
+        {message.sender_title || 'Agent'} → {message.recipient_title || 'Agent'}
+        {outgoing ? '（发出）' : '（收到）'}
+      </small>
       <p>{message.content}</p>
     </div>
   );

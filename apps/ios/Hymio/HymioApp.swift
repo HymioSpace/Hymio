@@ -29,6 +29,11 @@ import SwiftUI
               )
           } else if ProcessInfo.processInfo.arguments.contains("-HymioExperiencePreview") {
             PersonalExperiencePreview(account: account)
+          } else if ProcessInfo.processInfo.arguments.contains("-HymioMyShellPreview") {
+            ProductShell(
+              account: account,
+              client: AgentClient(account: account, previewConnected: true),
+              previewMode: true)
           } else if ProcessInfo.processInfo.arguments.contains("-HymioTaskStorePreview") {
             TaskStoreValidationPreview()
           } else if ProcessInfo.processInfo.arguments.contains("-HymioArtworkPreview") {

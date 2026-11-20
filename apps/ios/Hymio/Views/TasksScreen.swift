@@ -1,5 +1,11 @@
 import SwiftUI
 
+func taskIsCancelled(_ item: JSON) -> Bool {
+  item["close_reason"].text == "cancelled"
+    || ["closed", "archived"].contains(item["state"].text)
+      && item["runs"].items.first?["status"].text == "cancelled"
+}
+
 func taskStatus(_ item: JSON) -> String {
   if item["state"].text == "closed", item["close_reason"].text == "achieved" { return "succeeded" }
   if item["state"].text == "closed", item["close_reason"].text == "cancelled" { return "cancelled" }
@@ -191,12 +197,7 @@ func taskAttentionTitle(_ item: JSON) -> String {
 func taskAttentionDetail(_ item: JSON) -> String {
   let run = taskCurrentRun(item)
   if run["error_code"].text == "BUDGET_EXHAUSTED" {
-    let used = run["usage"]["tokens"].int
-    let limit = item["budget"]["max_tokens"].int
-    if used > 0 && limit > 0 {
-      return "已使用 \(used.formatted()) / \(limit.formatted()) tokens。任务已保存，可在对话中调整预算后继续。"
-    }
-    return "任务已保存。可在对话中调整本轮预算后继续。"
+    return "本轮预算已用尽"
   }
   if !run["wait_reason"].text.isEmpty { return run["wait_reason"].text }
   if !run["progress"].text.isEmpty { return run["progress"].text }
@@ -302,6 +303,7 @@ struct TasksScreen: View {
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   private var calendar: Calendar { var c = Calendar.current; c.firstWeekday = 2; return c }
   private var dates: [Date] { calendarDays(focus, scale: mode.calendarScale ?? 0) }
+  private var visibleItems: [JSON] { board.items.filter { !taskIsCancelled($0) } }
   @State private var events: [CalendarWork] = []
   @State private var eventsByDay: [Date: [CalendarWork]] = [:]
   var body: some View {
@@ -338,7 +340,7 @@ struct TasksScreen: View {
       withAnimation(animation) { mode = TaskDisplayMode(rawValue: next) ?? mode }
     })
     .navigationTitle("任务").navigationBarTitleDisplayMode(.inline)
-    .toolbarBackground(.regularMaterial, for: .navigationBar)
+    .toolbarBackground(Brand.surface, for: .navigationBar)
     .toolbar {
       ToolbarItem(placement: .topBarLeading) { if showAccountButton { AccountButton(account: account, action: onAccount) } }.accountUnframed()
       ToolbarItem(placement: .topBarTrailing) {
@@ -355,24 +357,17 @@ struct TasksScreen: View {
     }
 
   }
-  private var calendarHeader: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      HStack(alignment: .center) {
-        if mode == .status {
-          VStack(alignment: .leading, spacing: 3) {
-            Text("\(board.items.count) 项任务").font(.title3.weight(.semibold)).foregroundStyle(Brand.ink)
-            Text("需要你处理、正在发生和下一次时间").font(.caption).foregroundStyle(Brand.muted)
-          }
-        } else {
+  @ViewBuilder private var calendarHeader: some View {
+    if mode != .status {
+      VStack(alignment: .leading, spacing: 14) {
+        HStack(alignment: .center) {
           VStack(alignment: .leading, spacing: 4) {
             Text(focus.formatted(.dateTime.year().month(.wide)))
               .font(.caption).foregroundStyle(Brand.muted)
             Text(focus.formatted(.dateTime.month(.wide)))
               .font(.largeTitle.weight(.semibold)).tracking(-1)
           }
-        }
-        Spacer()
-        if mode != .status {
+          Spacer()
           Button("今天") { withAnimation(animation) { focus = Date() } }
             .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
             .background(Brand.base, in: Capsule())
@@ -381,8 +376,6 @@ struct TasksScreen: View {
           Button("下一页", systemImage: "chevron.right") { move(1) }
             .labelStyle(.iconOnly).frame(width: 36, height: 44)
         }
-      }
-      if mode != .status {
         Picker(
           "日历范围",
           selection: Binding(
@@ -408,12 +401,12 @@ struct TasksScreen: View {
           Spacer()
           Text("从任务自动生成").font(.caption2).foregroundStyle(Brand.muted)
         }
-      }
-    }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)
-      .background(mode == .status ? Brand.canvas : Brand.surface)
+      }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 12)
+        .background(Brand.surface)
+    }
   }
   private func rebuildCalendar() {
-    let nextEvents = calendarWork(board.items, dates: dates)
+    let nextEvents = calendarWork(visibleItems, dates: dates)
     events = nextEvents
     eventsByDay = Dictionary(grouping: nextEvents) {
       calendar.startOfDay(for: $0.date)
@@ -430,25 +423,13 @@ struct TasksScreen: View {
   private var statusContent: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 16) {
-        if let item = board.items.first(where: taskRunNeedsAttention) {
-          NavigationLink {
-            TaskDetailScreen(
-              account: account, taskID: item["id"].text, initial: item, board: board,
-              previewMode: previewMode, onViewed: { board.markSeen($0) })
-          } label: {
-            MaterialAttentionCard(item: item)
-          }.buttonStyle(.plain)
-        }
         ForEach(TaskPortfolioScope.allCases, id: \.self) { scope in
-          let items = board.items.filter { taskPortfolioScope($0) == scope }
+          let items = visibleItems.filter { taskPortfolioScope($0) == scope }
           if !items.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
               HStack(alignment: .firstTextBaseline) {
                 Text(scope.title).font(.headline).foregroundStyle(Brand.ink)
                 Text("\(items.count)").font(.caption.monospacedDigit()).foregroundStyle(Brand.muted)
-                Spacer()
-                Text(scope.subtitle).font(.caption2).foregroundStyle(Brand.muted)
-                  .lineLimit(1)
               }
               ForEach(items, id: \.self) { item in
                 NavigationLink {
@@ -462,7 +443,7 @@ struct TasksScreen: View {
             }
           }
         }
-        if board.items.isEmpty {
+        if visibleItems.isEmpty {
           MaterialEmptyTasks()
         }
       }.padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 28)
@@ -605,8 +586,8 @@ private struct MaterialAttentionCard: View {
         .foregroundStyle(Brand.muted).padding(.top, 8)
     }
     .padding(14)
-    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 18))
-    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.attention.opacity(0.2)))
+    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.attention.opacity(0.2)))
     .accessibilityIdentifier("tasks.attention")
   }
 }
@@ -646,9 +627,8 @@ private struct MaterialTaskCard: View {
     }
     .padding(16)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line.opacity(0.75)))
-    .shadow(color: .black.opacity(0.035), radius: 8, y: 2)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line.opacity(0.8)))
     .accessibilityIdentifier("task.card.\(item["id"].text)")
   }
 }
@@ -946,9 +926,8 @@ private struct TaskDetailHero: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 22))
-    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.line.opacity(0.8)))
-    .shadow(color: .black.opacity(0.04), radius: 10, y: 3)
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.medium))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.medium).strokeBorder(Brand.line.opacity(0.8)))
     .accessibilityIdentifier("task.summary")
   }
 }
@@ -972,8 +951,8 @@ private struct TaskAttentionPanel: View {
     }
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: 18))
-    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.attention.opacity(0.2)))
+    .background(Brand.attentionSurface, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.attention.opacity(0.2)))
     .accessibilityIdentifier("task.attention")
   }
 }
@@ -1022,8 +1001,8 @@ private struct MaterialRunOverview: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
   }
 
   private func durationLabel(_ seconds: Double) -> String {
@@ -1091,8 +1070,8 @@ private struct MaterialPlanCard: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
   }
 
   private func planSymbol(_ state: String) -> String {
@@ -1183,8 +1162,8 @@ private struct MaterialWorkflowCard: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
     .accessibilityIdentifier("task.workflow")
   }
 }
@@ -1259,8 +1238,8 @@ private struct MaterialExecutionTeam: View {
       }
     }
     .padding(18)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
   }
 }
 
@@ -1312,8 +1291,8 @@ private struct MaterialAgentCard: View {
       }
     }
     .padding(14)
-    .background(Brand.surface, in: RoundedRectangle(cornerRadius: 16))
-    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.line.opacity(0.75)))
+    .background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line.opacity(0.75)))
   }
 
   private var statusColor: Color {
@@ -1341,21 +1320,31 @@ private struct AgentContextScreen: View {
   private var communication: [(String, String, String)] {
     var values: [(String, String, String)] = []
     for message in agent["communications"].items {
-      let outgoing = message["sender_agent_id"].text == agent["agent_id"].text
-      let counterpart =
-        outgoing ? message["recipient_title"].text : message["sender_title"].text
+      let sender = message["sender_title"].text.isEmpty ? "Agent" : message["sender_title"].text
+      let recipient =
+        message["recipient_title"].text.isEmpty ? "Agent" : message["recipient_title"].text
       values.append(
         (
-          outgoing ? "发给 \(counterpart)" : "来自 \(counterpart)",
+          "\(sender) → \(recipient)",
           message["content"].text,
           recordDate(message["created_at"].double)
         ))
     }
     for turn in agent["turns"].items {
-      values.append(("来自主 Agent 的指令", turn["content"].text, recordDate(turn["created_at"].double)))
+      values.append(
+        (
+          "主 Agent → \(agent["title"].text)",
+          turn["content"].text,
+          recordDate(turn["created_at"].double)
+        ))
     }
     for note in agent["notes"].items {
-      values.append(("Agent 回报", note["content"].text, recordDate(note["created_at"].double)))
+      values.append(
+        (
+          "\(agent["title"].text) → 主 Agent",
+          note["content"].text,
+          recordDate(note["created_at"].double)
+        ))
     }
     let result = agent["result"].text.trimmingCharacters(in: .whitespacesAndNewlines)
     if !result.isEmpty {
@@ -1384,8 +1373,8 @@ private struct AgentContextScreen: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+        .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+        .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
 
         AgentDetailCard(title: "上下文与职责", icon: "doc.text") {
           VStack(alignment: .leading, spacing: 10) {
@@ -1508,8 +1497,8 @@ private struct AgentDetailCard<Content: View>: View {
     }
     .padding(18)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 20))
-    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.line))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
   }
 }
 
@@ -1550,8 +1539,8 @@ private struct MaterialTaskDefinitionCard: View {
       }
     }
     .padding(16)
-    .background(Brand.raised, in: RoundedRectangle(cornerRadius: 18))
-    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.line))
+    .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+    .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
   }
 }
 
@@ -1597,8 +1586,8 @@ struct TaskDetailScreen: View {
           }
           .padding(18)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
-          .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.green.opacity(0.18)))
+          .background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small))
+          .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
         }
         MaterialTaskDefinitionCard(item: item)
         if !error.isEmpty {
@@ -1608,7 +1597,7 @@ struct TaskDetailScreen: View {
       }.padding(16)
     }.onAppear { onViewed(item) }.background(Brand.canvas).navigationTitle("任务详情")
       .navigationBarTitleDisplayMode(.inline)
-      .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+      .toolbarBackground(Brand.surface, for: .navigationBar)
       .toolbar {
         if item["state"].text != "closed" {
         ToolbarItem(placement: .topBarTrailing) {
@@ -1637,8 +1626,8 @@ struct TaskDetailScreen: View {
         }
         }
       }
-      .confirmationDialog("删除任务并取消尚未完成的工作？", isPresented: $deleting, titleVisibility: .visible) {
-        Button("删除任务", role: .destructive) { deleteImmediately() }
+      .confirmationDialog("取消这项任务？", isPresented: $deleting, titleVisibility: .visible) {
+        Button("取消任务", role: .destructive) { cancelImmediately() }
       }
       .task(id: scene) {
         guard !previewMode, scene == .active else { return }
@@ -1658,10 +1647,11 @@ struct TaskDetailScreen: View {
     } catch is CancellationError {
     } catch { self.error = "暂时无法读取最新进展。" }
   }
-  private func deleteImmediately() {
+  private func cancelImmediately() {
     let store = board
     let removed = store?.hide(taskID)
     let id = taskID
+    let revision = item["revision"].int
     dismiss()
     Task { @MainActor in
       do {
@@ -1671,7 +1661,13 @@ struct TaskDetailScreen: View {
           }
         #endif
         if !previewMode {
-          _ = try await account.request("tasks", body: .object(["action": .string("delete"), "task_id": .string(id)]))
+          _ = try await account.request(
+            "tasks",
+            body: .object([
+              "action": .string("cancel"),
+              "task_id": .string(id),
+              "expected_revision": .number(Double(revision)),
+            ]))
         }
         store?.finishRemoval(id)
       } catch {
@@ -2103,6 +2099,15 @@ struct CalendarWorkspacePreview: View {
           "source": .string("conversation"), "state": .string("active"), "kind": .string("task"),
           "schedule": .object(["mode": .string("now")]),
           "runs": .array([.object(["id": .string("run-inbox"), "status": .string("scheduled")])]),
+        ]))
+        board.items.append(.object([
+          "id": .string("calendar-preview-cancelled"),
+          "title": .string("已取消的旧任务"),
+          "objective": .string("取消后不应继续出现在当前任务列表。"),
+          "source": .string("conversation"), "state": .string("closed"),
+          "close_reason": .string("cancelled"),
+          "schedule": .object(["mode": .string("now")]),
+          "runs": .array([.object(["id": .string("run-cancelled"), "status": .string("cancelled")])]),
         ]))
         board.loaded = true
       }

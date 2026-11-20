@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   taskExecutionMode,
+  taskIsCancelled,
   taskNeedsAttention,
   taskPortfolioScope,
   taskStatusLabel,
@@ -83,4 +84,14 @@ test('only user waits need attention and program delivery reads as sending', () 
   });
   assert.equal(taskNeedsAttention(question), true);
   assert.equal(taskStatusLabel(question), '等待你回复');
+});
+
+test('cancelled tasks are not successes and can be removed from the active list', () => {
+  const cancelled = task({
+    state: 'closed',
+    close_reason: 'cancelled',
+  });
+  cancelled.runs[0].status = 'cancelled';
+  assert.equal(taskIsCancelled(cancelled), true);
+  assert.equal(taskStatusLabel(cancelled), '已取消');
 });

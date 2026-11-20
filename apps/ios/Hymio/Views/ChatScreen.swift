@@ -219,7 +219,7 @@ struct ChatScreen: View {
         composer
       }
       .background(Brand.surface).foregroundStyle(Brand.ink)
-      .toolbarBackground(.regularMaterial, for: .navigationBar)
+      .toolbarBackground(Brand.surface, for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
       .navigationTitle("hymio").navigationBarTitleDisplayMode(.inline)
       .toolbar {

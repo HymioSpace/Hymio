@@ -55,6 +55,8 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Agent 间通信"].exists)
     XCTAssertTrue(
       app.staticTexts["已发现三种架构模式的边界差异，建议纳入最终报告。"].exists)
+    XCTAssertTrue(
+      app.staticTexts["架构模式调研 → Multi-Agent 调研主 Agent"].exists)
     XCTAssertTrue(app.staticTexts["执行记录"].exists)
     let toolButton = app.buttons.matching(
       NSPredicate(format: "label CONTAINS %@", "条工具调用")).firstMatch
@@ -279,7 +281,7 @@ final class HymioUITests: XCTestCase {
     waitForExpectations(timeout: 10)
   }
 
-  @MainActor func testDeleteTaskImmediatelyRemovesHomeDecision() throws {
+  @MainActor func testCancelTaskImmediatelyRemovesHomeDecision() throws {
     let app = XCUIApplication()
     app.launchArguments = ["-HymioHomePreview", "-HymioHomeManyDecisions", "-HymioSlowDelete"]
     app.launch()
@@ -288,7 +290,7 @@ final class HymioUITests: XCTestCase {
     XCTAssertTrue(app.buttons["任务操作"].waitForExistence(timeout: 5))
     app.buttons["任务操作"].tap()
     app.buttons["取消任务"].tap()
-    app.buttons["删除任务"].tap()
+    app.buttons["取消任务"].tap()
     XCTAssertTrue(app.buttons["home.decisions.all"].waitForExistence(timeout: 2))
     XCTAssertFalse(app.staticTexts["确认周五住哪家酒店"].exists)
     XCTAssertEqual(app.buttons["home.decisions.all"].label, "查看全部 · 4")
@@ -572,11 +574,12 @@ final class HymioUITests: XCTestCase {
     app.launchArguments = ["-HymioCalendarPreview"]
     app.launch()
     XCTAssertTrue(app.buttons["切换到日历"].waitForExistence(timeout: 10))
-    XCTAssertTrue(
+    XCTAssertFalse(
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
         .firstMatch.exists)
     XCTAssertTrue(app.staticTexts["需要你处理"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.staticTexts["临时任务"].exists)
+    XCTAssertFalse(app.staticTexts["已取消的旧任务"].exists)
     app.buttons["切换到日历"].tap()
     app.buttons["周"].tap()
     XCTAssertTrue(app.buttons["今天"].waitForExistence(timeout: 5))
@@ -585,9 +588,14 @@ final class HymioUITests: XCTestCase {
     app.buttons["月"].tap()
     XCTAssertTrue(app.buttons["切换到任务列表"].waitForExistence(timeout: 5))
     app.buttons["切换到任务列表"].tap()
-    XCTAssertTrue(
+    for _ in 0..<4 where !app.staticTexts["比较两家云服务方案"].exists {
+      app.swipeDown()
+    }
+    XCTAssertTrue(app.staticTexts["比较两家云服务方案"].waitForExistence(timeout: 5))
+    XCTAssertFalse(
       app.staticTexts.matching(NSPredicate(format: "label ENDSWITH %@", "项任务"))
-        .firstMatch.waitForExistence(timeout: 5))
+        .firstMatch.exists)
+    XCTAssertFalse(app.staticTexts["已取消的旧任务"].exists)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "tasks-status-view"
     screenshot.lifetime = .keepAlways

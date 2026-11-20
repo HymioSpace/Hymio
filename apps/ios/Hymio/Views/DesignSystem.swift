@@ -1,25 +1,48 @@
 import SwiftUI
 
 enum Brand {
-  static let attention = adaptive(0x9A641E, dark: 0xF0C384)
-  static let attentionSurface = adaptive(0xFFF5E7, dark: 0x392E21)
-  static let ink = adaptive(0x202536, dark: 0xEFF1F7)
-  static let blue = adaptive(0x425DE8, dark: 0xA2B0FF)
-  static let muted = adaptive(0x626B7D, dark: 0xA7AFC1)
-  static let mist = base
-  static let canvas = adaptive(0xF0F2F4, dark: 0x0F1215)
-  static let base = adaptive(0xF5F7F9, dark: 0x13161A)
-  static let surface = adaptive(0xFAFCFE, dark: 0x181B1E)
-  static let raised = adaptive(0xFEFFFF, dark: 0x1C2023)
-  static let paper = adaptive(0xF8F6F0, dark: 0x26252A)
-  static let paperLine = adaptive(0xEAE4D8, dark: 0x3C3940)
-  static let notePaper = adaptive(0xFFF1CF, dark: 0x3A3121)
-  static let noteLine = adaptive(0xA47B31, dark: 0xC6A35E)
-  static let softBlue = adaptive(0xF2F5FF, dark: 0x242A3E)
-  static let assistantBubble = adaptive(0xF0F3F8, dark: 0x222A35)
-  static let userBubble = adaptive(0xEEF1FF, dark: 0x28314A)
-  static let onAccent = adaptive(0xFFFFFF, dark: 0x18214A)
-  static let line = adaptive(0xE6E8EF, dark: 0x353B4B)
+  static let primary = adaptive(0x425DE8, dark: 0xB8C3FF)
+  static let onPrimary = adaptive(0xFFFFFF, dark: 0x06257B)
+  static let primaryContainer = adaptive(0xDDE1FF, dark: 0x2947B9)
+  static let onPrimaryContainer = adaptive(0x09185C, dark: 0xDDE1FF)
+  static let secondary = adaptive(0x5B5D72, dark: 0xC4C5DD)
+  static let secondaryContainer = adaptive(0xE0E1F9, dark: 0x434559)
+  static let onSecondaryContainer = adaptive(0x181A2C, dark: 0xE0E1F9)
+  static let tertiary = adaptive(0x76546D, dark: 0xE6BAD8)
+  static let tertiaryContainer = adaptive(0xFFD7F3, dark: 0x5C3D55)
+  static let onTertiaryContainer = adaptive(0x2C1229, dark: 0xFFD7F3)
+  static let error = adaptive(0xBA1A1A, dark: 0xFFB4AB)
+  static let onError = adaptive(0xFFFFFF, dark: 0x690005)
+  static let errorContainer = adaptive(0xFFDAD6, dark: 0x93000A)
+
+  static let surface = adaptive(0xF9F9FF, dark: 0x111318)
+  static let surfaceDim = adaptive(0xDAD9E0, dark: 0x111318)
+  static let surfaceBright = adaptive(0xF9F9FF, dark: 0x37393E)
+  static let surfaceLowest = adaptive(0xFFFFFF, dark: 0x0C0E13)
+  static let surfaceLow = adaptive(0xF3F3FA, dark: 0x191C20)
+  static let surfaceContainer = adaptive(0xEDEDF4, dark: 0x1D2024)
+  static let surfaceHigh = adaptive(0xE7E8EF, dark: 0x282A2F)
+  static let surfaceHighest = adaptive(0xE1E2E9, dark: 0x33353A)
+  static let ink = adaptive(0x1B1B21, dark: 0xE4E1E9)
+  static let muted = adaptive(0x45464F, dark: 0xC6C5D0)
+  static let outline = adaptive(0x757780, dark: 0x90909A)
+  static let line = adaptive(0xC6C6D0, dark: 0x45464F)
+
+  static let blue = primary
+  static let onAccent = onPrimary
+  static let canvas = surface
+  static let base = surface
+  static let raised = surfaceLow
+  static let mist = surfaceContainer
+  static let softBlue = primaryContainer
+  static let assistantBubble = surfaceHigh
+  static let userBubble = primaryContainer
+  static let attention = adaptive(0x7A5900, dark: 0xF4C95D)
+  static let attentionSurface = adaptive(0xFFF2CC, dark: 0x3E3210)
+  static let paper = adaptive(0xFFF8F1, dark: 0x2D211D)
+  static let paperLine = adaptive(0xE8D9CE, dark: 0x58443B)
+  static let notePaper = adaptive(0xFFF2CB, dark: 0x3E3210)
+  static let noteLine = adaptive(0x9A6B00, dark: 0xF4C95D)
 
   private static func adaptive(_ light: UInt32, dark: UInt32) -> Color {
     Color(
@@ -33,18 +56,58 @@ enum Brand {
   }
 }
 
+enum MaterialShape {
+  static let extraSmall: CGFloat = 8
+  static let small: CGFloat = 12
+  static let medium: CGFloat = 16
+  static let large: CGFloat = 20
+  static let extraLarge: CGFloat = 28
+  static let full: CGFloat = 999
+}
+
+enum MaterialSpacing {
+  static let xs: CGFloat = 4
+  static let sm: CGFloat = 8
+  static let md: CGFloat = 12
+  static let lg: CGFloat = 16
+  static let xl: CGFloat = 24
+  static let xxl: CGFloat = 32
+}
+
+struct MaterialCardSurface: ViewModifier {
+  var elevated = false
+  func body(content: Content) -> some View {
+    content
+      .background(
+        elevated ? Brand.surfaceLow : Brand.surfaceLow,
+        in: RoundedRectangle(cornerRadius: MaterialShape.small)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: MaterialShape.small)
+          .strokeBorder(Brand.line, lineWidth: 0.75)
+      )
+  }
+}
+
+extension View {
+  func materialCard(elevated: Bool = false) -> some View {
+    modifier(MaterialCardSurface(elevated: elevated))
+  }
+}
+
 struct ComposerSurface: ViewModifier {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   var focused = false
   func body(content: Content) -> some View {
     content
       .background {
-        RoundedRectangle(cornerRadius: 28)
-          .fill(reduceTransparency ? AnyShapeStyle(Brand.raised) : AnyShapeStyle(.regularMaterial))
+        RoundedRectangle(cornerRadius: MaterialShape.extraLarge)
+          .fill(reduceTransparency ? AnyShapeStyle(Brand.surfaceHigh) : AnyShapeStyle(Brand.surfaceHigh.opacity(0.96)))
       }
-      .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(Brand.line.opacity(0.6), lineWidth: 0.5) }
-      .shadow(color: Brand.blue.opacity(focused ? 0.16 : 0), radius: 3)
-      .shadow(color: Brand.blue.opacity(focused ? 0.09 : 0), radius: 8)
+      .overlay {
+        RoundedRectangle(cornerRadius: MaterialShape.extraLarge)
+          .strokeBorder(focused ? Brand.primary : Brand.line, lineWidth: focused ? 2 : 1)
+      }
       .animation(.easeOut(duration: 0.12), value: focused)
   }
 }
@@ -97,7 +160,7 @@ struct PrimaryAction: ButtonStyle {
     configuration.label
       .frame(maxWidth: .infinity, minHeight: 48)
       .foregroundStyle(Brand.onAccent)
-      .background(Brand.blue, in: RoundedRectangle(cornerRadius: 14))
+      .background(Brand.blue, in: Capsule())
       .opacity(!enabled ? 0.45 : configuration.isPressed ? 0.85 : 1)
   }
 }

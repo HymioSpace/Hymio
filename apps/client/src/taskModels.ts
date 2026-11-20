@@ -162,6 +162,13 @@ export function taskTemporalScope(task: Work): 'ongoing' | 'temporary' {
   return 'temporary';
 }
 
+export function taskIsCancelled(task: Work) {
+  return (
+    task.close_reason === 'cancelled' ||
+    (['closed', 'archived'].includes(task.state) && task.runs[0]?.status === 'cancelled')
+  );
+}
+
 export function taskPortfolioScope(task: Work): TaskPortfolioScope {
   const run = task.runs[0];
   if (

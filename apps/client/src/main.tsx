@@ -3,4 +3,5 @@ import App from './App';
 import './styles.css';
 import './product.css';
 import './craft.css';
+import './material.css';
 createRoot(document.getElementById('root')!).render(<App />);
