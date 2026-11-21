@@ -49,15 +49,16 @@ def pair(client):
     return response.json(), code
 
 
-def connect(ws, pair):
-    ws.send_json(
-        {
-            "v": 1,
-            "type": "link.attach",
-            "credential": pair["credential"],
-            "capabilities": ["bash", "computer"],
-        }
-    )
+def connect(ws, pair, *, journal_ids=None):
+    frame = {
+        "v": 1,
+        "type": "link.attach",
+        "credential": pair["credential"],
+        "capabilities": ["bash", "computer"],
+    }
+    if journal_ids is not None:
+        frame.update(journal_ids=journal_ids, journal_truncated=False)
+    ws.send_json(frame)
     ready = ws.receive_json()
     assert ready["type"] == "link.ready"
     return ready
@@ -168,6 +169,52 @@ def test_unknown_outcome_keeps_lock_until_late_durable_result(stack):
         assert known["status"] == "succeeded" and known["result"]["output"] == "saved-result"
         with link.store.transaction() as db:
             assert db.execute("SELECT 1 FROM device_locks").fetchone() is None
+
+
+def test_device_journal_absence_releases_an_expired_unknown_lock_safely(stack):
+    client, link = stack
+    paired, _ = pair(client)
+    link.store.claim(
+        "alice",
+        paired["device_id"],
+        "never-received",
+        {"capability": "bash", "arguments": {"command": "printf stale"}},
+        0.1,
+    )
+    link.store.finish(
+        "alice",
+        "never-received",
+        {"status": "outcome_unknown"},
+        release=False,
+    )
+    with link.store.transaction() as db:
+        db.execute(
+            "UPDATE device_locks SET deadline=? WHERE device_id=?",
+            (time.time() - 10, paired["device_id"]),
+        )
+    with client.websocket_connect("/devices/link/ws") as ws, ThreadPoolExecutor() as workers:
+        ready = connect(ws, paired, journal_ids=[])
+        future = workers.submit(
+            client.post,
+            "/devices/execute",
+            headers=headers(),
+            json=request(paired, "after-stale"),
+        )
+        command = ws.receive_json()
+        assert command["invocation_id"] == "after-stale"
+        ws.send_json(
+            {
+                "v": 1,
+                "type": "link.result",
+                "generation": ready["generation"],
+                "invocation_id": "after-stale",
+                "payload": {"output": "recovered"},
+            }
+        )
+        assert ws.receive_json()["type"] == "link.ack"
+        assert future.result().json()["status"] == "succeeded"
+    with link.store.transaction() as db:
+        assert db.execute("SELECT 1 FROM device_locks").fetchone() is None
 
 
 def test_result_arriving_just_after_command_timeout_is_still_returned(stack):

@@ -42,6 +42,12 @@ final class HymioUITests: XCTestCase {
     for _ in 0..<6 where !app.staticTexts["执行团队"].isHittable { app.swipeUp() }
     XCTAssertTrue(app.staticTexts["执行团队"].exists)
     XCTAssertTrue(app.staticTexts["Multi-Agent 调研主 Agent"].exists)
+    XCTAssertTrue(app.images["task.agent.icon"].exists)
+    XCTAssertFalse(app.images["task.agent.icon"].label.isEmpty)
+    let teamShot = XCTAttachment(screenshot: app.screenshot())
+    teamShot.name = "task-team-spacing-and-icon"
+    teamShot.lifetime = .keepAlways
+    add(teamShot)
     XCTAssertFalse(app.staticTexts["查阅 Anthropic 多智能体研究"].exists)
     for _ in 0..<4 where !app.staticTexts["架构模式调研"].isHittable { app.swipeUp() }
     XCTAssertTrue(app.staticTexts["架构模式调研"].isHittable)
@@ -70,6 +76,30 @@ final class HymioUITests: XCTestCase {
       NSPredicate(format: "label CONTAINS %@", "<!DOCTYPE")).firstMatch.exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "material-multi-agent-task-panel"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
+  @MainActor func testTaskDefinitionUsesBoundedRenderedReader() throws {
+    let app = XCUIApplication()
+    app.launchArguments = ["-HymioMultiAgentTaskPreview"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["任务详情"].waitForExistence(timeout: 10))
+    let definition = app.buttons["task.definition.toggle"]
+    for _ in 0..<10 where !definition.isHittable { app.swipeUp() }
+    XCTAssertTrue(definition.isHittable, app.debugDescription)
+    definition.tap()
+    let read = app.buttons["task.definition.read"]
+    for _ in 0..<3 where !read.exists { app.swipeUp() }
+    XCTAssertTrue(read.waitForExistence(timeout: 5))
+    read.tap()
+    XCTAssertTrue(app.navigationBars["任务定义"].waitForExistence(timeout: 5))
+    XCTAssertTrue(
+      app.staticTexts.matching(
+        NSPredicate(format: "label CONTAINS %@", "调研多智能体架构")
+      ).firstMatch.waitForExistence(timeout: 5))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "rendered-task-definition"
     shot.lifetime = .keepAlways
     add(shot)
   }

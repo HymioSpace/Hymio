@@ -26,7 +26,13 @@ def card(hit, value):
     if not isinstance(raw_labels, list) or not raw_labels:
         raw_labels = hit.get("topics")
     labels = (
-        list(dict.fromkeys(label.strip() for label in raw_labels if isinstance(label, str) and label.strip()))
+        list(
+            dict.fromkeys(
+                label.strip()
+                for label in raw_labels
+                if isinstance(label, str) and label.strip()
+            )
+        )
         if isinstance(raw_labels, list)
         else []
     )

@@ -4,6 +4,8 @@ from urllib.parse import quote, urlsplit
 
 import httpx
 
+from .bindings import ContextBindingError, ContextBindings
+
 
 class ContextError(Exception):
     def __init__(self, status, code, message, *, data=None):
@@ -34,11 +36,20 @@ class NostalgiaClient:
         self.settings = settings
 
     def connection(self, user_id):
-        path = getattr(self.settings, "nostalgia_connections_file", None)
-        if not path:
-            raise ContextError(503, "context_disabled", "Nostalgia is not configured")
-        path = Path(path)
         try:
+            bindings = ContextBindings(self.settings)
+            dynamic = bindings.get(user_id)
+            if dynamic is None:
+                # Login provisioning is best effort. Retry lazily on the first memory
+                # operation so a temporary Nostalgia outage never requires re-registration.
+                bindings.ensure(user_id)
+                dynamic = bindings.get(user_id)
+            if dynamic:
+                return dynamic
+            path = getattr(self.settings, "nostalgia_connections_file", None)
+            if not path:
+                raise ContextError(503, "context_disabled", "Nostalgia is not configured")
+            path = Path(path)
             bindings = json.loads(path.read_text())["users"]
             entry = bindings.get(user_id)
             if entry is None:
@@ -61,6 +72,10 @@ class NostalgiaClient:
             if len(token) < 16:
                 raise ValueError("Missing credential")
             return url, token
+        except ContextBindingError as exc:
+            raise ContextError(
+                503, "context_configuration", "Invalid context configuration"
+            ) from exc
         except (OSError, KeyError, ValueError, TypeError, AttributeError) as exc:
             raise ContextError(
                 503, "context_configuration", "Invalid context configuration"

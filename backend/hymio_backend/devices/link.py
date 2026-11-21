@@ -57,6 +57,23 @@ class DeviceLink:
             raise ValueError("invalid_permissions")
         return list(dict.fromkeys(caps)), permissions
 
+    @staticmethod
+    def journal(frame):
+        """Return the bounded local journal index used only for safe reconciliation."""
+
+        if "journal_ids" not in frame:
+            return None, True
+        values = frame.get("journal_ids")
+        truncated = frame.get("journal_truncated", False)
+        if (
+            not isinstance(values, list)
+            or len(values) > 256
+            or any(not isinstance(value, str) or not 1 <= len(value) <= 200 for value in values)
+            or type(truncated) is not bool
+        ):
+            raise ValueError("invalid_journal")
+        return frozenset(values), truncated
+
     def pairing(self, user_id):
         code = secrets.token_hex(10)
         with self.store.transaction() as db:
@@ -177,6 +194,19 @@ class DeviceLink:
         if parent:
             request["parent_invocation_id"] = parent
         timeout = data.get("timeout", 25)
+        with self.lock:
+            connection = self.connections.get(device_id)
+        if (
+            connection
+            and connection["seen"] > time.monotonic() - 35
+            and connection.get("journal_ids") is not None
+            and not connection.get("journal_truncated", True)
+        ):
+            lock = self.store.expired_execution(user_id, device_id)
+            if lock and lock["invocation_id"] not in connection["journal_ids"]:
+                # The device's durable journal has no record of this invocation. It was
+                # never accepted locally, so do not keep an unknown-effect fence forever.
+                self.store.release_expired_execution(user_id, device_id, lock)
         _, known = self.store.claim(user_id, device_id, invocation, request, timeout + 5)
         if known is not None:
             return known
@@ -408,6 +438,7 @@ def link_routes(settings, sessions, bearer, body, link):
             credential = first.get("credential")
             device = await asyncio.to_thread(link.identity, credential)
             caps, permissions = link.report(first, device["kind"])
+            journal_ids, journal_truncated = link.journal(first)
             with link.lock:
                 old = link.connections.get(device["id"])
                 link.connections[device["id"]] = {
@@ -417,6 +448,8 @@ def link_routes(settings, sessions, bearer, body, link):
                     "seen": time.monotonic(),
                     "capabilities": caps,
                     "permissions": permissions,
+                    "journal_ids": journal_ids,
+                    "journal_truncated": journal_truncated,
                 }
             if old:
                 await old["socket"].close(code=4009)
@@ -444,9 +477,12 @@ def link_routes(settings, sessions, bearer, body, link):
                 if frame.get("type") == "link.ping":
                     if "capabilities" in frame:
                         caps, permissions = link.report(frame, device["kind"])
+                        journal_ids, journal_truncated = link.journal(frame)
                         with link.lock:
                             current["capabilities"] = caps
                             current["permissions"] = permissions
+                            current["journal_ids"] = journal_ids
+                            current["journal_truncated"] = journal_truncated
                     await ws.send_json({"v": 1, "type": "link.pong"})
                 elif frame.get("type") == "link.result":
                     await asyncio.to_thread(link.result, device, frame)

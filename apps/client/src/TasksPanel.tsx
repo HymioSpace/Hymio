@@ -495,11 +495,17 @@ function TaskDetail({
 
       <details className="task-definition">
         <summary>任务定义</summary>
-        <p>{task.objective}</p>
+        <p>{readableSummary(visibleText(task.objective), 220)}</p>
         <div className="task-agent-success">
           <strong>完成标准</strong>
-          <span>{task.success_criteria}</span>
+          <span>{visibleText(task.success_criteria)}</span>
         </div>
+        <details className="task-definition-rendered">
+          <summary>阅读完整职责</summary>
+          <div className="task-definition-scroll">
+            <MessageMarkdown content={visibleText(task.objective)} login={login} />
+          </div>
+        </details>
         {task.schedule?.mode && <p>时间：{scheduleLabel(task)}</p>}
       </details>
 
@@ -973,7 +979,7 @@ function semanticActivities(agent: ExecutionAgent) {
       }
     }
   }
-  return result.slice(-20);
+  return result;
 }
 
 function activityTime(value: number) {

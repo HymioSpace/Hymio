@@ -22,6 +22,7 @@ from .cli_gateway import cli_routes
 from .connectors.routes import connector_routes
 from .connectors.service import ConnectorService
 from .context.admin import nostalgia_admin_routes
+from .context.bindings import ContextBindings
 from .context.discovery import Discovery
 from .context.routes import context_routes
 from .devices.admin import admin_routes
@@ -71,6 +72,7 @@ def text(data, key):
 
 def build_app(settings, *, provider=None):
     store = SessionStore(settings)
+    context_bindings = ContextBindings(settings)
     notifications = NotificationService(settings, store)
     tasks = RemoteTasks(settings, store, notifications)
     discovery = Discovery(settings, store, tasks)
@@ -114,6 +116,17 @@ def build_app(settings, *, provider=None):
         await upstream.aclose()
         if hasattr(oidc, "http"):
             oidc.http.close()
+
+    async def provision_context(session):
+        try:
+            await asyncio.to_thread(context_bindings.ensure, session["user_id"])
+            session["context_ready"] = True
+        except Exception:
+            # Login remains usable. The context client retries provisioning lazily when
+            # the user first reads or writes memory.
+            _log.exception("Automatic Nostalgia provisioning failed")
+            session["context_ready"] = False
+        return session
 
     async def endpoint(request):
         try:
@@ -164,7 +177,9 @@ def build_app(settings, *, provider=None):
                     raise ValueError("Invalid password length")
                 claims = await asyncio.to_thread(accounts.authenticate, action, username, password)
                 claims["preferred_username"] = username
-                return JSONResponse(await asyncio.to_thread(store.create_session, claims))
+                session = await asyncio.to_thread(store.create_session, claims)
+                await provision_context(session)
+                return JSONResponse(session)
             if path == "/auth/start":
                 data = await body(request)
                 return_uri = text(data, "return_uri")
@@ -205,11 +220,13 @@ def build_app(settings, *, provider=None):
                 result = await asyncio.to_thread(
                     store.exchange, text(data, "flow_id"), text(data, "login_code")
                 )
+                await provision_context(result)
                 return JSONResponse(result)
             if path == "/auth/refresh":
                 result = await asyncio.to_thread(
                     store.refresh, text(await body(request), "refresh_token")
                 )
+                await provision_context(result)
                 return JSONResponse(result)
             if path == "/auth/logout":
                 await asyncio.to_thread(store.logout, bearer(request))
