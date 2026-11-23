@@ -54,7 +54,9 @@ vision_model = "MiniMax-M3"
 # vault_url = "http://vault:8200"
 # vault_role_id_file = "./private/vault-role-id"
 # vault_secret_id_file = "./private/vault-secret-id"
-# Optional per-user Nostalgia endpoints and credential file references.
+# Optional Nostalgia service. New accounts are provisioned automatically.
+# nostalgia_url = "http://nostalgia:8000"
+# Static bindings remain as a migration and operator fallback.
 # nostalgia_connections_file = "./private/nostalgia-connections.json"
 
 # Optional APNs. Keep the p8 key outside source control and mount it through the

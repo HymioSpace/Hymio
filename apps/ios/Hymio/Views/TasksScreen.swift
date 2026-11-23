@@ -375,7 +375,7 @@ private func taskHumanActivity(_ agent: JSON) -> [TaskHumanActivity] {
       }
     }
   }
-  return Array(result.suffix(10))
+  return result
 }
 
 private func taskActivityTimestamp(_ entry: JSON) -> Double {
@@ -1714,11 +1714,12 @@ private struct MaterialAgentCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .top, spacing: 10) {
-        Image(systemName: isTaskAgent ? "smart_toy" : "person.2")
+        Image(systemName: isTaskAgent ? "cpu" : "person.2")
           .font(.system(size: 17, weight: .medium))
           .foregroundStyle(statusColor)
           .frame(width: 36, height: 36)
           .background(statusColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 12))
+          .accessibilityIdentifier(isTaskAgent ? "task.agent.icon" : "task.subagent.icon")
         VStack(alignment: .leading, spacing: 4) {
           Text(agent["title"].text.isEmpty ? (isTaskAgent ? "执行 Agent" : "子 Agent") : agent["title"].text)
             .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink).lineLimit(2)
@@ -1838,7 +1839,7 @@ private struct AgentContextScreen: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Brand.surfaceContainer, in: RoundedRectangle(cornerRadius: MaterialShape.large))
 
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
           AgentDetailCard(title: "职责与完成标准", icon: "scope", divider: false) {
             VStack(alignment: .leading, spacing: 14) {
               if !visibleObjective.isEmpty {
@@ -2083,29 +2084,36 @@ private struct AgentDetailCard<Content: View>: View {
 
 private struct MaterialTaskDefinitionCard: View {
   let item: JSON
+  let onRead: () -> Void
   @State private var expanded = false
+
+  private var objective: String {
+    taskVisibleText(item["objective"].text).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+  private var criteria: String {
+    taskVisibleText(item["success_criteria"].text).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+  private var summary: String { taskReadableSummary(objective, limit: 220) }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Button {
-        withAnimation(.snappy(duration: 0.22)) { expanded.toggle() }
-      } label: {
-        HStack {
-          Label("任务定义", systemImage: "description")
-            .font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
-          Spacer()
-          Image(systemName: "chevron.down").font(.caption.weight(.semibold))
-            .rotationEffect(.degrees(expanded ? 180 : 0)).foregroundStyle(Brand.muted)
-        }
-      }.buttonStyle(.plain)
-      if expanded {
-        VStack(alignment: .leading, spacing: 10) {
-          Text(item["objective"].text).font(.caption).foregroundStyle(Brand.ink)
-            .lineSpacing(2)
-          VStack(alignment: .leading, spacing: 3) {
-            Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
-            Text(item["success_criteria"].text).font(.caption).foregroundStyle(Brand.ink)
-              .lineSpacing(2)
+      DisclosureGroup(isExpanded: $expanded) {
+        VStack(alignment: .leading, spacing: 12) {
+          if !summary.isEmpty {
+            Text(summary)
+              .font(.subheadline)
+              .foregroundStyle(Brand.ink)
+              .lineSpacing(3)
+          }
+          if !criteria.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("完成标准").font(.caption.weight(.semibold)).foregroundStyle(Brand.blue)
+              Text(criteria)
+                .font(.caption)
+                .foregroundStyle(Brand.ink)
+                .lineSpacing(2)
+                .lineLimit(4)
+            }
           }
           HStack(spacing: 8) {
             Text(taskTemporalScope(item).title)
@@ -2115,11 +2123,88 @@ private struct MaterialTaskDefinitionCard: View {
             }
           }.font(.caption2).foregroundStyle(Brand.muted)
         }
+        .padding(.top, 10)
+      } label: {
+        Label("任务定义", systemImage: "description")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(Brand.ink)
+          .accessibilityIdentifier("task.definition.toggle")
+      }
+      .tint(Brand.blue)
+      if expanded {
+        Button {
+          onRead()
+        } label: {
+          HStack {
+            Label("阅读完整任务定义", systemImage: "doc.text.magnifyingglass")
+            Spacer()
+            Image(systemName: "chevron.right").font(.caption)
+          }
+          .font(.caption.weight(.medium))
+          .foregroundStyle(Brand.blue)
+          .frame(maxWidth: .infinity, minHeight: 44)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("task.definition.read")
       }
     }
     .padding(16)
     .background(Brand.raised, in: RoundedRectangle(cornerRadius: MaterialShape.small))
     .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
+  }
+}
+
+private struct TaskDefinitionReader: View {
+  let item: JSON
+  @ObservedObject var account: AccountService
+  @Environment(\.dismiss) private var dismiss
+
+  private var objective: String {
+    taskVisibleText(item["objective"].text).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+  private var criteria: String {
+    taskVisibleText(item["success_criteria"].text).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
+          if !objective.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              Text("职责").font(.headline).foregroundStyle(Brand.ink)
+              MessageContent(content: objective, account: account)
+            }
+          }
+          if !criteria.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+              Text("完成标准").font(.headline).foregroundStyle(Brand.ink)
+              Text(criteria).font(.body).foregroundStyle(Brand.ink).lineSpacing(3)
+            }
+          }
+          VStack(alignment: .leading, spacing: 6) {
+            Text("执行安排").font(.headline).foregroundStyle(Brand.ink)
+            Text(taskTemporalScope(item).title).font(.subheadline).foregroundStyle(Brand.muted)
+            if !["", "now"].contains(item["schedule"]["mode"].text) {
+              Text(taskSchedule(item["schedule"]))
+                .font(.subheadline).foregroundStyle(Brand.muted)
+            }
+          }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .background(Brand.canvas)
+      .navigationTitle("任务定义")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("完成") { dismiss() }
+        }
+      }
+    }
+    .presentationDetents([.medium, .large])
   }
 }
 
@@ -2138,6 +2223,7 @@ struct TaskDetailScreen: View {
   @State private var busy = false
   @State private var deleting = false
   @State private var deletingArchived = false
+  @State private var readingDefinition = false
   @State private var continuation = ""
   @Environment(\.scenePhase) private var scene
   private var item: JSON { value == .null ? initial : value }
@@ -2177,7 +2263,7 @@ struct TaskDetailScreen: View {
           .background(Brand.surfaceLow, in: RoundedRectangle(cornerRadius: MaterialShape.small))
           .overlay(RoundedRectangle(cornerRadius: MaterialShape.small).strokeBorder(Brand.line))
         }
-        MaterialTaskDefinitionCard(item: item)
+        MaterialTaskDefinitionCard(item: item) { readingDefinition = true }
         if !error.isEmpty {
           Text(error).font(.caption).foregroundStyle(Brand.attention)
             .padding(.horizontal, 4)
@@ -2231,6 +2317,9 @@ struct TaskDetailScreen: View {
         Button("从归档移除", role: .destructive) { hideArchived() }
       } message: {
         Text("只会不再展示这条归档；原始任务与执行记录仍会保留。")
+      }
+      .sheet(isPresented: $readingDefinition) {
+        TaskDefinitionReader(item: item, account: account)
       }
       .task(id: scene) {
         guard !previewMode, scene == .active else { return }
